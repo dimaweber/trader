@@ -98,6 +98,18 @@ public:
 
 	Ticker ticker;
 
+	virtual ~Pair() {}
+
+	virtual void display() const
+	{
+		qDebug() << QString("%1    : %2").arg("name").arg(name);
+		qDebug() << QString("   %1 : %2").arg("decimal_places").arg(decimal_places);
+		qDebug() << QString("   %1 : %2").arg("min_price").arg(min_price);
+		qDebug() << QString("   %1 : %2").arg("max_price").arg(max_price);
+		qDebug() << QString("   %1 : %2").arg("min_amount").arg(min_amount);
+		qDebug() << QString("   %1 : %2").arg("hidden").arg(hidden);
+		qDebug() << QString("   %1 : %2").arg("fee").arg(fee);
+	}
 	virtual bool parse(const QVariantMap& map);
 };
 
@@ -113,12 +125,21 @@ public:
 		clear();
 		for (QString pairName: map.keys())
 		{
+			if (pairName == "__key")
+				continue;
+
 			Pair pair;
 			pair.parse(read_map(map, pairName));
 			insert(pair.name, pair);
 		}
 
 		return true;
+	}
+
+	virtual void display() const
+	{
+		for(Pair& pair: values())
+			pair.display();
 	}
 };
 
@@ -135,7 +156,7 @@ class BtcPublicInfo: public BtcPublicApi
 {
 
 public:
-	virtual QString path() const override { return "https://btc-e.com/api/3/info";}
+	virtual QString path() const override { return BtcPublicApi::path() + "info";}
 	virtual bool parseSuccess(const QVariantMap& returnMap) override
 	{
 		Pairs::ref().server_time = read_timestamp(returnMap, "server_time");
@@ -352,10 +373,15 @@ int main(int argc, char *argv[])
 		storage.changePassword();
 		return 0;
 	}
+
 	//QByteArray apiKey = "G8K10M6S-C6T2X0FZ-E9H4RFF4-YR8TEML4-IK2UX9PV";
 	//QByteArray secret = "75137bd6768b7cefa199c679ef4f2d182721404de2a7ec75231f64f9f65f5b35";
 
 	Funds funds;
+
+	BtcPublicInfo pinfo;
+	pinfo.performQuery();
+	Pairs::ref().display();
 
 	CURLcode curlResult;
 	curlResult = curl_global_init(CURL_GLOBAL_ALL);

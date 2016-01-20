@@ -9,6 +9,6 @@ CONFIG -= app_bundle
 
 TEMPLATE = app
 
-LIBS += -lcrypto -lcurl
+LIBS += -lcrypto -lcurl -lreadline
 
 SOURCES += main.cpp
