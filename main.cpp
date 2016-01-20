@@ -4,41 +4,31 @@
 #include <QUrlQuery>
 #include <QDateTime>
 #include <QJsonDocument>
+#include <QFile>
+#include <QDataStream>
+
+#include <iostream>
 
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
+#include <openssl/aes.h>
+
 #include <curl/curl.h>
+
+#include <readline/readline.h>
 
 typedef const EVP_MD* (*HashFunction)();
 
-double get_comission_pct(const QString& pair)
-{
-	return 0.002;
-}
-
-QByteArray hmac_sha512(QByteArray& message, QByteArray& key, HashFunction func = EVP_sha512)
+QByteArray hmac_sha512(const QByteArray& message, const QByteArray& key, HashFunction func = EVP_sha512)
 {
 	unsigned char* digest = nullptr;
 	unsigned int digest_size = 0;
 
-	digest = HMAC(func(), reinterpret_cast<unsigned char*>(key.data()), key.length(),
-						  reinterpret_cast<unsigned char*>(message.data()), message.length(),
+	digest = HMAC(func(), reinterpret_cast<const unsigned char*>(key.constData()), key.length(),
+						  reinterpret_cast<const unsigned char*>(message.constData()), message.length(),
 						  digest, &digest_size);
 
 	return QByteArray(reinterpret_cast<char*>(digest), digest_size);
-}
-
-typedef QMap<QString, double> Funds;
-Funds parseFunds(QVariantMap fundsMap)
-{
-	Funds funds;
-	for (QString currencyName: fundsMap.keys())
-	{
-		double v = fundsMap[currencyName].toDouble();
-		funds[currencyName] = v;
-	}
-
-	return funds;
 }
 
 double read_double(const QVariantMap& map, const QString& name);
@@ -47,64 +37,118 @@ long read_long(const QVariantMap& map, const QString& name);
 QVariantMap read_map(const QVariantMap& map, const QString& name);
 QDateTime read_timestamp(const QVariantMap& map, const QString& name);
 
-class MissingField : public std::runtime_error
-{public : MissingField(const QString& msg): std::runtime_error(msg.toUtf8()){}};
-
-class BrokenJson : public std::runtime_error
-{public : BrokenJson(const QString& msg): std::runtime_error(msg.toUtf8()){}};
-
-class HttpError : public std::runtime_error
-{public : HttpError(const QString& msg): std::runtime_error(msg.toUtf8()){}};
-
-class BtcTradeQuery
+class Funds : public QMap<QString, double>
 {
+public:
+	bool parse(const QVariantMap& fundsMap)
+	{
+		clear();
+		for (QString currencyName: fundsMap.keys())
+		{
+			double v = fundsMap[currencyName].toDouble();
+			insert(currencyName, v);
+		}
+
+		return true;
+	}
+	void display() const
+	{
+		for (QString& pairName: keys())
+			qDebug() << pairName << value(pairName);
+	}
+};
+
+class HttpQuery
+{
+protected:
+	bool valid;
+
 	static size_t writeFunc(char *ptr, size_t size, size_t nmemb, void *userdata);
 	QByteArray jsonData;
 
-	static quint32 _nonce;
-	static QString nonce() { return QString::number(++_nonce);}
-protected:
-
-	bool valid;
-
-	bool success;
-	QString errorMsg;
-
-	QUrlQuery query;
-	QByteArray queryParams();
-
-	bool parse(QByteArray serverAnswer);
-
-	virtual QMap<QString, QString> extraQueryParams();
-	virtual void showSuccess() const = 0;
-	virtual bool parseSuccess(QVariantMap returnMap) =0;
-	virtual QString methodName() const = 0;
-
+	virtual  bool performQuery() =0;
+	virtual QString path() const = 0;
+	virtual bool parseSuccess(const QVariantMap& returnMap) =0;
+	virtual bool parse(const QByteArray& serverAnswer) =0;
 public:
-	BtcTradeQuery() : valid(false), success(false), errorMsg("Not executed")
-	{}
-
-	bool performQuery(QByteArray& apiKey, QByteArray& secret);
-	void display() const;
+	HttpQuery():valid(false){}
 	bool isValid() const { return valid;}
-	bool isSuccess() const {return success;}
 };
 
-quint32 BtcTradeQuery::_nonce = QDateTime::currentDateTime().toTime_t();
-
-class Info : public BtcTradeQuery
+struct Ticker
 {
-	QMap<QString, double> funds;
-	quint64 transaction_count;
-	quint64 open_orders_count;
-	QDateTime server_time;
-
-	virtual bool parseSuccess(QVariantMap returnMap) override;
-	virtual QString methodName() const  override {return "getInfo";}
 public:
-	void showSuccess() const override;
+	QString name;
+	double high, low, avg, vol, vol_cur, last, buy, sell;
+	QDateTime updated;
+
+	virtual bool parse(const QVariantMap& map);
 };
 
+struct Pair
+{
+public:
+	QString name;
+	int decimal_places;
+	double min_price;
+	double max_price;
+	double min_amount;
+	bool hidden;
+	double fee;
+
+	Ticker ticker;
+
+	virtual bool parse(const QVariantMap& map);
+};
+
+class Pairs: public QMap<QString, Pair>
+{
+public:
+	QDateTime server_time;
+	static Pairs& ref() { static Pairs* pInstance = nullptr; if (!pInstance) pInstance = new Pairs; return *pInstance;}
+	static Pair& ref(const QString& pairName){ return ref()[pairName];}
+
+	bool parse(const QVariantMap& map)
+	{
+		clear();
+		for (QString pairName: map.keys())
+		{
+			Pair pair;
+			pair.parse(read_map(map, pairName));
+			insert(pair.name, pair);
+		}
+
+		return true;
+	}
+};
+
+class BtcPublicApi : public HttpQuery
+{
+protected:
+	virtual QString path() const override;
+	virtual bool parse(const QByteArray& serverAnswer) final override;
+public:
+	virtual bool performQuery() override final;
+};
+
+class BtcPublicInfo: public BtcPublicApi
+{
+
+public:
+	virtual QString path() const override { return "https://btc-e.com/api/3/info";}
+	virtual bool parseSuccess(const QVariantMap& returnMap) override
+	{
+		Pairs::ref().server_time = read_timestamp(returnMap, "server_time");
+		Pairs::ref().parse(read_map(returnMap, "pairs"));
+
+		return true;
+	}
+};
+
+double get_comission_pct(const QString& pair)
+{
+	return Pairs::ref(pair).fee;
+}
 
 struct Order {
 	enum OrderType {Buy, Sell};
@@ -121,79 +165,140 @@ struct Order {
 	Id order_id;
 
 	void display() const;
-	bool parse(const QVariant& map);
+	bool parse(const QVariantMap& map);
 
 	double total() const { return amount * rate;}
 	double gain() const {return ((type==Sell)?total():amount) * (1 - get_comission_pct(pair));}
 	double comission() const { return ((type==Sell)?total():amount) * get_comission_pct(pair);}
 };
 
-class Trade : public BtcTradeQuery
+class MissingField : public std::runtime_error
+{public : MissingField(const QString& msg): std::runtime_error(msg.toUtf8()){}};
+
+class BrokenJson : public std::runtime_error
+{public : BrokenJson(const QString& msg): std::runtime_error(msg.toUtf8()){}};
+
+class HttpError : public std::runtime_error
+{public : HttpError(const QString& msg): std::runtime_error(msg.toUtf8()){}};
+
+class BtcTradeApi : public HttpQuery
+{
+	static quint32 _nonce;
+	const QByteArray& apiKey;
+	const QByteArray& secret;
+	static QString nonce() { return QString::number(++_nonce);}
+protected:
+	bool success;
+	QString errorMsg;
+
+	QUrlQuery query;
+	QByteArray queryParams();
+
+	virtual bool parse(const QByteArray& serverAnswer) override;
+
+	virtual QMap<QString, QString> extraQueryParams();
+	virtual void showSuccess() const = 0;
+	virtual QString methodName() const = 0;
+
+public:
+	BtcTradeApi(const QByteArray& apiKey, const QByteArray& secret)
+		: HttpQuery(),
+		  apiKey(apiKey), secret(secret),
+		  success(false), errorMsg("Not executed")
+	{}
+
+	virtual QString path() const override { return "https://btc-e.com/tapi";}
+	virtual bool performQuery() override;
+	void display() const;
+	bool isSuccess() const {return success;}
+};
+
+quint32 BtcTradeApi::_nonce = QDateTime::currentDateTime().toTime_t();
+
+class Info : public BtcTradeApi
+{
+	Funds& funds;
+	quint64 transaction_count;
+	quint64 open_orders_count;
+	QDateTime server_time;
+
+	virtual bool parseSuccess(const QVariantMap& returnMap) override;
+	virtual QString methodName() const  override {return "getInfo";}
+public:
+	Info(const QByteArray& apiKey, const QByteArray& secret, Funds& funds):BtcTradeApi(apiKey,secret),funds(funds){}
+	void showSuccess() const override;
+};
+
+class Trade : public BtcTradeApi
 {
 	QString pair;
 	Order::OrderType type;
 	double rate;
 	double amount;
+protected:
+	virtual QString methodName() const override;
+	virtual bool parseSuccess(const QVariantMap& returnMap) override;
+	virtual QMap<QString, QString> extraQueryParams() override;
+	virtual void showSuccess() const override;
 
-
+public:
 	double received;
 	double remains;
 	Order::Id order_id;
-	Funds funds;
-protected:
-	virtual QString methodName() const override;
-	virtual bool parseSuccess(QVariantMap returnMap) override;
-	virtual QMap<QString, QString> extraQueryParams() override;
-	virtual void showSuccess() const override;
+	Funds& funds;
 
-public:
-	Trade(const QString& pair, Order::OrderType type, double rate, double amount)
-		:BtcTradeQuery(), pair(pair), type(type), rate(rate), amount(amount)
+	Trade(const QByteArray& apiKey, const QByteArray& secret, Funds& funds,
+		  const QString& pair, Order::OrderType type, double rate, double amount)
+		:BtcTradeApi(apiKey, secret), pair(pair), type(type), rate(rate), amount(amount),
+		  funds(funds)
 	{}
 };
 
-class CancelOrder : public BtcTradeQuery
+class CancelOrder : public BtcTradeApi
 {
 	Order::Id order_id;
 
 public:
-	CancelOrder(Order::Id order_id):BtcTradeQuery(), order_id(order_id)
+	CancelOrder(const QByteArray& apiKey, const QByteArray& secret, Funds& funds, Order::Id order_id)
+		:BtcTradeApi(apiKey, secret), order_id(order_id), funds(funds)
 	{}
 
-	Funds funds;
+	Funds& funds;
 protected:
 	virtual QString methodName() const override;
-	virtual bool parseSuccess(QVariantMap returnMap) override;
+	virtual bool parseSuccess(const QVariantMap& returnMap) override;
 	virtual QMap<QString, QString> extraQueryParams() override;
 	virtual void showSuccess() const override;
 };
 
-class ActiveOrders : public BtcTradeQuery
+class ActiveOrders : public BtcTradeApi
 {
-	virtual bool parseSuccess(QVariantMap returnMap) override;
+	virtual bool parseSuccess(const QVariantMap& returnMap) override;
 	virtual QString methodName() const  override {return "ActiveOrders";}
 public:
+	ActiveOrders(const QByteArray& apiKey, const QByteArray& secret):BtcTradeApi(apiKey, secret){}
 	QMap<Order::Id, Order> orders;
 
 	void showSuccess() const override;
 };
 
-class OrderInfo : public BtcTradeQuery
+class OrderInfo : public BtcTradeApi
 {
 	Order::Id order_id;
-	virtual bool parseSuccess(QVariantMap returnMap) override;
+	virtual bool parseSuccess(const QVariantMap& returnMap) override;
 	virtual QString methodName() const  override {return "OrderInfo";}
 	virtual QMap<QString, QString> extraQueryParams() override;
 public:
 	Order order;
 
-	OrderInfo(Order::Id id) :BtcTradeQuery(), order_id(id) {}
+	OrderInfo(const QByteArray& apiKey, const QByteArray& secret, Order::Id id)
+		:BtcTradeApi(apiKey, secret), order_id(id) {}
 	void showSuccess() const override;
 };
 
-bool Info::parseSuccess(QVariantMap returnMap)
+bool Info::parseSuccess(const QVariantMap& returnMap)
 {
-	funds = parseFunds(read_map(returnMap, "funds"));
+	funds.parse(read_map(returnMap, "funds"));
 	transaction_count = read_long(returnMap, "transaction_count");
 	open_orders_count = read_long(returnMap, "open_orders");
 	server_time = read_timestamp(returnMap, "server_time");
@@ -211,10 +316,46 @@ void Info::showSuccess() const
 }
 
 
+class KeyStorage
+{
+	QByteArray _apiKey;
+	QByteArray _secret;
+	QString _fileName;
+
+protected:
+	QString fileName() const { return _fileName;}
+	QByteArray getPassword(bool needConfirmation = false) const;
+	void read_input(const QString& prompt, QByteArray& ba) const;
+
+	void encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
+	void decrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
+
+	void load();
+	void store();
+public:
+	KeyStorage(const QString& fileName) : _fileName(fileName){}
+
+	const QByteArray& apiKey() { if (_apiKey.isEmpty()) load(); return _apiKey;}
+	const QByteArray& secret() { if (_secret.isEmpty()) load(); return _secret;}
+
+	void changePassword();
+};
+
+
+
 int main(int argc, char *argv[])
 {
-	QByteArray apiKey = "G8K10M6S-C6T2X0FZ-E9H4RFF4-YR8TEML4-IK2UX9PV";
-	QByteArray secret = "75137bd6768b7cefa199c679ef4f2d182721404de2a7ec75231f64f9f65f5b35";
+	KeyStorage storage("keystore.enc");
+	if (argc>1 && QString(argv[1]) == "-changepassword")
+	{
+		qDebug() << "change password for keystore";
+		storage.changePassword();
+		return 0;
+	}
+	//QByteArray apiKey = "G8K10M6S-C6T2X0FZ-E9H4RFF4-YR8TEML4-IK2UX9PV";
+	//QByteArray secret = "75137bd6768b7cefa199c679ef4f2d182721404de2a7ec75231f64f9f65f5b35";
+
+	Funds funds;
 
 	CURLcode curlResult;
 	curlResult = curl_global_init(CURL_GLOBAL_ALL);
@@ -223,12 +364,12 @@ int main(int argc, char *argv[])
 		qWarning() << curl_easy_strerror(curlResult);
 	}
 
-	Info info;
-	info.performQuery(apiKey, secret);
+	Info info(storage.apiKey(), storage.secret(), funds);
+	info.performQuery();
 	info.display();
 
-	ActiveOrders orders;
-	orders.performQuery(apiKey, secret);
+	ActiveOrders orders(storage.apiKey(), storage.secret());
+	orders.performQuery();
 	orders.display();
 
 	for (Order order: orders.orders)
@@ -236,37 +377,51 @@ int main(int argc, char *argv[])
 		if (   order.status == Order::Active && order.pair == "btc_usd"
 			&& order.type == Order::Sell && order.rate > 499)
 		{
-			CancelOrder cancel(order.order_id);
-			cancel.performQuery(apiKey, secret);
+			CancelOrder cancel(storage.apiKey(), storage.secret(), funds, order.order_id);
+			cancel.performQuery();
 		}
 	}
 
-	OrderInfo order_info(958249085);
-	order_info.performQuery(apiKey, secret);
+	OrderInfo order_info(storage.apiKey(), storage.secret(), 958249085);
+	order_info.performQuery();
 	order_info.display();
 
 	if (order_info.order.pair == "btc_eur" && order_info.order.status == Order::Active)
 	{
-		CancelOrder cancel(958249085);
-		cancel.performQuery(apiKey, secret);
+		CancelOrder cancel(storage.apiKey(), storage.secret(), funds, 958249085);
+		cancel.performQuery();
 		cancel.display();
 	}
 
-	Trade trade_sell("btc_usd", Order::Sell, 500, 0.01);
-	trade_sell.performQuery(apiKey, secret);
+	Trade trade_sell(storage.apiKey(), storage.secret(), funds, "btc_usd", Order::Sell, 500, 0.01);
+	trade_sell.performQuery();
 	trade_sell.display();
 	qDebug() << trade_sell.isSuccess();
 
-	Trade trade_buy("btc_usd", Order::Buy, 100, 0.01);
-	trade_buy.performQuery(apiKey, secret);
+	Trade trade_buy(storage.apiKey(), storage.secret(), funds, "btc_usd", Order::Buy, 100, 0.01);
+	trade_buy.performQuery();
 	trade_buy.display();
 	qDebug() << trade_buy.isSuccess();
+
+	CancelOrder cancel_sell(storage.apiKey(), storage.secret(), funds, trade_sell.order_id);
+	qDebug() << "deleting sell order: " << cancel_sell.performQuery();
+	cancel_sell.display();
+
+	CancelOrder cancel_buy(storage.apiKey(), storage.secret(), funds, trade_buy.order_id);
+	qDebug() << "deleting buy order: " << cancel_buy.performQuery();
+	cancel_buy.display();
+
+	OrderInfo order_info2(storage.apiKey(), storage.secret(), trade_buy.order_id);
+	order_info2.performQuery();
+	order_info2.display();
+
+	funds.display();
 
 	curl_global_cleanup();
 	return 0;
 }
 
-QByteArray BtcTradeQuery::queryParams()
+QByteArray BtcTradeApi::queryParams()
 {
 	QMap<QString, QString> extraParams = extraQueryParams();
 	for(QString& param: extraParams.keys())
@@ -314,7 +469,10 @@ QVariantMap read_map(const QVariantMap& map, const QString& name)
 	if (!map[name].canConvert<QVariantMap>())
 		throw BrokenJson(name);
 
-	return map[name].toMap();
+	QVariantMap ret = map[name].toMap();
+	ret["__key"] = name;
+
+	return ret;
 }
 
 QDateTime read_timestamp(const QVariantMap &map, const QString &name)
@@ -322,7 +480,7 @@ QDateTime read_timestamp(const QVariantMap &map, const QString &name)
 	return QDateTime::fromTime_t(read_long(map, name));
 }
 
-bool BtcTradeQuery::parse(QByteArray serverAnswer)
+bool BtcTradeApi::parse(const QByteArray& serverAnswer)
 {
 	valid = false;
 
@@ -360,15 +518,15 @@ bool BtcTradeQuery::parse(QByteArray serverAnswer)
 
 }
 
-QMap<QString, QString> BtcTradeQuery::extraQueryParams()
+QMap<QString, QString> BtcTradeApi::extraQueryParams()
 {
 	QMap<QString, QString> params;
 	params["method"] = methodName();
-	params["nonce"] = BtcTradeQuery::nonce();
+	params["nonce"] = BtcTradeApi::nonce();
 	return params;
 }
 
-size_t BtcTradeQuery::writeFunc(char* ptr, size_t size, size_t nmemb, void* userdata)
+size_t HttpQuery::writeFunc(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
 	QByteArray* array = reinterpret_cast<QByteArray*>(userdata);
 	int lenBeforeAppend = array->length();
@@ -376,7 +534,7 @@ size_t BtcTradeQuery::writeFunc(char* ptr, size_t size, size_t nmemb, void* user
 	return array->length() - lenBeforeAppend;
 }
 
-bool BtcTradeQuery::performQuery(QByteArray& apiKey, QByteArray& secret)
+bool BtcTradeApi::performQuery()
 {
 	CURL* curlHandle = nullptr;
 	CURLcode curlResult = CURLE_OK;
@@ -395,9 +553,10 @@ bool BtcTradeQuery::performQuery(QByteArray& apiKey, QByteArray& secret)
 		jsonData.clear();
 
 		curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
-		curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, BtcTradeQuery::writeFunc);
+		curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, BtcTradeApi::writeFunc);
 
-		curl_easy_setopt(curlHandle, CURLOPT_URL, "https://btc-e.com/tapi");
+		QByteArray sUrl = path().toUtf8();
+		curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
 		curl_easy_setopt(curlHandle, CURLOPT_POSTFIELDS, params.constData());
 
 		headers = curl_slist_append(headers, QString("Key: %1").arg(apiKey.constData()).toUtf8().constData());
@@ -405,7 +564,7 @@ bool BtcTradeQuery::performQuery(QByteArray& apiKey, QByteArray& secret)
 
 		curl_easy_setopt(curlHandle, CURLOPT_HTTPHEADER, headers);
 
-		qDebug() << "perform query" << params;
+		qDebug() << "perform query" << sUrl.constData() << params;
 
 		curlResult = curl_easy_perform(curlHandle);
 		if (curlResult != CURLE_OK)
@@ -430,7 +589,7 @@ bool BtcTradeQuery::performQuery(QByteArray& apiKey, QByteArray& secret)
 	return parse(jsonData);
 }
 
-void BtcTradeQuery::display() const
+void BtcTradeApi::display() const
 {
 	if (!isValid())
 		qWarning() << "failed query";
@@ -440,16 +599,19 @@ void BtcTradeQuery::display() const
 		showSuccess();
 }
 
-bool ActiveOrders::parseSuccess(QVariantMap returnMap)
+bool ActiveOrders::parseSuccess(const QVariantMap& returnMap)
 {
 	orders.clear();
 	for (QString sOrderId: returnMap.keys())
 	{
+		if (sOrderId == "__key")
+			continue;
+
 		Order order;
 
-		order.order_id = sOrderId.toUInt();
+		//order.order_id = sOrderId.toUInt();
 
-		order.parse(returnMap[sOrderId]);
+		order.parse(read_map(returnMap, sOrderId));
 
 		orders[order.order_id] = order;
 	}
@@ -487,14 +649,8 @@ void Order::display() const
 	qDebug() << QString("      %1 : %2 / %3").arg(total()).arg(gain()).arg(comission());
 }
 
-bool Order::parse(const QVariant& v)
+bool Order::parse(const QVariantMap& map)
 {
-	if (!v.canConvert<QVariantMap>())
-		throw BrokenJson("");
-
-	QVariantMap map = v.toMap();
-
-
 	pair = read_string(map, "pair");
 	QString sType = read_string(map, "type");
 	if (sType == "sell")
@@ -526,12 +682,17 @@ bool Order::parse(const QVariant& v)
 	else
 		status = Order::Active;
 
+	if (map.contains("order_id"))
+		order_id = read_long(map, "order_id");
+	else if (map.contains("__key"))
+		order_id = read_long(map, "__key");
+
 	return true;
 }
 
-bool OrderInfo::parseSuccess(QVariantMap returnMap)
+bool OrderInfo::parseSuccess(const QVariantMap& returnMap)
 {
-	order.order_id = order_id;
+	//order.order_id = order_id;
 	valid = order.parse(read_map(returnMap, QString::number(order_id)));
 
 	return true;
@@ -539,7 +700,7 @@ bool OrderInfo::parseSuccess(QVariantMap returnMap)
 
 QMap<QString, QString> OrderInfo::extraQueryParams()
 {
-	QMap<QString, QString> params = BtcTradeQuery::extraQueryParams();
+	QMap<QString, QString> params = BtcTradeApi::extraQueryParams();
 	params["order_id"] = QString::number(order_id);
 	return params;
 }
@@ -554,19 +715,19 @@ QString Trade::methodName() const
 	return "Trade";
 }
 
-bool Trade::parseSuccess(QVariantMap returnMap)
+bool Trade::parseSuccess(const QVariantMap& returnMap)
 {
 	received = read_double(returnMap, "received");
 	remains = read_double(returnMap, "remains");
 	order_id = read_long(returnMap, "order_id");
-	funds = parseFunds(read_map(returnMap, "funds"));
+	funds.parse(read_map(returnMap, "funds"));
 
 	return true;
 }
 
 QMap<QString, QString> Trade::extraQueryParams()
 {
-	QMap<QString, QString> params = BtcTradeQuery::extraQueryParams();
+	QMap<QString, QString> params = BtcTradeApi::extraQueryParams();
 	params["pair"] = pair;
 	params["type"] = (type==Order::Sell)?"sell":"buy";
 	params["amount"] = QString::number(amount);
@@ -585,19 +746,19 @@ QString CancelOrder::methodName() const
 	return "CancelOrder";
 }
 
-bool CancelOrder::parseSuccess(QVariantMap returnMap)
+bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
 {
 	if (read_long(returnMap, "order_id") != order_id)
 		throw BrokenJson("order_id");
 
-	funds = parseFunds(read_map(returnMap, "funds"));
+	funds.parse(read_map(returnMap, "funds"));
 
 	return true;
 }
 
 QMap<QString, QString> CancelOrder::extraQueryParams()
 {
-	QMap<QString, QString> params = BtcTradeQuery::extraQueryParams();
+	QMap<QString, QString> params = BtcTradeApi::extraQueryParams();
 	params["order_id"] = QString::number(order_id);
 	return params;
 }
@@ -605,4 +766,236 @@ QMap<QString, QString> CancelOrder::extraQueryParams()
 void CancelOrder::showSuccess() const
 {
 
+}
+
+bool Pair::parse(const QVariantMap& map)
+{
+	decimal_places = read_long(map, "decimal_places");
+	min_price = read_double(map, "min_price");
+	max_price = read_double(map, "max_price");
+	min_amount = read_double(map, "min_amount");
+	fee = read_double(map, "fee");
+	hidden = read_long(map, "hidden") == 1;
+	name = read_string(map, "__key");
+
+	return true;
+}
+
+bool Ticker::parse(const QVariantMap& map)
+{
+	name = read_string(map, "__key");
+	high = read_double(map, "high");
+	low = read_double(map, "low");
+	avg = read_double(map, "avg");
+	vol = read_double(map, "vol");
+	vol_cur = read_double(map, "vol_cur");
+	last = read_double(map, "last");
+	buy = read_double(map, "buy");
+	sell = read_double(map, "sell");
+	updated = read_timestamp(map, "updated");
+
+	return true;
+}
+
+bool BtcPublicApi::performQuery()
+{
+	CURL* curlHandle = nullptr;
+	CURLcode curlResult = CURLE_OK;
+
+	jsonData.clear();
+	try {
+		curlHandle = curl_easy_init();
+
+		curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
+		curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, BtcTradeApi::writeFunc);
+
+		QByteArray sUrl = path().toUtf8();
+		curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
+
+		qDebug() << "perform query" << sUrl.constData();
+
+		curlResult = curl_easy_perform(curlHandle);
+		if (curlResult != CURLE_OK)
+			throw HttpError(sUrl);
+
+		long http_code = 0;
+		curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
+		if (http_code != 200 )
+		{
+				 qWarning() << "Bad HTTP reply code: " << http_code;
+		}
+
+		curl_easy_cleanup(curlHandle);
+	}
+	catch(std::runtime_error& e)
+	{
+		qWarning() << "error while executing query " << e.what() << " : " << curl_easy_strerror(curlResult);
+		return false;
+	}
+
+	return parse(jsonData);
+}
+
+QString BtcPublicApi::path() const
+{
+	return "https://btc-e.com/api/3/";
+}
+
+bool BtcPublicApi::parse(const QByteArray& serverAnswer)
+{
+	QJsonDocument jsonResponce;
+	jsonResponce = QJsonDocument::fromJson(serverAnswer);
+	QVariant json = jsonResponce.toVariant();
+
+	if (!json.canConvert<QVariantMap>())
+		throw BrokenJson("");
+
+	QVariantMap jsonMap = json.toMap();
+	return parseSuccess(jsonMap);
+}
+
+QByteArray KeyStorage::getPassword(bool needConfirmation) const
+{
+	QByteArray pass;
+	read_input("Password", pass);
+
+	if (needConfirmation)
+	{
+		QByteArray confirm;
+		read_input("Confirm password", confirm);
+
+		if (pass != confirm)
+			throw std::runtime_error("password mismatch");
+	}
+
+	QByteArray hash(SHA_DIGEST_LENGTH, Qt::Uninitialized);
+	SHA1(reinterpret_cast<const unsigned char *>(pass.constData()),
+		 pass.length(),reinterpret_cast<unsigned char*>(hash.data()));
+
+	return hash;
+}
+
+void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
+{
+	char* line;
+	line = readline((prompt + ": ").toUtf8());
+
+	ba.clear();
+	ba.append(line, strlen(line));
+	free(line);
+}
+
+void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)
+{
+	const unsigned char* inbuf;
+	unsigned char outbuf[AES_BLOCK_SIZE];
+
+	AES_KEY key;
+	AES_set_encrypt_key(reinterpret_cast<const unsigned char*>(password.constData()), 128, &key);
+
+	int ptr = 0;
+
+	while (ptr < data.length())
+	{
+		int num =0;
+		inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
+		int size = qMin(AES_BLOCK_SIZE, data.length() - size);
+		AES_cfb128_encrypt(inbuf, outbuf, size, &key, reinterpret_cast<unsigned char*>(ivec.data()), &num, AES_ENCRYPT);
+		memcpy(data.data()+ptr, outbuf, size);
+		ptr += size;
+	}
+}
+
+void KeyStorage::decrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)
+{
+	const unsigned char* inbuf;
+	unsigned char outbuf[AES_BLOCK_SIZE];
+
+	AES_KEY key;
+	AES_set_encrypt_key(reinterpret_cast<const unsigned char*>(password.constData()), 128, &key);
+
+	int ptr = 0;
+
+	while (ptr < data.length())
+	{
+		int num =0;
+		inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
+		int size = qMin(AES_BLOCK_SIZE, data.length() - ptr);
+		AES_cfb128_encrypt(inbuf, outbuf, size, &key, reinterpret_cast<unsigned char*>(ivec.data()), &num, AES_DECRYPT);
+		memcpy(data.data()+ptr, outbuf, size);
+		ptr += size;
+	}
+}
+
+void KeyStorage::load()
+{
+	_apiKey.clear();
+	_secret.clear();
+
+	QFile file(fileName());
+	if (!file.exists())
+	{
+		qDebug() << "Noi key store found -- creating new one";
+		store();
+	}
+
+	if (file.open(QFile::ReadOnly))
+	{
+		QDataStream stream(&file);
+		QByteArray encKey;
+		QByteArray encSec;
+		QByteArray check;
+		QByteArray password = getPassword();
+		QByteArray ivec = "thiswillbechanged";
+
+		stream >> encKey >> encSec >> check;
+
+		decrypt(encKey, password, ivec);
+		decrypt(encSec, password, ivec);
+		decrypt(check, password, ivec);
+
+		QByteArray checkSum = hmac_sha512(encKey, encSec);
+
+		if (check != checkSum)
+			throw std::runtime_error("bad password");
+
+		_apiKey = encKey;
+		_secret = encSec;
+
+		file.close();
+	}
+}
+
+void KeyStorage::store()
+{
+	QFile file(fileName());
+	if (file.open(QFile::WriteOnly | QFile::Truncate))
+	{
+
+		if (_apiKey.isEmpty())
+			read_input("Enter apiKey", _apiKey);
+
+		if (_secret.isEmpty())
+			read_input("Enter secret", _secret);
+
+		QByteArray password = getPassword(true);
+		QByteArray ivec = "thiswillbechanged";
+
+		QDataStream stream(&file);
+
+		QByteArray check = hmac_sha512(_apiKey, _secret);
+		encrypt(_apiKey, password, ivec);
+		encrypt(_secret, password, ivec);
+		encrypt(check, password, ivec);
+
+		stream << _apiKey << _secret << check;
+
+		file.close();
+	}
+}
+
+void KeyStorage::changePassword()
+{
+	load();
+	store();
 }
