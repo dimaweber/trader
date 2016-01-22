@@ -538,7 +538,7 @@ bool BtcTradeApi::performQuery()
 
 		curl_easy_setopt(curlHandle, CURLOPT_HTTPHEADER, headers);
 
-		qDebug() << "perform query" << sUrl.constData() << params;
+//		qDebug() << "perform query" << sUrl.constData() << params;
 
 		curlResult = curl_easy_perform(curlHandle);
 		if (curlResult != CURLE_OK)
@@ -1092,42 +1092,49 @@ int main(int argc, char *argv[])
 
 	BtcPublicInfo pinfo;
 	BtcPublicTicker pticker;
-	pinfo.performQuery();
+	if (!pinfo.performQuery())
+		qWarning() << "fail to retrieve currencies info";
 
 	Info info(storage, funds);
 	info.performQuery();
+	if (!info.isSuccess())
+		info.display();
 
 	/// Settings
 	int settings_id = 1;
 
-	double dep = 300;
+	double dep = 3.00;
 	double first_step = 0.01;
 	double martingale = 0.05;
 	double coverage = 0.15;
 	double comission = 0.002;
-	int n = 28;
+	int n = 8;
 	QString currency = "usd";
 	QString goods = "ppc";
 
 	while (1)
 	{
-		pticker.performQuery();
-
-		ActiveOrders activeOrders(storage);
-		activeOrders.performQuery();
+		if (!pticker.performQuery())
+			qWarning() << "fail to update currencies info";
 
 		QString sqlQuery = QString("UPDATE orders set status=-1 where status=0");
 		if (!sql.exec(sqlQuery))
 			qWarning() << sql.lastQuery() << sql.lastError().text();
 
-		for (Order& order: activeOrders.orders)
+		ActiveOrders activeOrders(storage);
+		if (activeOrders.performQuery() && activeOrders.isSuccess())
 		{
-			updateActiveOrder.bindValue(":order_id", order.order_id);
-			updateActiveOrder.bindValue(":amount", order.amount);
-			updateActiveOrder.bindValue(":rate", order.rate);
-			if (!updateActiveOrder.exec())
-				qWarning() << updateActiveOrder.lastQuery() << updateActiveOrder.lastError().text();
+			for (Order& order: activeOrders.orders)
+			{
+				updateActiveOrder.bindValue(":order_id", order.order_id);
+				updateActiveOrder.bindValue(":amount", order.amount);
+				updateActiveOrder.bindValue(":rate", order.rate);
+				if (!updateActiveOrder.exec())
+					qWarning() << updateActiveOrder.lastQuery() << updateActiveOrder.lastError().text();
+			}
 		}
+		else
+			activeOrders.display();
 
 		if (!selectSettings.exec())
 		{
@@ -1193,8 +1200,7 @@ int main(int argc, char *argv[])
 						break;
 					}
 					Trade trade(storage, funds, pair.name, Order::Buy, rate, amount);
-					trade.performQuery();
-					if (trade.isSuccess())
+					if (trade.performQuery() && trade.isSuccess())
 					{
 						insertOrder.bindValue(":order_id", trade.order_id);
 						insertOrder.bindValue(":status", 0);
@@ -1212,7 +1218,7 @@ int main(int argc, char *argv[])
 					else
 					{
 						trade.display();
-						break;
+						//break;
 					}
 				}
 
