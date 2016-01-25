@@ -42,6 +42,7 @@ double read_double(const QVariantMap& map, const QString& name);
 QString read_string(const QVariantMap& map, const QString& name);
 long read_long(const QVariantMap& map, const QString& name);
 QVariantMap read_map(const QVariantMap& map, const QString& name);
+QVariantList read_list(const QVariantMap& map, const QString& name);
 QDateTime read_timestamp(const QVariantMap& map, const QString& name);
 
 class Funds : public QMap<QString, double>
@@ -94,6 +95,27 @@ public:
 	virtual void display() const;
 };
 
+struct Depth
+{
+public:
+	struct Position
+	{
+		double amount;
+		double rate;
+
+		bool operator < (const Position& other) const
+		{
+			return rate < other.rate || rate == other.rate && amount < other.amount;
+		}
+	};
+
+	QList<Position> bids;
+	QList<Position> asks;
+
+	virtual bool parse(const QVariantMap& map);
+	virtual void display() const {throw 1;}
+};
+
 struct Pair
 {
 public:
@@ -106,6 +128,7 @@ public:
 	double fee;
 
 	Ticker ticker;
+	Depth depth;
 
 	virtual ~Pair() {}
 
@@ -120,6 +143,8 @@ public:
 					<< qPrintable(QString("   %1 : %2").arg("fee").arg(fee)) << std::endl;
 		ticker.display();
 	}
+	QString currency() const { return name.right(3);}
+	QString goods() const { return name.left(3);}
 	virtual bool parse(const QVariantMap& map);
 };
 
@@ -155,29 +180,63 @@ public:
 
 class KeyStorage
 {
-	QByteArray _apiKey;
-	QByteArray _secret;
-	QString _fileName;
-	QByteArray _hashPwd;
-
 protected:
-	QString fileName() const { return _fileName;}
-	QByteArray getPassword(bool needConfirmation = false);
+	struct StoragePair{
+		QByteArray apikey;
+		QByteArray secret;
+	};
+
+	QMap<int, StoragePair> vault;
+	QByteArray _hashPwd;
+	int currentPair;
+
+	virtual QByteArray getPassword(bool needConfirmation = false);
+	virtual void setPassword(const QByteArray& pwd);
 	void read_input(const QString& prompt, QByteArray& ba) const;
 
 	static void encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
 	static void decrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
 
-	virtual void load();
-	virtual void store();
+	virtual void load()  =0;
+	virtual void store() =0;
 public:
-	KeyStorage(const QString& fileName) : _fileName(fileName){}
+	KeyStorage(){}
 
-	const QByteArray& apiKey() { if (_apiKey.isEmpty()) load(); return _apiKey;}
-	const QByteArray& secret() { if (_secret.isEmpty()) load(); return _secret;}
+	bool setCurrent(int id);
+	const QByteArray& apiKey() { if (vault.isEmpty()) load(); return vault[currentPair].apikey;}
+	const QByteArray& secret() { if (vault.isEmpty()) load(); return vault[currentPair].secret;}
 
 	void changePassword();
+
+	QList<int> allKeys()  {if (vault.isEmpty()) load(); return vault.keys();}
 };
+
+class FileKeyStorage : public KeyStorage
+{
+	QString _fileName;
+
+protected:
+	QString fileName() const { return _fileName;}
+
+	virtual void load() override;
+	virtual void store() override;
+public:
+	FileKeyStorage(const QString& fileName) : KeyStorage(), _fileName(fileName){}
+};
+
+class SqlKeyStorage : public KeyStorage
+{
+	QString _tableName;
+	QSqlDatabase& db;
+
+protected:
+	virtual void load() override;
+	virtual void store() override;
+
+public:
+	SqlKeyStorage(QSqlDatabase& db, const QString& tableName) : KeyStorage(), _tableName(tableName), db(db){}
+};
+
 
 class BtcPublicApi : public HttpQuery
 {
@@ -223,9 +282,70 @@ public:
 	}
 };
 
+class BtcPublicDepth : public BtcPublicApi
+{
+	int _limit;
+public:
+	BtcPublicDepth(int limit=100): _limit(limit){}
+
+protected:
+	virtual QString path() const override;
+	virtual bool parseSuccess(const QVariantMap& returnMap) final override;
+};
+
+QString BtcPublicDepth::path() const
+{
+	QString p;
+	for(const QString& pairName : Pairs::ref().keys())
+		p += pairName + "-";
+	p.chop(1);
+	return QString("%1depth/%2?limit=%3").arg(BtcPublicApi::path()).arg(p).arg(_limit);
+}
+
+bool BtcPublicDepth::parseSuccess(const QVariantMap& returnMap)
+{
+	for (const QString& pairName: returnMap.keys())
+	{
+		Pairs::ref(pairName).depth.parse(read_map(returnMap, pairName));
+	}
+
+	return true;
+}
+
+bool Depth::parse(const QVariantMap& map)
+{
+	QVariantList lst = read_list(map, "asks");
+	QVariantList pos;
+	Position p;
+
+	asks.clear();
+	bids.clear();
+
+	for(QVariant position: lst)
+	{
+		pos = position.toList();
+		p.amount = pos[1].toDouble();
+		p.rate = pos[0].toDouble();
+		asks.append(p);
+	}
+	std::sort(asks.begin(), asks.end());
+
+	lst = read_list(map, "bids");
+	for(QVariant position: lst)
+	{
+		pos = position.toList();
+		p.amount = pos[1].toDouble();
+		p.rate = pos[0].toDouble();
+		bids.append(p);
+	}
+	std::sort(bids.begin(), bids.end());
+
+	return true;
+}
+
 double get_comission_pct(const QString& pair)
 {
-	return Pairs::ref(pair).fee;
+	return Pairs::ref(pair).fee / 100;
 }
 
 struct Order {
@@ -260,7 +380,7 @@ class BrokenJson : public std::runtime_error
 class HttpError : public std::runtime_error
 {public : HttpError(const QString& msg): std::runtime_error(msg.toUtf8()){}};
 
-class KeyStorage;
+class FileKeyStorage;
 
 class BtcTradeApi : public HttpQuery
 {
@@ -447,6 +567,17 @@ QVariantMap read_map(const QVariantMap& map, const QString& name)
 	ret["__key"] = name;
 
 	return ret;
+}
+
+QVariantList read_list(const QVariantMap& map, const QString& name)
+{
+	if (!map.contains(name))
+		throw MissingField(name);
+
+	if (!map[name].canConvert<QVariantList>())
+		throw BrokenJson(name);
+
+	return map[name].toList();
 }
 
 QDateTime read_timestamp(const QVariantMap &map, const QString &name)
@@ -857,13 +988,18 @@ QByteArray KeyStorage::getPassword(bool needConfirmation)
 				throw std::runtime_error("password mismatch");
 		}
 
-		QByteArray hash(SHA_DIGEST_LENGTH, Qt::Uninitialized);
-		SHA1(reinterpret_cast<const unsigned char *>(pass.constData()),
-			 pass.length(),reinterpret_cast<unsigned char*>(hash.data()));
-
-		_hashPwd = hash;
+		setPassword(pass);
 	}
 	return _hashPwd;
+}
+
+void KeyStorage::setPassword(const QByteArray& pwd)
+{
+	QByteArray hash(SHA_DIGEST_LENGTH, Qt::Uninitialized);
+	SHA1(reinterpret_cast<const unsigned char *>(pwd.constData()),
+		 pwd.length(),reinterpret_cast<unsigned char*>(hash.data()));
+
+	_hashPwd = hash;
 }
 
 void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
@@ -918,10 +1054,15 @@ void KeyStorage::decrypt(QByteArray& data, const QByteArray& password, QByteArra
 	}
 }
 
-void KeyStorage::load()
+bool KeyStorage::setCurrent(int id)
 {
-	_apiKey.clear();
-	_secret.clear();
+	currentPair = id;
+	return vault.contains(id);
+}
+
+void FileKeyStorage::load()
+{
+	vault.clear();
 
 	QFile file(fileName());
 	if (!file.exists())
@@ -950,36 +1091,36 @@ void KeyStorage::load()
 		if (check != checkSum)
 			throw std::runtime_error("bad password");
 
-		_apiKey = encKey;
-		_secret = encSec;
+		vault[0].apikey = encKey;
+		vault[0].secret = encSec;
 
 		file.close();
 	}
 }
 
-void KeyStorage::store()
+void FileKeyStorage::store()
 {
 	QFile file(fileName());
 	if (file.open(QFile::WriteOnly | QFile::Truncate))
 	{
 
-		if (_apiKey.isEmpty())
-			read_input("Enter apiKey", _apiKey);
+		if (vault[0].apikey.isEmpty())
+			read_input("Enter apiKey", vault[0].apikey);
 
-		if (_secret.isEmpty())
-			read_input("Enter secret", _secret);
+		if (vault[0].secret.isEmpty())
+			read_input("Enter secret", vault[0].secret);
 
 		QByteArray password = getPassword(true);
 		QByteArray ivec = "thiswillbechanged";
 
 		QDataStream stream(&file);
 
-		QByteArray check = hmac_sha512(_apiKey, _secret);
-		encrypt(_apiKey, password, ivec);
-		encrypt(_secret, password, ivec);
+		QByteArray check = hmac_sha512(vault[0].apikey, vault[0].secret);
+		encrypt(vault[0].apikey, password, ivec);
+		encrypt(vault[0].secret, password, ivec);
 		encrypt(check, password, ivec);
 
-		stream << _apiKey << _secret << check;
+		stream << vault[0].apikey << vault[0].secret << check;
 
 		file.close();
 	}
@@ -989,6 +1130,59 @@ void KeyStorage::changePassword()
 {
 	load();
 	store();
+}
+
+void SqlKeyStorage::load()
+{
+	QSqlQuery selectQ(db);
+	QString sql = QString("SELECT apiKey, secret, id, is_crypted from %1").arg(_tableName);
+	QSqlQuery cryptQuery(db);
+	if (!cryptQuery.prepare("UPDATE secrets set apikey=:apikey, secret=:secret, is_crypted='true' where id=:id"))
+		qWarning() << cryptQuery.lastError().text();
+
+	if (selectQ.exec(sql))
+	{
+		while (selectQ.next())
+		{
+			QByteArray ivec = "thiswillbechanged";
+
+			bool is_crypted = selectQ.value(3).toBool();
+			int id = selectQ.value(2).toInt();
+			vault[id].secret = selectQ.value(1).toByteArray();
+			vault[id].apikey = selectQ.value(0).toByteArray();
+
+			if (is_crypted)
+			{
+				decrypt(vault[id].apikey, getPassword(false), ivec );
+				decrypt(vault[id].secret, getPassword(false), ivec );
+			}
+			else
+			{
+				QByteArray apikey = vault[id].apikey;
+				QByteArray secret = vault[id].secret;
+
+				encrypt(apikey, getPassword(false), ivec);
+				encrypt(secret, getPassword(false), ivec);
+
+				cryptQuery.bindValue(":id", id);
+				cryptQuery.bindValue(":apikey", apikey);
+				cryptQuery.bindValue(":secret", secret);
+				if (!cryptQuery.exec())
+				{
+					qWarning() << cryptQuery.lastError().text();
+				}
+			}
+		}
+	}
+	else
+	{
+		qWarning() << "fail to retrieve secrets: " << selectQ.lastError().text();
+	}
+}
+
+void SqlKeyStorage::store()
+{
+	throw 1;
 }
 
 class CurlWrapper
@@ -1030,7 +1224,8 @@ int main(int argc, char *argv[])
 			 "`coverage` decimal(6,4) NOT NULL DEFAULT '0.1500',"
 			 "`count` int(11) NOT NULL DEFAULT '10', "
 			"currency char(3) not null default 'usd',"
-			"goods char(3) not null default 'btc'"
+			"goods char(3) not null default 'btc',"
+			"secret_id integer not null references secrets(id)"
 		   ")";
 	QString createOrdersSql = "CREATE TABLE IF NOT EXISTS `orders`  ("
 				"`order_id` INTEGER PRIMARY KEY,"
@@ -1042,6 +1237,13 @@ int main(int argc, char *argv[])
 				"`settings_id` int(11) DEFAULT NULL,"
 				"backed_up INTEGER NOT NULL DEFAULT 0"
 			  ") ";
+
+	QString createSecretsSql = "CREATE TABLE IF NOT EXISTS secrets ("
+			"apikey char(256) not null,"
+			"secret char(256) not null,"
+			"id integer primary key,"
+			"is_crypted BOOLEAN not null default FALSE"
+			")";
 	if (!sql.exec(createSettingsSql))
 		qDebug() << "Fail to create settings table:" << sql.lastError().text();
 
@@ -1073,14 +1275,15 @@ int main(int argc, char *argv[])
 		qWarning() << "Fail to prepare delete sell order statement: " << deleteSellOrder.lastError().text();
 
 	QSqlQuery selectSettings (db);
-	if (!selectSettings.prepare("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods from settings"))
+	if (!selectSettings.prepare("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id from settings"))
 		qWarning() << "Fail to prepare select settings statement:" << selectSettings.lastError().text();
 
 	QSqlQuery selectCurrentRound(db);
 	if (!selectCurrentRound.prepare("SELECT count(*) from orders where status=0 and settings_id=:settings_id and backed_up=0"))
 		qWarning() << "Fail to prepare select current round statement:" << selectCurrentRound.lastError().text();
 
-	KeyStorage storage("keystore.enc");
+	SqlKeyStorage storage(db, "secrets");
+
 	if (argc>1 && QString(argv[1]) == "-changepassword")
 	{
 		qDebug() << "change password for keystore";
@@ -1088,17 +1291,13 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	Funds funds;
+	QMap<int, Funds> funds;
 
 	BtcPublicInfo pinfo;
 	BtcPublicTicker pticker;
+	BtcPublicDepth pdepth(20);
 	if (!pinfo.performQuery())
 		qWarning() << "fail to retrieve currencies info";
-
-	Info info(storage, funds);
-	info.performQuery();
-	if (!info.isSuccess())
-		info.display();
 
 	/// Settings
 	int settings_id = 1;
@@ -1109,6 +1308,7 @@ int main(int argc, char *argv[])
 	double coverage = 0.15;
 	double comission = 0.002;
 	int n = 8;
+	int secret_id = 0;
 	QString currency = "usd";
 	QString goods = "ppc";
 
@@ -1117,30 +1317,105 @@ int main(int argc, char *argv[])
 		if (!pticker.performQuery())
 			qWarning() << "fail to update currencies info";
 
+		if (!pdepth.performQuery())
+			qWarning() << "fail to update currencies depth";
+
 		QString sqlQuery = QString("UPDATE orders set status=-1 where status=0");
 		if (!sql.exec(sqlQuery))
 			qWarning() << sql.lastQuery() << sql.lastError().text();
 
-		ActiveOrders activeOrders(storage);
-		if (activeOrders.performQuery() && activeOrders.isSuccess())
+		for(int id: storage.allKeys())
 		{
-			for (Order& order: activeOrders.orders)
-			{
-				updateActiveOrder.bindValue(":order_id", order.order_id);
-				updateActiveOrder.bindValue(":amount", order.amount);
-				updateActiveOrder.bindValue(":rate", order.rate);
-				if (!updateActiveOrder.exec())
-					qWarning() << updateActiveOrder.lastQuery() << updateActiveOrder.lastError().text();
-			}
-		}
-		else
-			activeOrders.display();
+			storage.setCurrent(id);
 
-		if (!selectSettings.exec())
-		{
-			qWarning() << "Fail to retrieve settings: " << selectSettings.lastError().text();
-			usleep(1000 * 10);
-			continue;
+			Info info(storage, funds[secret_id]);
+			info.performQuery();
+			if (!info.isSuccess())
+				info.display();
+
+			ActiveOrders activeOrders(storage);
+			if (activeOrders.performQuery() && activeOrders.isSuccess())
+			{
+				for (Order& order: activeOrders.orders)
+				{
+					updateActiveOrder.bindValue(":order_id", order.order_id);
+					updateActiveOrder.bindValue(":amount", order.amount);
+					updateActiveOrder.bindValue(":rate", order.rate);
+					if (!updateActiveOrder.exec())
+						qWarning() << updateActiveOrder.lastQuery() << updateActiveOrder.lastError().text();
+				}
+			}
+			else
+				activeOrders.display();
+
+			if (!selectSettings.exec())
+			{
+				qWarning() << "Fail to retrieve settings: " << selectSettings.lastError().text();
+				usleep(1000 * 10);
+				continue;
+			}
+
+			QString pname;
+			pname = "btc_usd";
+
+
+			auto seller = [&funds, secret_id](const QString& pname, double& goods, double& currency)
+			{
+				Pair& p = Pairs::ref(pname);
+				double gain = 0;
+				double sold = 0;
+//				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
+				for(auto d: p.depth.bids)
+				{
+					if (goods < 0.0000001)
+						break;
+					double amount = d.amount;
+					double rate = d.rate;
+					double trade_amount = qMin(goods, amount);
+					gain += rate * trade_amount * (1-p.fee/100);
+					goods -= trade_amount;
+					sold += trade_amount;
+				}
+
+				currency += gain;
+
+//				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
+			};
+
+			auto buyer = [&funds, secret_id](const QString& pname, double& goods, double& currency)
+			{
+				Pair& p = Pairs::ref(pname);
+				double bought = 0;
+				double spent = 0;
+//				qDebug() << QString("we have %1 %2").arg(currency).arg(p.currency());
+				for(auto d: p.depth.asks)
+				{
+					if (currency < 0.000001)
+						break;
+					double amount = d.amount;
+					double rate = d.rate;
+					double price = qMin(currency, amount*rate);
+					bought += ((price / rate) * (1-p.fee/100));
+					currency -= price;
+					spent += price;
+				}
+
+				goods += bought;
+
+//				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
+			};
+
+			double btc = funds[secret_id]["btc"];
+			double start_btc = btc;
+			double usd = 0;
+			double eur = 0;
+
+			seller("btc_usd", btc, usd);
+			buyer("eur_usd", eur, usd);
+			buyer("btc_eur", btc, eur);
+
+			if (btc - start_btc > 0.009)
+				std::cout << qPrintable(QString("btc -> usd -> eur -> btc : %1").arg(btc - start_btc)) << std::endl;
 		}
 
 		while (selectSettings.next())
@@ -1154,10 +1429,13 @@ int main(int argc, char *argv[])
 			n = selectSettings.value(6).toInt();
 			currency = selectSettings.value(7).toString();
 			goods = selectSettings.value(8).toString();
+			secret_id = selectSettings.value(9).toInt();
+
 			QString pairName = QString("%1_%2").arg(goods, currency);
 			if (!Pairs::ref().contains(pairName))
 				qWarning() << "no pair" << pairName << "available";
 
+			storage.setCurrent(secret_id);
 			Pair& pair = Pairs::ref(pairName);
 
 			bool round_in_progress = false;
@@ -1181,7 +1459,7 @@ int main(int argc, char *argv[])
 				}
 
 				double execute_rate = pair.ticker.last;
-				double u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
+				double u = qMax(qMin(funds[secret_id][currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
 				double total_currency_spent = 0;
 
 				for(int j=0; j<n; j++)
@@ -1189,7 +1467,7 @@ int main(int argc, char *argv[])
 					double amount = u * qPow(1+martingale, j);
 					double rate = execute_rate * ( 1 - first_step - (coverage - first_step) * j/(n-1));
 
-					if (amount * rate > funds[currency])
+					if (amount * rate > funds[secret_id][currency])
 					{
 						qWarning() << "not enought currency for bids";
 						break;
@@ -1199,7 +1477,7 @@ int main(int argc, char *argv[])
 						std::cout << "not enought usd for full bids" << std::endl;
 						break;
 					}
-					Trade trade(storage, funds, pair.name, Order::Buy, rate, amount);
+					Trade trade(storage, funds[secret_id], pair.name, Order::Buy, rate, amount);
 					if (trade.performQuery() && trade.isSuccess())
 					{
 						insertOrder.bindValue(":order_id", trade.order_id);
@@ -1240,6 +1518,7 @@ int main(int argc, char *argv[])
 					{
 						qWarning() << "fail to retrieve info for order: " << order_id;
 						info.display();
+						break;
 					}
 
 
@@ -1254,7 +1533,7 @@ int main(int argc, char *argv[])
 						if (!updateSetCanceled.exec())
 							qWarning() << updateSetCanceled.lastError().text();
 					}
-					if (info.order.type == Order::Sell)
+					else if (info.order.type == Order::Sell)
 					{
 						finishRound.bindValue(":settings_id", sql.value(1).toInt());
 						finishRound.exec();
@@ -1301,7 +1580,7 @@ int main(int argc, char *argv[])
 						{
 							if (sell_order_id > 0)
 							{
-								CancelOrder cancel(storage, funds, selectSellOrder.value(0).toInt());
+								CancelOrder cancel(storage, funds[secret_id], selectSellOrder.value(0).toInt());
 								if (cancel.performQuery() && cancel.isSuccess())
 								{
 									deleteSellOrder.bindValue(":settings_id", settings_id);
@@ -1310,7 +1589,7 @@ int main(int argc, char *argv[])
 								}
 							}
 
-							Trade sell(storage, funds, pair.name, Order::Sell, sell_rate, amount_gain);
+							Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
 							if (sell.performQuery() && sell.isSuccess())
 							{
 								insertOrder.bindValue(":order_id", sell.order_id);
