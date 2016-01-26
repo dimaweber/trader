@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QDataStream>
 #include <QtMath>
+#include <QElapsedTimer>
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -191,7 +192,6 @@ protected:
 	int currentPair;
 
 	virtual QByteArray getPassword(bool needConfirmation = false);
-	virtual void setPassword(const QByteArray& pwd);
 	void read_input(const QString& prompt, QByteArray& ba) const;
 
 	static void encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
@@ -202,6 +202,7 @@ protected:
 public:
 	KeyStorage(){}
 
+	virtual void setPassword(const QByteArray& pwd);
 	bool setCurrent(int id);
 	const QByteArray& apiKey() { if (vault.isEmpty()) load(); return vault[currentPair].apikey;}
 	const QByteArray& secret() { if (vault.isEmpty()) load(); return vault[currentPair].secret;}
@@ -1266,6 +1267,10 @@ int main(int argc, char *argv[])
 	if (!finishRound.prepare("update orders set backed_up=1 where settings_id=:settings_id"))
 		qWarning() << "Fail to prepare finish round statement: " << finishRound.lastError().text();
 
+	QSqlQuery finishBuyRound(db);
+	if (!finishBuyRound.prepare("update orders set backed_up=1 where type='buy' and settings_id=:settings_id"))
+		qWarning() << "Fail to prepare finish round statement: " << finishBuyRound.lastError().text();
+
 	QSqlQuery selectSellOrder(db);
 	if (!selectSellOrder.prepare("SELECT order_id, start_amount from orders where backed_up=0 and settings_id=:settings_id and type='sell'"))
 		qWarning() << "Fail to prepare select sell order statement: " << selectSellOrder.lastError().text();
@@ -1282,6 +1287,14 @@ int main(int argc, char *argv[])
 	if (!selectCurrentRound.prepare("SELECT count(*) from orders where status=0 and settings_id=:settings_id and backed_up=0"))
 		qWarning() << "Fail to prepare select current round statement:" << selectCurrentRound.lastError().text();
 
+	QSqlQuery selectCurrentRoundGain(db);
+	if (!selectCurrentRoundGain.prepare("select o.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate from orders o left join settings s  on s.id = o.settings_id where o.type='buy' and backed_up=0 and o.settings_id=:settings_id"))
+		qWarning() <<selectCurrentRoundGain.lastError().text();
+
+	QSqlQuery checkMaxBuyRate(db);
+	if (!checkMaxBuyRate.prepare("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join settings s on s.id = o.settings_id where o.backed_up=0 and o.status=0 and type='buy' and o.settings_id=:settings_id"))
+		qWarning() << checkMaxBuyRate.lastQuery() << checkMaxBuyRate.lastError().text();
+
 	SqlKeyStorage storage(db, "secrets");
 
 	if (argc>1 && QString(argv[1]) == "-changepassword")
@@ -1290,6 +1303,9 @@ int main(int argc, char *argv[])
 		storage.changePassword();
 		return 0;
 	}
+
+	storage.setPassword("g00dd1e#wer4");
+
 
 	QMap<int, Funds> funds;
 
@@ -1312,6 +1328,8 @@ int main(int argc, char *argv[])
 	QString currency = "usd";
 	QString goods = "ppc";
 
+	QElapsedTimer timer;
+	timer.start();
 	while (1)
 	{
 		if (!pticker.performQuery())
@@ -1328,7 +1346,7 @@ int main(int argc, char *argv[])
 		{
 			storage.setCurrent(id);
 
-			Info info(storage, funds[secret_id]);
+			Info info(storage, funds[id]);
 			info.performQuery();
 			if (!info.isSuccess())
 				info.display();
@@ -1359,7 +1377,7 @@ int main(int argc, char *argv[])
 			pname = "btc_usd";
 
 
-			auto seller = [&funds, secret_id](const QString& pname, double& goods, double& currency)
+			auto seller = [](const QString& pname, double& goods, double& currency)
 			{
 				Pair& p = Pairs::ref(pname);
 				double gain = 0;
@@ -1382,7 +1400,7 @@ int main(int argc, char *argv[])
 //				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
 			};
 
-			auto buyer = [&funds, secret_id](const QString& pname, double& goods, double& currency)
+			auto buyer = [](const QString& pname, double& goods, double& currency)
 			{
 				Pair& p = Pairs::ref(pname);
 				double bought = 0;
@@ -1405,17 +1423,49 @@ int main(int argc, char *argv[])
 //				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
 			};
 
-			double btc = funds[secret_id]["btc"];
+			double btc = funds[id]["btc"] / 10;
 			double start_btc = btc;
 			double usd = 0;
 			double eur = 0;
+			double ltc = 0;
 
 			seller("btc_usd", btc, usd);
 			buyer("eur_usd", eur, usd);
 			buyer("btc_eur", btc, eur);
 
-			if (btc - start_btc > 0.009)
+			if (btc - start_btc > 0)
 				std::cout << qPrintable(QString("btc -> usd -> eur -> btc : %1").arg(btc - start_btc)) << std::endl;
+
+			btc = start_btc;
+			usd = 0;
+			eur = 0;
+
+			seller("btc_eur", btc, eur);
+			seller("eur_usd", eur, usd);
+			buyer("btc_usd", btc, usd);
+
+			if (btc - start_btc > 0)
+				std::cout << qPrintable(QString("btc -> eur -> usd -> btc : %1").arg(btc - start_btc)) << std::endl;
+
+			btc = start_btc;
+			usd = 0;
+			ltc = 0;
+
+			buyer("ltc_btc", ltc, btc);
+			seller("ltc_usd", ltc, usd);
+			buyer("btc_usd", btc, usd);
+			if (btc - start_btc > 0)
+				std::cout << qPrintable(QString("btc -> ltc -> usd -> btc : %1").arg(btc - start_btc)) << std::endl;
+
+			btc = start_btc;
+			usd = 0;
+			ltc = 0;
+
+			seller("btc_usd", btc, usd);
+			buyer("ltc_usd", ltc, usd);
+			seller("ltc_btc", ltc, btc);
+			if (btc - start_btc > 0)
+				std::cout << qPrintable(QString("btc -> usd -> ltc -> btc : %1").arg(btc - start_btc)) << std::endl;
 		}
 
 		while (selectSettings.next())
@@ -1449,9 +1499,89 @@ int main(int argc, char *argv[])
 					round_in_progress = selectCurrentRound.value(0).toInt() > 0;
 				}
 
+			sqlQuery = QString("SELECT order_id, settings_id from orders where status=-1");
+			if (!sql.exec(sqlQuery))
+				qWarning() << sql.lastQuery() << sql.lastError().text();
+			else
+				while (sql.next())
+				{
+					Order::Id order_id = sql.value(0).toInt();
+					OrderInfo info(storage, order_id);
+					if (!info.performQuery() && info.isSuccess())
+					{
+						qWarning() << "fail to retrieve info for order: " << order_id;
+						info.display();
+						break;
+					}
+
+					updateSetCanceled.bindValue(":order_id", order_id);
+					updateSetCanceled.bindValue(":status", info.order.status);
+					updateSetCanceled.bindValue(":amount", info.order.amount);
+					updateSetCanceled.bindValue(":start_amount", info.order.start_amount);
+					updateSetCanceled.bindValue(":rate", info.order.rate);
+
+					if (!updateSetCanceled.exec())
+						qWarning() << updateSetCanceled.lastError().text();
+
+					if (info.order.type == Order::Sell)
+					{
+						qDebug() << "round done";
+						finishRound.bindValue(":settings_id", sql.value(1).toInt());
+						finishRound.exec();
+						round_in_progress = false;
+					}
+				}
+
+			double amount = 0;
+			selectCurrentRoundGain.bindValue(":settings_id", settings_id);
+			if (!selectCurrentRoundGain.exec())
+				qWarning() << selectCurrentRoundGain.lastError().text();
+			else
+			{
+				if (selectCurrentRoundGain.next())
+					amount = selectCurrentRoundGain.value(1).toDouble();
+			}
+
+			checkMaxBuyRate.bindValue(":settings_id", settings_id);
+			if (!checkMaxBuyRate.exec())
+				qWarning() << checkMaxBuyRate.lastError().text();
+			else
+			{
+				if (checkMaxBuyRate.next())
+				{
+					double rate = checkMaxBuyRate.value(0).toDouble();
+
+					if (rate > 0 && pair.ticker.last > rate && amount == 0)
+					{
+						qDebug() << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate);
+						finishBuyRound.bindValue(":settings_id", settings_id);
+						if (!finishBuyRound.exec())
+							qWarning() << finishBuyRound.lastError().text();
+						round_in_progress = false;
+					}
+				}
+			}
+
 			if (!round_in_progress)
 			{
 				std::cout << "new round start" << std::endl;
+				sqlQuery = "SELECT order_id from orders where backed_up=1 and status<1";
+				if (!sql.exec(sqlQuery))
+					qWarning() << sql.lastQuery() << sql.lastError().text();
+				else
+				{
+					if (sql.size() > 0)
+						qDebug() << "cancel buy orders left from previous round";
+
+					while(sql.next())
+					{
+						Order::Id order_id = sql.value(0).toInt();
+						CancelOrder cancel(storage, funds[secret_id], order_id);
+						if (!cancel.performQuery() || !cancel.isSuccess())
+							cancel.display();
+					}
+				}
+
 				double sum =0;
 				for (int j=0; j<n; j++)
 				{
@@ -1484,7 +1614,7 @@ int main(int argc, char *argv[])
 						insertOrder.bindValue(":status", 0);
 						insertOrder.bindValue(":type", "buy");
 						insertOrder.bindValue(":amount", trade.remains);
-						insertOrder.bindValue(":start_amount", trade.received);
+						insertOrder.bindValue(":start_amount", trade.received + trade.remains);
 						insertOrder.bindValue(":rate", QString::number(rate, 'f', pair.decimal_places));
 						insertOrder.bindValue(":settings_id", settings_id);
 						if (!insertOrder.exec())
@@ -1504,60 +1634,29 @@ int main(int argc, char *argv[])
 				std::cout << "total bid: " << total_currency_spent << ' ' << qPrintable(currency) << std::endl;
 			}
 			else
-				std::cout << qPrintable(QString("round for %1(%2) already in progress").arg(settings_id).arg(pair.name)) << std::endl;
-
-			sqlQuery = QString("SELECT order_id, settings_id from orders where status=-1");
-			if (!sql.exec(sqlQuery))
-				qWarning() << sql.lastQuery() << sql.lastError().text();
-			else
-				while (sql.next())
-				{
-					Order::Id order_id = sql.value(0).toInt();
-					OrderInfo info(storage, order_id);
-					if (!info.performQuery() && info.isSuccess())
-					{
-						qWarning() << "fail to retrieve info for order: " << order_id;
-						info.display();
-						break;
-					}
-
-
-					if (info.order.type == Order::Buy)
-					{
-						updateSetCanceled.bindValue(":order_id", order_id);
-						updateSetCanceled.bindValue(":status", info.order.status);
-						updateSetCanceled.bindValue(":amount", info.order.amount);
-						updateSetCanceled.bindValue(":start_amount", info.order.start_amount);
-						updateSetCanceled.bindValue(":rate", info.order.rate);
-
-						if (!updateSetCanceled.exec())
-							qWarning() << updateSetCanceled.lastError().text();
-					}
-					else if (info.order.type == Order::Sell)
-					{
-						finishRound.bindValue(":settings_id", sql.value(1).toInt());
-						finishRound.exec();
-						round_in_progress = false;
-						qDebug() << "round done";
-					}
-				}
+			{
+			//	std::cout << qPrintable(QString("round for %1(%2) already in progress").arg(settings_id).arg(pair.name)) << std::endl;
+			}
 
 			if (round_in_progress)
 			{
-				sqlQuery = QString("select o.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate from orders o left join settings s  on s.id = o.settings_id where o.type='buy'  group by o.settings_id");
-				if (!sql.exec(sqlQuery))
-					qWarning() << sql.lastQuery() << sql.lastError().text();
+				selectCurrentRoundGain.bindValue(":settings_id", settings_id);
+				if (!selectCurrentRoundGain.exec())
+					qWarning() << selectCurrentRoundGain.lastQuery() << selectCurrentRoundGain.lastError().text();
 				else
 				{
-					while(sql.next())
+					if(selectCurrentRoundGain.next())
 					{
-						int settings_id = sql.value(0).toInt();
-						double amount_gain = sql.value(1).toDouble() - 0.000001;
-						double sell_rate = sql.value(3).toDouble();
+						int settings_id = selectCurrentRoundGain.value(0).toInt();
+						double amount_gain = selectCurrentRoundGain.value(1).toDouble();
+						double have_amount = funds[secret_id][pair.goods()];
+						if (qAbs(have_amount-amount_gain) <= 0.0000011)
+							amount_gain = have_amount;
+						double sell_rate = selectCurrentRoundGain.value(3).toDouble();
 
 						if (pair.min_amount > amount_gain)
 						{
-							qDebug() << "not enought amount for trade. Wait for more";
+//							qDebug() << "not enought amount for trade. Wait for more";
 							continue;
 						}
 
@@ -1609,7 +1708,10 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
-		usleep(1000 * 3000);
+
+		quint64 t = timer.restart();
+		if (t < 2000)
+			usleep(1000 * (2000-t));
 	}
 	return 0;
 }
