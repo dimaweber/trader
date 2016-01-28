@@ -1309,8 +1309,10 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 	{
 		ok = req.isSuccess();
 		if (!ok)
+		{
 			std::clog << "Fail.";
 			std::cerr << "Non success result:"  << qPrintable(req.error());
+		}
 	}
 
 	if (ok)
@@ -1645,11 +1647,9 @@ int main(int argc, char *argv[])
 			goods = selectSettings.value(8).toString();
 			secret_id = selectSettings.value(9).toInt();
 
-
 			QString pairName = QString("%1_%2").arg(goods, currency);
 
 			std::clog << "Processing settings_id " << settings_id << ". Pair: " << qPrintable(pairName) << std::endl;
-
 
 			if (!Pairs::ref().contains(pairName))
 				qWarning() << "no pair" << pairName << "available";
