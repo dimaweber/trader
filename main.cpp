@@ -1650,7 +1650,6 @@ int main(int argc, char *argv[])
 			QString pairName = QString("%1_%2").arg(goods, currency);
 
 			std::clog << "Processing settings_id " << settings_id << ". Pair: " << qPrintable(pairName) << std::endl;
-
 			if (!Pairs::ref().contains(pairName))
 				qWarning() << "no pair" << pairName << "available";
 
@@ -1675,29 +1674,22 @@ int main(int argc, char *argv[])
 				{
 					Order::Id order_id = selectOrdersWithChangedStatus.value(0).toInt();
 					OrderInfo info(storage, order_id);
-					if (!info.performQuery() && info.isSuccess())
-					{
-						qWarning() << "fail to retrieve info for order: " << order_id;
-						info.display();
-						break;
-					}
+					performTradeRequest(QString("get info for order %1").arg(order_id), info);
 
-					qDebug() << QString("order %1 changed status to %2").arg(order_id).arg(info.order.status);
-					updateSetCanceled.bindValue(":order_id", order_id);
-					updateSetCanceled.bindValue(":status", info.order.status);
-					updateSetCanceled.bindValue(":amount", info.order.amount);
-					updateSetCanceled.bindValue(":start_amount", info.order.start_amount);
-					updateSetCanceled.bindValue(":rate", info.order.rate);
+					std::clog << qPrintable(QString("order %1 changed status to %2").arg(order_id).arg(info.order.status));
+					QVariantMap upd_param;
+					upd_param[":order_id"] = order_id;
+					upd_param[":status"] = info.order.status;
+					upd_param[":amount"] = info.order.amount;
+					upd_param[":start_amount"] = info.order.start_amount;
+					upd_param[":rate"] = info.order.rate;
 
-					if (!updateSetCanceled.exec())
-						qWarning() << updateSetCanceled.lastError().text();
+					performSql(QString("update order %1").arg(order_id), updateSetCanceled, param);
 
 					if (info.order.type == Order::Sell)
 					{
-						qDebug() << "round done";
-						finishRound.bindValue(":settings_id", sql.value(1).toInt());
-						if (!finishRound.exec())
-							qWarning() << finishRound.lastError().text();
+						std::clog << qPrintable(QString("sell order changed status to %1").arg(info.order.status)) << std::endl;
+						performSql(QString("Finish round"), finishRound, param);
 						round_in_progress = false;
 					}
 				}
@@ -1705,57 +1697,35 @@ int main(int argc, char *argv[])
 
 			qDebug() << "check max buy rate";
 			double amount = 0;
-			selectCurrentRoundGain.bindValue(":settings_id", settings_id);
-			if (!selectCurrentRoundGain.exec())
-				qWarning() << selectCurrentRoundGain.lastError().text();
-			else
-			{
-				if (selectCurrentRoundGain.next())
-					amount = selectCurrentRoundGain.value(1).toDouble();
-			}
+			performSql("Get current round gain", selectCurrentRoundGain, param);
+			if (selectCurrentRoundGain.next())
+				amount = selectCurrentRoundGain.value(1).toDouble();
+			std::clog << qPrintable(QString("current round gain: %1").arg(amount)) << std::endl;
 
-			checkMaxBuyRate.bindValue(":settings_id", settings_id);
-			if (!checkMaxBuyRate.exec())
-				qWarning() << checkMaxBuyRate.lastError().text();
-			else
+			performSql("Get maximum buy rate", checkMaxBuyRate, param);
+			if (checkMaxBuyRate.next())
 			{
-				if (checkMaxBuyRate.next())
+				double rate = checkMaxBuyRate.value(0).toDouble();
+				std::clog << qPrintable(QString("max buy rate is %1").arg(rate)) << std::endl;
+				if (rate > 0 && pair.ticker.last > rate && amount == 0)
 				{
-					double rate = checkMaxBuyRate.value(0).toDouble();
-
-					if (rate > 0 && pair.ticker.last > rate && amount == 0)
-					{
-						qDebug() << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate);
-						finishBuyRound.bindValue(":settings_id", settings_id);
-						if (!finishBuyRound.exec())
-							qWarning() << finishBuyRound.lastError().text();
-						round_in_progress = false;
-					}
+					std::clog << qPrintable(QString("rate for %1 too high (%2)").arg(pair.name).arg(rate)) << std::endl;
+					performSql("Finish buy orders for round", finishBuyRound, param);
+					round_in_progress = false;
 				}
 			}
 
 			if (!round_in_progress)
 			{
-				std::cout << "new round start" << std::endl;
-
-				qDebug() << "check for orders left from previous round";
-				selectOrdersFromPrevRound.bindValue(":settings_id", settings_id);
-				if (!selectOrdersFromPrevRound.exec())
-					qWarning() << selectOrdersFromPrevRound.lastQuery() << selectOrdersFromPrevRound.lastError().text();
-				else
+				performSql("check for orders left from previous round", selectOrdersFromPrevRound, param);
+				while(selectOrdersFromPrevRound.next())
 				{
-					if (selectOrdersFromPrevRound.size() > 0)
-						qDebug() << "cancel buy orders left from previous round";
-
-					while(selectOrdersFromPrevRound.next())
-					{
-						Order::Id order_id = selectOrdersFromPrevRound.value(0).toInt();
-						CancelOrder cancel(storage, funds[secret_id], order_id);
-						if (!cancel.performQuery() || !cancel.isSuccess())
-							cancel.display();
-					}
+					Order::Id order_id = selectOrdersFromPrevRound.value(0).toInt();
+					CancelOrder cancel(storage, funds[secret_id], order_id);
+					performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
 				}
 
+				std::cout << "New round start" << std::endl;
 				qDebug() << "calculate new buy orders parameters";
 				double sum =0;
 				for (int j=0; j<n; j++)
