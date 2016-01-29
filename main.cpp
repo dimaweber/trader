@@ -1684,18 +1684,26 @@ int main(int argc, char *argv[])
 					}
 				}
 
-			double amount = 0;
-			performSql("Get current round gain", selectCurrentRoundGain, param);
-			if (selectCurrentRoundGain.next())
-				amount = selectCurrentRoundGain.value(1).toDouble();
-			std::clog << QString("current round gain: %1").arg(amount) << std::endl;
+			double amount_gain = 0;
+			double sell_rate = 0;
+			performSql("Get current round amoumt gain", selectCurrentRoundGain, param);
+			if(selectCurrentRoundGain.next())
+			{
+				//int settings_id = selectCurrentRoundGain.value(0).toInt();
+				amount_gain = selectCurrentRoundGain.value(1).toDouble();
+				sell_rate = selectCurrentRoundGain.value(3).toDouble();
+
+				std::clog << QString("in current round we got %1 %2.")
+							 .arg(amount_gain).arg(pair.goods())
+						  << std::endl;
+			}
 
 			performSql("Get maximum buy rate", checkMaxBuyRate, param);
 			if (checkMaxBuyRate.next())
 			{
 				double rate = checkMaxBuyRate.value(0).toDouble();
 				std::clog << QString("max buy rate is %1").arg(rate) << std::endl;
-				if (rate > 0 && pair.ticker.last > rate && amount == 0)
+				if (rate > 0 && pair.ticker.last > rate && amount_gain == 0)
 				{
 					std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
 					performSql("Finish buy orders for round", finishBuyRound, param);
@@ -1763,60 +1771,48 @@ int main(int argc, char *argv[])
 
 			if (round_in_progress)
 			{
-				performSql("get current round amoumt gain", selectCurrentRoundGain, param);
-				if(selectCurrentRoundGain.next())
+				if (pair.min_amount > amount_gain)
 				{
-					int settings_id = selectCurrentRoundGain.value(0).toInt();
-					double amount_gain = selectCurrentRoundGain.value(1).toDouble();
-					double sell_rate = selectCurrentRoundGain.value(3).toDouble();
+					std::clog << "An amount we have is less then minimal trade amount. skip creating sell order" << std::endl;
+					continue;
+				}
 
-					std::clog << QString("in current round we got %1 %2.")
-								 .arg(amount_gain).arg(pair.goods())
+				bool need_recreate_sell = true;
+				Order::Id sell_order_id = 0;
+				performSql("get sell order id and amount", selectSellOrder, param);
+				if (selectSellOrder.next())
+				{
+					double sell_order_amount = selectSellOrder.value(1).toDouble();
+					sell_order_id = selectSellOrder.value(0).toInt();
+					need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001;
+					std::clog << QString("found sell order %1 for %2 amount. Need recreate sell order: %3")
+								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no")
 							  << std::endl;
+				}
 
-					if (pair.min_amount > amount_gain)
+
+				if (need_recreate_sell)
+				{
+					if (sell_order_id > 0)
 					{
-						std::clog << "An amount we have is less then minimal trade amount. skip creating sell order" << std::endl;
-						continue;
+						CancelOrder cancel(storage, funds[secret_id], selectSellOrder.value(0).toInt());
+						if (performTradeRequest("cancel order", cancel))
+						{
+							performSql("delete sell order record", deleteSellOrder, param);
+						}
 					}
 
-					bool need_recreate_sell = true;
-					Order::Id sell_order_id = 0;
-					performSql("get sell order id and amount", selectSellOrder, param);
-					if (selectSellOrder.next())
+					Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
+					if (performTradeRequest("insert sell record into db", sell))
 					{
-						double sell_order_amount = selectSellOrder.value(1).toDouble();
-						sell_order_id = selectSellOrder.value(0).toInt();
-						need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001;
-						std::clog << QString("found sell order %1 for %2 amount. Need recreate sell order: %3")
-									 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no")
-								  << std::endl;
-					}
-
-
-					if (need_recreate_sell)
-					{
-						if (sell_order_id > 0)
-						{
-							CancelOrder cancel(storage, funds[secret_id], selectSellOrder.value(0).toInt());
-							if (performTradeRequest("cancel order", cancel))
-							{
-								performSql("delete sell order record", deleteSellOrder, param);
-							}
-						}
-
-						Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
-						if (performTradeRequest("insert sell record into db", sell))
-						{
-							insertOrderParam[":order_id"] = sell.order_id;
-							insertOrderParam[":status"] = 0;
-							insertOrderParam[":type"] = "sell";
-							insertOrderParam[":amount"] = sell.remains;
-							insertOrderParam[":start_amount"] = sell.received + sell.remains;
-							insertOrderParam[":rate"] = sell_rate;
-							insertOrderParam[":settings_id"] = settings_id;
-							performSql("insert sell order record", insertOrder, insertOrderParam);
-						}
+						insertOrderParam[":order_id"] = sell.order_id;
+						insertOrderParam[":status"] = 0;
+						insertOrderParam[":type"] = "sell";
+						insertOrderParam[":amount"] = sell.remains;
+						insertOrderParam[":start_amount"] = sell.received + sell.remains;
+						insertOrderParam[":rate"] = sell_rate;
+						insertOrderParam[":settings_id"] = settings_id;
+						performSql("insert sell order record", insertOrder, insertOrderParam);
 					}
 				}
 			}
