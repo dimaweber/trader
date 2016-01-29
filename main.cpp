@@ -1675,7 +1675,7 @@ int main(int argc, char *argv[])
                     upd_param[":start_amount"] = info.order.start_amount;
                     upd_param[":rate"] = info.order.rate;
 
-                    performSql(QString("update order %1").arg(order_id), updateSetCanceled, param);
+                    performSql(QString("update order %1").arg(order_id), updateSetCanceled, upd_param);
 
                     if (info.order.type == Order::Sell)
                     {
