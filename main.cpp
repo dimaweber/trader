@@ -1702,7 +1702,7 @@ int main(int argc, char *argv[])
 			if (checkMaxBuyRate.next())
 			{
 				double rate = checkMaxBuyRate.value(0).toDouble();
-				std::clog << QString("max buy rate is %1").arg(rate) << std::endl;
+				std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
 				if (rate > 0 && pair.ticker.last > rate && amount_gain == 0)
 				{
 					std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
