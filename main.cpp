@@ -1648,6 +1648,7 @@ int main(int argc, char *argv[])
 			storage.setCurrent(secret_id);
 			Pair& pair = Pairs::ref(pairName);
 
+			std::clog << QString("last buy rate: %1. last sell rate: %2").arg(pair.ticker.buy).arg(pair.ticker.sell) << std::endl;
 			bool round_in_progress = false;
 
 
