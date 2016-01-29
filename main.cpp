@@ -1793,14 +1793,14 @@ int main(int argc, char *argv[])
                     sell_order_id = selectSellOrder.value(0).toInt();
                     double sell_order_amount = selectSellOrder.value(1).toDouble();
                     double sell_order_rate = selectSellOrder.value(2).toDouble();
-                    need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001
-                            || qAbs(sell_rate - sell_order_rate) > 0.001;
+                    need_recreate_sell = (qAbs(sell_order_amount - amount_gain) > 0.000001
+                            || qAbs(sell_rate - sell_order_rate) > 0.001);
 
                     std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
                                  .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
                               << std::endl;
-                }
 
+                }
 
                 if (need_recreate_sell)
                 {
@@ -1822,17 +1822,20 @@ int main(int argc, char *argv[])
                     }
 
                     amount_gain = qMin(amount_gain, funds[secret_id][pair.goods()]);
-                    Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
-                    if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
+                    if (amount_gain > pair.min_amount)
                     {
-                        insertOrderParam[":order_id"] = sell.order_id;
-                        insertOrderParam[":status"] = 0;
-                        insertOrderParam[":type"] = "sell";
-                        insertOrderParam[":amount"] = sell.remains;
-                        insertOrderParam[":start_amount"] = sell.received + sell.remains;
-                        insertOrderParam[":rate"] = sell_rate;
-                        insertOrderParam[":settings_id"] = settings_id;
-                        performSql("insert sell order record", insertOrder, insertOrderParam);
+                        Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
+                        if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
+                        {
+                            insertOrderParam[":order_id"] = sell.order_id;
+                            insertOrderParam[":status"] = 0;
+                            insertOrderParam[":type"] = "sell";
+                            insertOrderParam[":amount"] = sell.remains;
+                            insertOrderParam[":start_amount"] = sell.received + sell.remains;
+                            insertOrderParam[":rate"] = sell_rate;
+                            insertOrderParam[":settings_id"] = settings_id;
+                            performSql("insert sell order record", insertOrder, insertOrderParam);
+                        }
                     }
                 }
             }
