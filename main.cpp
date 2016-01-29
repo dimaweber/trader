@@ -667,6 +667,8 @@ bool BtcTradeApi::performQuery()
 		QByteArray sign = hmac_sha512(params, storage.secret());
 		jsonData.clear();
 
+		curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
+
 		curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
 		curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
 
@@ -936,6 +938,8 @@ bool BtcPublicApi::performQuery()
 	jsonData.clear();
 	try {
 		curlHandle = curl_easy_init();
+
+		curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
 
 		curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
 		curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
