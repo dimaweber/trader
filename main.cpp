@@ -1808,7 +1808,7 @@ int main(int argc, char *argv[])
 						upd_param[":start_amount"] = info.order.start_amount;
 						upd_param[":rate"] = info.order.rate;
 
-						performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, param);
+						performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, upd_param);
 					}
 
 					Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
