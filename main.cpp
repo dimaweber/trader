@@ -1784,7 +1784,7 @@ int main(int argc, char *argv[])
 					double sell_order_amount = selectSellOrder.value(1).toDouble();
 					double sell_order_rate = selectSellOrder.value(2).toDouble();
 					need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001
-							|| qAbs(sell_rate - sell_order_rate) > 0.000001;
+							|| qAbs(sell_rate - sell_order_rate) > 0.001;
 
 					std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
 								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
@@ -1812,7 +1812,7 @@ int main(int argc, char *argv[])
 					}
 
 					Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
-					if (performTradeRequest("insert sell record into db", sell))
+					if (performTradeRequest("create sell order", sell))
 					{
 						insertOrderParam[":order_id"] = sell.order_id;
 						insertOrderParam[":status"] = 0;
