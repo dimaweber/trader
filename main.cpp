@@ -1416,7 +1416,7 @@ int main(int argc, char *argv[])
 //		if (!finishBuyRound.prepare("update orders set backed_up=1 where type='buy' and settings_id=:settings_id"))
 //			throw finishBuyRound;
 
-		if (!selectSellOrder.prepare("SELECT order_id, start_amount from orders where status < 1 and backed_up=0 and settings_id=:settings_id and type='sell'"))
+		if (!selectSellOrder.prepare("SELECT order_id, start_amount, rate from orders where status < 1 and backed_up=0 and settings_id=:settings_id and type='sell'"))
 			throw selectSellOrder;
 
 /*
@@ -1695,25 +1695,30 @@ int main(int argc, char *argv[])
 			{
 				//int settings_id = selectCurrentRoundGain.value(0).toInt();
 				amount_gain = selectCurrentRoundGain.value(1).toDouble();
+                double payment = selectCurrentRoundGain.value(2).toDouble();
 				sell_rate = selectCurrentRoundGain.value(3).toDouble();
 
-				std::clog << QString("in current round we got %1 %2.")
-							 .arg(amount_gain).arg(pair.goods())
+				std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get profit we need to sell it back with rate %5")
+							 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate)
 						  << std::endl;
 			}
 
-			performSql("Get maximum buy rate", checkMaxBuyRate, param);
-			if (checkMaxBuyRate.next())
-			{
-				double rate = checkMaxBuyRate.value(0).toDouble();
-				std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
-				if (rate > 0 && pair.ticker.last > rate && amount_gain == 0)
-				{
-					std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
-					performSql("Finish buy orders for round", finishRound, param);
-					round_in_progress = false;
-				}
-			}
+            if (amount_gain == 0)
+            {
+                std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
+    			performSql("Get maximum buy rate", checkMaxBuyRate, param);
+	    		if (checkMaxBuyRate.next())
+		    	{
+			    	double rate = checkMaxBuyRate.value(0).toDouble();
+				    std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
+    				if (rate > 0 && pair.ticker.last > rate)
+	    			{
+		    			std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
+			    		performSql("Finish buy orders for round", finishRound, param);
+				    	round_in_progress = false;
+    				}
+	    		}
+            }
 
 			if (!round_in_progress)
 			{
@@ -1789,8 +1794,9 @@ int main(int argc, char *argv[])
 					double sell_order_amount = selectSellOrder.value(1).toDouble();
 					sell_order_id = selectSellOrder.value(0).toInt();
 					need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001;
-					std::clog << QString("found sell order %1 for %2 amount. Need recreate sell order: %3")
-								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no")
+                    double sell_order_rate = selectSellOrder.value(2).toDouble();
+					std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
+								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
 							  << std::endl;
 				}
 
@@ -1799,7 +1805,7 @@ int main(int argc, char *argv[])
 				{
 					if (sell_order_id > 0)
 					{
-						CancelOrder cancel(storage, funds[secret_id], selectSellOrder.value(0).toInt());
+						CancelOrder cancel(storage, funds[secret_id], sell_order_id);
 						performTradeRequest("cancel order", cancel);
 						OrderInfo info(storage, sell_order_id);
 						performTradeRequest("get canceled sell order info", info);
