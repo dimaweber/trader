@@ -688,6 +688,8 @@ bool BtcTradeApi::performQuery()
         int retry_count = 10;
         do {
             curlResult = curl_easy_perform(curlHandle);
+            if (curlResult == CURLE_OK)
+                break;
             if (curlResult == CURLE_OPERATION_TIMEDOUT)
             {
                 std::cerr << "http oeration timed out. Retry";
