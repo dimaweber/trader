@@ -1429,7 +1429,7 @@ int main(int argc, char *argv[])
 		if (!selectCurrentRoundActiveOrdersCount.prepare("SELECT count(*) from orders where status=0 and settings_id=:settings_id and backed_up=0"))
 			throw selectCurrentRoundActiveOrdersCount;
 
-		if (!selectCurrentRoundGain.prepare("select o.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate from orders o left join settings s  on s.id = o.settings_id where o.type='buy' and backed_up=0 and o.settings_id=:settings_id"))
+		if (!selectCurrentRoundGain.prepare("select o.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join settings s  on s.id = o.settings_id where o.type='buy' and backed_up=0 and o.settings_id=:settings_id"))
 			throw selectCurrentRoundGain;
 
 		if (!checkMaxBuyRate.prepare("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join settings s on s.id = o.settings_id where o.backed_up=0 and o.status=0 and type='buy' and o.settings_id=:settings_id"))
@@ -1695,30 +1695,31 @@ int main(int argc, char *argv[])
 			{
 				//int settings_id = selectCurrentRoundGain.value(0).toInt();
 				amount_gain = selectCurrentRoundGain.value(1).toDouble();
-                double payment = selectCurrentRoundGain.value(2).toDouble();
+				double payment = selectCurrentRoundGain.value(2).toDouble();
 				sell_rate = selectCurrentRoundGain.value(3).toDouble();
+				double profit = selectCurrentRoundGain.value(4).toDouble();
 
-				std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get profit we need to sell it back with rate %5")
-							 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate)
+				std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get %6% profit we need to sell it back with rate %5")
+							 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate).arg(profit * 100)
 						  << std::endl;
 			}
 
-            if (amount_gain == 0)
-            {
-                std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
-    			performSql("Get maximum buy rate", checkMaxBuyRate, param);
-	    		if (checkMaxBuyRate.next())
-		    	{
-			    	double rate = checkMaxBuyRate.value(0).toDouble();
-				    std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
-    				if (rate > 0 && pair.ticker.last > rate)
-	    			{
-		    			std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
-			    		performSql("Finish buy orders for round", finishRound, param);
-				    	round_in_progress = false;
-    				}
-	    		}
-            }
+			if (amount_gain == 0)
+			{
+				std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
+				performSql("Get maximum buy rate", checkMaxBuyRate, param);
+				if (checkMaxBuyRate.next())
+				{
+					double rate = checkMaxBuyRate.value(0).toDouble();
+					std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
+					if (rate > 0 && pair.ticker.last > rate)
+					{
+						std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
+						performSql("Finish buy orders for round", finishRound, param);
+						round_in_progress = false;
+					}
+				}
+			}
 
 			if (!round_in_progress)
 			{
@@ -1794,7 +1795,7 @@ int main(int argc, char *argv[])
 					double sell_order_amount = selectSellOrder.value(1).toDouble();
 					sell_order_id = selectSellOrder.value(0).toInt();
 					need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001;
-                    double sell_order_rate = selectSellOrder.value(2).toDouble();
+					double sell_order_rate = selectSellOrder.value(2).toDouble();
 					std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
 								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
 							  << std::endl;
