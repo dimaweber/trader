@@ -1486,7 +1486,7 @@ int main(int argc, char *argv[])
 		if (!pticker.performQuery())
 			std::clog << "fail" << std::endl;
 		else
-			std::clog << "ok";
+			std::clog << "ok" << std::endl;
 
 		std::clog << "update orders depth ...";
 		if (!pdepth.performQuery())
