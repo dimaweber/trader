@@ -1752,7 +1752,7 @@ int main(int argc, char *argv[])
                         break;
                     }
                     Trade trade(storage, funds[secret_id], pair.name, Order::Buy, rate, amount);
-                    if (performTradeRequest("create buy order", trade))
+                    if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
                     {
                         insertOrderParam[":order_id"] = trade.order_id;
                         insertOrderParam[":status"] = 0;
@@ -1821,8 +1821,9 @@ int main(int argc, char *argv[])
                         performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, upd_param);
                     }
 
+                    amount_gain = qMin(amount_gain, funds[secret_id][pair.goods()]);
                     Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
-                    if (performTradeRequest("create sell order", sell))
+                    if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
                     {
                         insertOrderParam[":order_id"] = sell.order_id;
                         insertOrderParam[":status"] = 0;
