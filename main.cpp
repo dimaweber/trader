@@ -1172,8 +1172,8 @@ void SqlKeyStorage::load()
 
 			if (is_crypted)
 			{
-                vault[id].apikey = QByteArray::fromHex(selectQ.value(0).toByteArray());
-                vault[id].secret = QByteArray::fromHex(selectQ.value(1).toByteArray());
+				vault[id].apikey = QByteArray::fromHex(selectQ.value(0).toByteArray());
+				vault[id].secret = QByteArray::fromHex(selectQ.value(1).toByteArray());
 				decrypt(vault[id].apikey, getPassword(false), ivec );
 				decrypt(vault[id].secret, getPassword(false), ivec );
 			}
@@ -1268,7 +1268,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql)
 	}
 	std::clog << std::endl;
 	if (!ok)
-		throw 1;
+		throw query;
 	return ok;
 }
 
@@ -1284,12 +1284,12 @@ bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& bin
 bool performTradeRequest(const QString& message, BtcTradeApi& req)
 {
 	bool ok = true;
-	std::clog << "[http]" << qPrintable(message) << " ... ";
+	std::clog << QString("[http] %1 ... ").arg(message);
 	ok = req.performQuery();
 	if (!ok)
 	{
 		std::clog << "Fail.";
-		std::cerr << "Failed method: " << qPrintable(req.methodName());
+		std::cerr << QString("Failed method: %1").arg(req.methodName());
 	}
 	else
 	{
@@ -1297,7 +1297,7 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 		if (!ok)
 		{
 			std::clog << "Fail.";
-			std::cerr << "Non success result:"  << qPrintable(req.error());
+			std::cerr << QString("Non success result: %1").arg(req.error());
 		}
 	}
 
@@ -1316,29 +1316,27 @@ int main(int argc, char *argv[])
 	(void) argc;
 	(void) argv;
 
-	std::clog << "connecting to database ... ";
 #ifdef USE_SQLITE
-    std::clog << "use sqlite database" << std::endl;
+	std::clog << "use sqlite database" << std::endl;
 	QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
 	db.setDatabaseName("trader.db");
 #else
-    std::clog << "use mysql database" << std::endl;
-    QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
-    db.setHostName("localhost");
-    db.setUserName("trader");
-    db.setPassword("traderpassword");
-    db.setDatabaseName("trade");
+	std::clog << "use mysql database" << std::endl;
+	QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
+	db.setHostName("localhost");
+	db.setUserName("trader");
+	db.setPassword("traderpassword");
+	db.setDatabaseName("trade");
 #endif
 
+	std::clog << "connecting to database ... ";
 	if (!db.open())
 	{
-		std::clog << " FAIL. " << qPrintable(db.lastError().text()) << std::endl;
+		std::clog << " FAIL. " << db.lastError().text() << std::endl;
 	}
 	else
 		std::clog << " ok" << std::endl;
 
-	std::clog << "Create tables ..." << std::endl;
-	QSqlQuery sql(db);
 	QString createSettingsSql = "CREATE TABLE IF NOT EXISTS `settings`("
 			 "`id` INTEGER PRIMARY KEY, "
 			 "`profit` decimal(6,4) NOT NULL DEFAULT '0.0100',"
@@ -1360,7 +1358,7 @@ int main(int argc, char *argv[])
 				"rate decimal(11,6) DEFAULT NULL,"
 				"settings_id int(11) DEFAULT NULL,"
 				"backed_up INTEGER NOT NULL DEFAULT 0,"
-                "start_amount decimal(11,6) DEFAULT NULL"
+				"start_amount decimal(11,6) DEFAULT NULL"
 			  ") ";
 
 	QString createSecretsSql = "CREATE TABLE IF NOT EXISTS secrets ("
@@ -1370,40 +1368,16 @@ int main(int argc, char *argv[])
 			"is_crypted BOOLEAN not null default FALSE"
 			")";
 
-	bool all_tables_created = true;
-	std::clog << "\tsettings table : ";
-	all_tables_created &= sql.exec(createSettingsSql);
-	if (!all_tables_created)
-		std::clog << "Fail. " << qPrintable(sql.lastError().text()) << std::endl;
-	else
-		std::clog << "ok" << std::endl;
-
-	std::clog << "\torders table : ";
-	all_tables_created &= sql.exec(createOrdersSql);
-	if (!all_tables_created)
-		std::clog << "Fail. " << qPrintable(sql.lastError().text()) << std::endl;
-	else
-		std::clog << "ok" << std::endl;
-
-	std::clog << "\tsecrets table : ";
-	all_tables_created &= sql.exec(createSecretsSql);
-	if (!all_tables_created)
-		std::clog << "Fail. " << qPrintable(sql.lastError().text()) << std::endl;
-	else
-		std::clog << "ok" << std::endl;
-
-	if (!all_tables_created)
-		std::clog << "tables creation fail" << std::endl;
-	else
-		std::clog << "all tables created" << std::endl;
+	QSqlQuery sql(db);
+	performSql("create settings table", sql, createSettingsSql);
+	performSql("create orders table", sql, createOrdersSql);
+	performSql("create secrets table", sql, createSecretsSql);
 
 	QSqlQuery insertOrder(db);
 	QSqlQuery updateActiveOrder(db);
 	QSqlQuery updateSetCanceled(db);
 	QSqlQuery finishRound(db);
-//	QSqlQuery finishBuyRound(db);
 	QSqlQuery selectSellOrder(db);
-	QSqlQuery deleteSellOrder(db);
 	QSqlQuery selectSettings (db);
 	QSqlQuery selectCurrentRoundActiveOrdersCount(db);
 	QSqlQuery selectCurrentRoundGain(db);
@@ -1426,16 +1400,9 @@ int main(int argc, char *argv[])
 		if (!finishRound.prepare("update orders set backed_up=1 where settings_id=:settings_id"))
 			throw finishRound;
 
-//		if (!finishBuyRound.prepare("update orders set backed_up=1 where type='buy' and settings_id=:settings_id"))
-//			throw finishBuyRound;
-
 		if (!selectSellOrder.prepare("SELECT order_id, start_amount, rate from orders where status < 1 and backed_up=0 and settings_id=:settings_id and type='sell'"))
 			throw selectSellOrder;
 
-/*
- * 		if (!deleteSellOrder.prepare("UPDATE orders set status=2 where backed_up=0 and settings_id=:settings_id and type='sell'"))
-			throw deleteSellOrder;
-*/
 		if (!selectSettings.prepare("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id from settings"))
 			throw selectSettings;
 
@@ -1661,11 +1628,11 @@ int main(int argc, char *argv[])
 			storage.setCurrent(secret_id);
 			Pair& pair = Pairs::ref(pairName);
 
-            std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[secret_id][pair.currency()])
-                                                            .arg(pair.currency())
-                                                            .arg(funds[secret_id][pair.goods()])
-                                                            .arg(pair.goods())
-                     << std::endl;
+			std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[secret_id][pair.currency()])
+															.arg(pair.currency())
+															.arg(funds[secret_id][pair.goods()])
+															.arg(pair.goods())
+					 << std::endl;
 
 			std::clog << QString("last buy rate: %1. last sell rate: %2").arg(pair.ticker.buy).arg(pair.ticker.sell) << std::endl;
 			bool round_in_progress = false;
@@ -1813,10 +1780,12 @@ int main(int argc, char *argv[])
 				performSql("get sell order id and amount", selectSellOrder, param);
 				if (selectSellOrder.next())
 				{
-					double sell_order_amount = selectSellOrder.value(1).toDouble();
 					sell_order_id = selectSellOrder.value(0).toInt();
-					need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001;
+					double sell_order_amount = selectSellOrder.value(1).toDouble();
 					double sell_order_rate = selectSellOrder.value(2).toDouble();
+					need_recreate_sell = qAbs(sell_order_amount - amount_gain) > 0.000001
+							|| qAbs(sell_rate - sell_order_rate) > 0.000001;
+
 					std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
 								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
 							  << std::endl;
