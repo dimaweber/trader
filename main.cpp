@@ -359,7 +359,7 @@ double get_comission_pct(const QString& pair)
 struct Order {
     enum OrderType {Buy, Sell};
     enum OrderStatus {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3};
-    typedef quint32 Id;
+    typedef qint32 Id;
 
     QString pair;
     OrderType type;
@@ -380,13 +380,13 @@ struct Order {
 };
 
 class MissingField : public std::runtime_error
-{public : MissingField(const QString& msg): std::runtime_error(msg.toUtf8()){}};
+{public : MissingField(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
 class BrokenJson : public std::runtime_error
-{public : BrokenJson(const QString& msg): std::runtime_error(msg.toUtf8()){}};
+{public : BrokenJson(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
 class HttpError : public std::runtime_error
-{public : HttpError(const QString& msg): std::runtime_error(msg.toUtf8()){}};
+{public : HttpError(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
 class FileKeyStorage;
 
@@ -667,7 +667,7 @@ bool BtcTradeApi::performQuery()
         jsonData.clear();
 
         curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
-        curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, BtcTradeApi::writeFunc);
+        curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
 
         QByteArray sUrl = path().toUtf8();
         curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
@@ -936,7 +936,7 @@ bool BtcPublicApi::performQuery()
         curlHandle = curl_easy_init();
 
         curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
-        curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, BtcTradeApi::writeFunc);
+        curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
 
         QByteArray sUrl = path().toUtf8();
         curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
