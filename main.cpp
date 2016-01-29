@@ -1156,7 +1156,7 @@ void SqlKeyStorage::load()
 	QSqlQuery selectQ(db);
 	QString sql = QString("SELECT apiKey, secret, id, is_crypted from %1").arg(_tableName);
 	QSqlQuery cryptQuery(db);
-	if (!cryptQuery.prepare("UPDATE secrets set apikey=:apikey, secret=:secret, is_crypted='true' where id=:id"))
+	if (!cryptQuery.prepare("UPDATE secrets set apikey=:apikey, secret=:secret, is_crypted=1 where id=:id"))
 		std::cerr << cryptQuery.lastError().text() << std::endl;
 
 	if (selectQ.exec(sql))
@@ -1172,6 +1172,8 @@ void SqlKeyStorage::load()
 
 			if (is_crypted)
 			{
+                vault[id].apikey = QByteArray::fromHex(selectQ.value(0).toByteArray());
+                vault[id].secret = QByteArray::fromHex(selectQ.value(1).toByteArray());
 				decrypt(vault[id].apikey, getPassword(false), ivec );
 				decrypt(vault[id].secret, getPassword(false), ivec );
 			}
@@ -1184,8 +1186,8 @@ void SqlKeyStorage::load()
 				encrypt(secret, getPassword(false), ivec);
 
 				cryptQuery.bindValue(":id", id);
-				cryptQuery.bindValue(":apikey", apikey);
-				cryptQuery.bindValue(":secret", secret);
+				cryptQuery.bindValue(":apikey", apikey.toHex());
+				cryptQuery.bindValue(":secret", secret.toHex());
 				if (!cryptQuery.exec())
 				{
 					std::cerr << cryptQuery.lastError().text() << std::endl;
@@ -1315,8 +1317,19 @@ int main(int argc, char *argv[])
 	(void) argv;
 
 	std::clog << "connecting to database ... ";
+#ifdef USE_SQLITE
+    std::clog << "use sqlite database" << std::endl;
 	QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
 	db.setDatabaseName("trader.db");
+#else
+    std::clog << "use mysql database" << std::endl;
+    QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
+    db.setHostName("localhost");
+    db.setUserName("trader");
+    db.setPassword("traderpassword");
+    db.setDatabaseName("trade");
+#endif
+
 	if (!db.open())
 	{
 		std::clog << " FAIL. " << qPrintable(db.lastError().text()) << std::endl;
@@ -1340,19 +1353,19 @@ int main(int argc, char *argv[])
 			"secret_id integer not null references secrets(id)"
 		   ")";
 	QString createOrdersSql = "CREATE TABLE IF NOT EXISTS `orders`  ("
-				"`order_id` INTEGER PRIMARY KEY,"
-				"`status` int(11) NOT NULL DEFAULT '0',"
-				"`type` char(4) NOT NULL DEFAULT 'buy',"
-				"`amount` decimal(11,6) DEFAULT NULL,"
-				"`start_amount` decimal(11,6) DEFAULT NULL,"
-				"`rate` decimal(11,6) DEFAULT NULL,"
-				"`settings_id` int(11) DEFAULT NULL,"
-				"backed_up INTEGER NOT NULL DEFAULT 0"
+				"order_id INTEGER PRIMARY KEY,"
+				"status int(11) NOT NULL DEFAULT '0',"
+				"type char(4) NOT NULL DEFAULT 'buy',"
+				"amount decimal(11,6) DEFAULT NULL,"
+				"rate decimal(11,6) DEFAULT NULL,"
+				"settings_id int(11) DEFAULT NULL,"
+				"backed_up INTEGER NOT NULL DEFAULT 0,"
+                "start_amount decimal(11,6) DEFAULT NULL"
 			  ") ";
 
 	QString createSecretsSql = "CREATE TABLE IF NOT EXISTS secrets ("
-			"apikey char(256) not null,"
-			"secret char(256) not null,"
+			"apikey char(255) not null,"
+			"secret char(255) not null,"
 			"id integer primary key,"
 			"is_crypted BOOLEAN not null default FALSE"
 			")";
@@ -1648,6 +1661,12 @@ int main(int argc, char *argv[])
 			storage.setCurrent(secret_id);
 			Pair& pair = Pairs::ref(pairName);
 
+            std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[secret_id][pair.currency()])
+                                                            .arg(pair.currency())
+                                                            .arg(funds[secret_id][pair.goods()])
+                                                            .arg(pair.goods())
+                     << std::endl;
+
 			std::clog << QString("last buy rate: %1. last sell rate: %2").arg(pair.ticker.buy).arg(pair.ticker.sell) << std::endl;
 			bool round_in_progress = false;
 
@@ -1732,8 +1751,9 @@ int main(int argc, char *argv[])
 					performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
 				}
 
-				std::cout << "New round start. Calculate new buy orders parameters" << std::endl;
+				std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
 				double sum =0;
+
 				for (int j=0; j<n; j++)
 				{
 					sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
