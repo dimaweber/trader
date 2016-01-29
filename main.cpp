@@ -1388,7 +1388,7 @@ int main(int argc, char *argv[])
 	QSqlQuery updateActiveOrder(db);
 	QSqlQuery updateSetCanceled(db);
 	QSqlQuery finishRound(db);
-	QSqlQuery finishBuyRound(db);
+//	QSqlQuery finishBuyRound(db);
 	QSqlQuery selectSellOrder(db);
 	QSqlQuery deleteSellOrder(db);
 	QSqlQuery selectSettings (db);
@@ -1413,15 +1413,16 @@ int main(int argc, char *argv[])
 		if (!finishRound.prepare("update orders set backed_up=1 where settings_id=:settings_id"))
 			throw finishRound;
 
-		if (!finishBuyRound.prepare("update orders set backed_up=1 where type='buy' and settings_id=:settings_id"))
-			throw finishBuyRound;
+//		if (!finishBuyRound.prepare("update orders set backed_up=1 where type='buy' and settings_id=:settings_id"))
+//			throw finishBuyRound;
 
-		if (!selectSellOrder.prepare("SELECT order_id, start_amount from orders where backed_up=0 and settings_id=:settings_id and type='sell'"))
+		if (!selectSellOrder.prepare("SELECT order_id, start_amount from orders where status < 1 and backed_up=0 and settings_id=:settings_id and type='sell'"))
 			throw selectSellOrder;
 
-		if (!deleteSellOrder.prepare("DELETE from orders where backed_up=0 and settings_id=:settings_id and type='sell'"))
+/*
+ * 		if (!deleteSellOrder.prepare("UPDATE orders set status=2 where backed_up=0 and settings_id=:settings_id and type='sell'"))
 			throw deleteSellOrder;
-
+*/
 		if (!selectSettings.prepare("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id from settings"))
 			throw selectSettings;
 
@@ -1639,7 +1640,10 @@ int main(int argc, char *argv[])
 
 			std::clog << QString("Processing settings_id %1. Pair: %2").arg(settings_id).arg(pairName) << std::endl;
 			if (!Pairs::ref().contains(pairName))
+			{
 				std::cerr << "no pair" << pairName << "available" <<std::endl;
+				continue;
+			}
 
 			storage.setCurrent(secret_id);
 			Pair& pair = Pairs::ref(pairName);
@@ -1706,7 +1710,7 @@ int main(int argc, char *argv[])
 				if (rate > 0 && pair.ticker.last > rate && amount_gain == 0)
 				{
 					std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
-					performSql("Finish buy orders for round", finishBuyRound, param);
+					performSql("Finish buy orders for round", finishRound, param);
 					round_in_progress = false;
 				}
 			}
@@ -1796,10 +1800,18 @@ int main(int argc, char *argv[])
 					if (sell_order_id > 0)
 					{
 						CancelOrder cancel(storage, funds[secret_id], selectSellOrder.value(0).toInt());
-						if (performTradeRequest("cancel order", cancel))
-						{
-							performSql("delete sell order record", deleteSellOrder, param);
-						}
+						performTradeRequest("cancel order", cancel);
+						OrderInfo info(storage, sell_order_id);
+						performTradeRequest("get canceled sell order info", info);
+
+						QVariantMap upd_param;
+						upd_param[":order_id"] = sell_order_id;
+						upd_param[":status"] = info.order.status;
+						upd_param[":amount"] = info.order.amount;
+						upd_param[":start_amount"] = info.order.start_amount;
+						upd_param[":rate"] = info.order.rate;
+
+						performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, param);
 					}
 
 					Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
