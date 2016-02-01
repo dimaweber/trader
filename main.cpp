@@ -399,6 +399,37 @@ struct Order {
 	QString currency() const {return pair.right(3);}
 };
 
+struct Transaction
+{
+	typedef qint32 Id;
+
+	Id id;
+	int type;
+	double amount;
+	QString currency;
+	QString desc;
+	int status;
+
+	bool parse(const QVariantMap& map);
+};
+
+bool Transaction::parse(const QVariantMap& map)
+{
+	type = read_long(map, "type");
+	amount = read_double(map, "amount");
+	currency = read_string(map, "currency");
+	desc = read_string(map, "desc");
+	status = read_long(map, "status");
+
+	if (map.contains("transaction_id"))
+		id = read_long(map, "transaction_id");
+	else if (map.contains("__key"))
+		id = read_long(map, "__key");
+
+	return true;
+}
+
+
 class MissingField : public std::runtime_error
 {public : MissingField(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
@@ -458,6 +489,55 @@ public:
 	Info(KeyStorage& storage, Funds& funds):BtcTradeApi(storage),funds(funds){}
 	void showSuccess() const override;
 };
+
+class TransHistory : public BtcTradeApi
+{
+	int _from;
+	int _count;
+	int _from_id;
+	int _end_id;
+	bool _descending;
+	int _since;
+	int _end;
+
+	virtual bool parseSuccess(const QVariantMap &returnMap) override;
+	virtual QString methodName() const  override {return "TransHistory";}
+public:
+	QMap<Transaction::Id, Transaction> trans;
+
+	TransHistory(KeyStorage& storage)
+		:BtcTradeApi(storage), _from(-1), _count(-1), _from_id(-1), _end_id(-1),
+		  _descending(true), _since(-1), _end(-1)
+	{}
+	TransHistory& setFrom(int from =-1) {_from = from;return *this;}
+	TransHistory& setCount(int count =-1) {_count = count;return *this;}
+	TransHistory& setFromId(int from_id =-1) {_from_id = from_id;return *this;}
+	TransHistory& setEndId(int end_id =-1) {_end_id = end_id;return *this;}
+	TransHistory& setorder(bool desc=true) {_descending = desc; return *this;}
+	TransHistory& setSince(const QDateTime& d = QDateTime()) {_since = d.isValid()?d.toTime_t():-1;return *this;}
+	TransHistory& setEnd(const QDateTime& d = QDateTime()) {_end= d.isValid()?d.toTime_t():-1;return *this;}
+
+	void showSuccess() const override { throw 1;}
+};
+
+bool TransHistory::parseSuccess(const QVariantMap& returnMap)
+{
+	trans.clear();
+	for (QString sId: returnMap.keys())
+	{
+		if (sId == "__key")
+			continue;
+
+		Transaction transaction;
+
+		transaction.parse(read_map(returnMap, sId));
+
+		trans[transaction.id] = transaction;
+	}
+
+	return true;
+
+}
 
 class Trade : public BtcTradeApi
 {
@@ -1350,7 +1430,6 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 	return ok;
 }
 
-
 int main(int argc, char *argv[])
 {
 	(void) argc;
@@ -1413,10 +1492,21 @@ int main(int argc, char *argv[])
 			"is_crypted BOOLEAN not null default FALSE"
 			")";
 
+	QString createTransactionsSql = "create table if not exists transactions ( "
+			"id integer primary key, "
+			"type integer not null check (type < 6 and type > 0), "
+			"amount double not null check (amount>0), "
+			"currency char(3) not null, "
+			"description varchar(255), "
+			"status integer check (status>0 and status<5), "
+			"secret_id integer references secrets(id)"
+			")";
+
 	QSqlQuery sql(db);
 	performSql("create settings table", sql, createSettingsSql);
 	performSql("create orders table", sql, createOrdersSql);
 	performSql("create secrets table", sql, createSecretsSql);
+	performSql("create transactions table", sql, createTransactionsSql);
 
 	QSqlQuery insertOrder(db);
 	QSqlQuery updateActiveOrder(db);
@@ -1429,6 +1519,8 @@ int main(int argc, char *argv[])
 	QSqlQuery checkMaxBuyRate(db);
 	QSqlQuery selectOrdersWithChangedStatus(db);
 	QSqlQuery selectOrdersFromPrevRound(db);
+	QSqlQuery selectMaxTransHistoryId(db);
+	QSqlQuery insertTransaction(db);
 
 	std::clog << "prepare sql statements ... ";
 	try
@@ -1465,6 +1557,12 @@ int main(int argc, char *argv[])
 
 		if (!selectOrdersFromPrevRound.prepare("SELECT order_id from orders where backed_up=1 and status<1 and settings_id=:settings_id"))
 			throw selectOrdersFromPrevRound;
+
+		if (!selectMaxTransHistoryId.prepare("select max(id) from transactions where secret_id=:secret_id"))
+			throw selectMaxTransHistoryId;
+
+		if (!insertTransaction.prepare("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id)"))
+			throw insertTransaction;
 
 		std::clog << "ok" << std::endl;
 	}
@@ -1698,6 +1796,28 @@ int main(int argc, char *argv[])
 				}
 
 				std::clog << "BTC equ: " << btc << std::endl;
+
+				TransHistory hist(storage);
+				QVariantMap hist_param;
+				hist_param["secret_id"] = id;
+				performSql("get max transaction id", selectMaxTransHistoryId, hist_param);
+				if (selectMaxTransHistoryId.next())
+					hist.setFromId(selectMaxTransHistoryId.value(0).toInt()+1);
+				hist.setCount(100);
+				performTradeRequest("get history", hist);
+				for(Transaction transaction: hist.trans)
+				{
+					QVariantMap ins_params;
+					ins_params[":id"] = transaction.id;
+					ins_params[":type"] = transaction.type;
+					ins_params[":amount"] = transaction.amount;
+					ins_params[":currency"] = transaction.currency;
+					ins_params[":desription"] = transaction.desc;
+					ins_params[":status"] = transaction.status;
+					ins_params[":secret_id"] = id;
+
+					performSql("insert transaction info", insertTransaction, ins_params);
+				}
 			}
 
 			if (!performSql("get settings list", selectSettings))
