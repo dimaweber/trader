@@ -496,24 +496,26 @@ class TransHistory : public BtcTradeApi
 	int _count;
 	int _from_id;
 	int _end_id;
-	bool _descending;
+	bool _order;
 	int _since;
 	int _end;
 
 	virtual bool parseSuccess(const QVariantMap &returnMap) override;
 	virtual QString methodName() const  override {return "TransHistory";}
+
+	virtual QMap<QString, QString> extraQueryParams() override;
 public:
 	QMap<Transaction::Id, Transaction> trans;
 
 	TransHistory(KeyStorage& storage)
 		:BtcTradeApi(storage), _from(-1), _count(-1), _from_id(-1), _end_id(-1),
-		  _descending(true), _since(-1), _end(-1)
+		  _order(true), _since(-1), _end(-1)
 	{}
 	TransHistory& setFrom(int from =-1) {_from = from;return *this;}
 	TransHistory& setCount(int count =-1) {_count = count;return *this;}
 	TransHistory& setFromId(int from_id =-1) {_from_id = from_id;return *this;}
 	TransHistory& setEndId(int end_id =-1) {_end_id = end_id;return *this;}
-	TransHistory& setOrder(bool desc=true) {_descending = desc; return *this;}
+	TransHistory& setOrder(bool desc=true) {_order = desc; return *this;}
 	TransHistory& setSince(const QDateTime& d = QDateTime()) {_since = d.isValid()?d.toTime_t():-1;return *this;}
 	TransHistory& setEnd(const QDateTime& d = QDateTime()) {_end= d.isValid()?d.toTime_t():-1;return *this;}
 
@@ -537,6 +539,25 @@ bool TransHistory::parseSuccess(const QVariantMap& returnMap)
 
 	return true;
 
+}
+
+QMap<QString, QString> TransHistory::extraQueryParams()
+{
+	QMap<QString, QString> map = BtcTradeApi::extraQueryParams();
+	if (_from > -1)
+		map["from"] = _from;
+	if (_count > -1)
+		map["count"] = _count;
+	if (_from_id > -1)
+		map["from_id"] = _from_id;
+	if (_end_id > -1)
+		map["end_id"] = _end_id;
+	map["order"] = _order?"desc":"asc";
+	if (_since > -1)
+		map["since"] = _since;
+	if (_end > -1)
+		map["end"] = _end;
+	return map;
 }
 
 class Trade : public BtcTradeApi
