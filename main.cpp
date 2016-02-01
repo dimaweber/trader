@@ -394,6 +394,9 @@ struct Order {
 	double money_gain() const {return ((type==Sell)?(start_amount-amount)*rate:0) * (1 - get_comission_pct(pair));}
 	double amount_gain() const {return ((type==Sell)?0:(start_amount - amount)) * (1 - get_comission_pct(pair));}
 	double comission() const { return ((type==Sell)?money_spent():amount) * get_comission_pct(pair);}
+
+	QString goods() const { return pair.left(3);}
+	QString currency() const {return pair.right(3);}
 };
 
 class MissingField : public std::runtime_error
@@ -1347,6 +1350,7 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 	return ok;
 }
 
+#define USE_SQLITE
 int main(int argc, char *argv[])
 {
 	(void) argc;
@@ -1525,6 +1529,7 @@ int main(int argc, char *argv[])
 
 			performSql("Mark all active orders as unknown status", sql, "UPDATE orders set status=-1 where status=0");
 
+			Funds onOrders;
 			for(int id: storage.allKeys())
 			{
 				std::clog << "for keypair "  << id << " mark active orders status: -1 --> 0" << std::endl;
@@ -1543,6 +1548,11 @@ int main(int argc, char *argv[])
 						params[":amount"]  = order.amount;
 						params[":rate"] = order.rate;
 						performSql(QString("Order %1 still active, mark it").arg(order.order_id), updateActiveOrder, params);
+
+						if (order.type == Order::Buy)
+							onOrders[order.currency()] += order.amount * order.rate;
+						else
+							onOrders[order.goods()] += order.amount;
 					}
 				}
 
@@ -1638,6 +1648,56 @@ int main(int argc, char *argv[])
 				seller("ltc_btc", ltc, btc);
 				if (btc - start_btc > 0)
 					std::cout << QString("btc -> usd -> ltc -> btc : %1").arg(btc - start_btc) << std::endl;
+
+				btc = 0;
+				for(QString key : allFunds[id].keys())
+				{
+					double v = allFunds[id][key];
+					double s = 0;
+					QString pname = QString("%1_%2").arg("btc").arg(key);
+					QString rname = QString("%1_%2").arg(key).arg("btc");
+					if (v==0)
+						continue;
+					else if (key == "btc")
+						btc += v;
+					else if (key == "__key")
+						continue;
+					else if (Pairs::ref().contains(pname))
+					{
+						buyer(pname, s, v);
+						btc += s;
+					}
+					else if (Pairs::ref().contains(rname))
+					{
+						seller(rname, v, s);
+						btc += s;
+					}
+				}
+				for(QString key : onOrders.keys())
+				{
+					double v = onOrders[key];
+					double s = 0;
+					QString pname = QString("%1_%2").arg("btc").arg(key);
+					QString rname = QString("%1_%2").arg(key).arg("btc");
+					if (v==0)
+						continue;
+					else if (key == "btc")
+						btc += v;
+					else if (key == "__key")
+						continue;
+					else if (Pairs::ref().contains(pname))
+					{
+						buyer(pname, s, v);
+						btc += s;
+					}
+					else if (Pairs::ref().contains(rname))
+					{
+						seller(rname, v, s);
+						btc += s;
+					}
+				}
+
+				std::clog << "BTC equ: " << btc << std::endl;
 			}
 
 			if (!performSql("get settings list", selectSettings))
