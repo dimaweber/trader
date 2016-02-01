@@ -1352,13 +1352,16 @@ int main(int argc, char *argv[])
 	(void) argc;
 	(void) argv;
 
+	QSqlDatabase db;
+	while (!db.isOpen())
+	{
 #ifdef USE_SQLITE
 	std::clog << "use sqlite database" << std::endl;
-	QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
+	db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
 	db.setDatabaseName("trader.db");
 #else
 	std::clog << "use mysql database" << std::endl;
-	QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
+	db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
 	db.setHostName("localhost");
 	db.setUserName("trader");
 	db.setPassword("traderpassword");
@@ -1367,9 +1370,13 @@ int main(int argc, char *argv[])
 
 	std::clog << "connecting to database ... ";
 	if (!db.open())
+	{
 		std::clog << " FAIL. " << db.lastError().text() << std::endl;
+		usleep(1000 * 1000 * 5);
+	}
 	else
 		std::clog << " ok" << std::endl;
+	}
 
 	QString createSettingsSql = "CREATE TABLE IF NOT EXISTS `settings`("
 			 "id INTEGER PRIMARY KEY, "
