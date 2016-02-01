@@ -1481,7 +1481,7 @@ int main(int argc, char *argv[])
 	storage.setPassword("g00dd1e#wer4");
 	std::clog << "ok" << std::endl;
 
-	QMap<int, Funds> funds;
+	QMap<int, Funds> allFunds;
 	BtcPublicInfo pinfo;
 	BtcPublicTicker pticker;
 	BtcPublicDepth pdepth(20);
@@ -1534,7 +1534,7 @@ int main(int argc, char *argv[])
 			std::clog << "for keypair "  << id << " mark active orders status: -1 --> 0" << std::endl;
 			storage.setCurrent(id);
 
-			Info info(storage, funds[id]);
+			Info info(storage, allFunds[id]);
 			performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
 
 			ActiveOrders activeOrders(storage);
@@ -1561,7 +1561,7 @@ int main(int argc, char *argv[])
 //				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
 				for(auto d: p.depth.bids)
 				{
-					if (goods < 0.0000001)
+					if (goods < p.min_amount)
 						break;
 					double amount = d.amount;
 					double rate = d.rate;
@@ -1599,7 +1599,7 @@ int main(int argc, char *argv[])
 //				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
 			};
 
-			double btc = funds[id]["btc"] / 10;
+			double btc = allFunds[id]["btc"] / 10;
 			double start_btc = btc;
 			double usd = 0;
 			double eur = 0;
@@ -1675,10 +1675,11 @@ int main(int argc, char *argv[])
 
 			storage.setCurrent(secret_id);
 			Pair& pair = Pairs::ref(pairName);
+			Funds& funds = allFunds[secret_id];
 
-			std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[secret_id][pair.currency()])
+			std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[pair.currency()])
 															.arg(pair.currency())
-															.arg(funds[secret_id][pair.goods()])
+															.arg(funds[pair.goods()])
 															.arg(pair.goods())
 					 << std::endl;
 
@@ -1762,7 +1763,7 @@ int main(int argc, char *argv[])
 				while(selectOrdersFromPrevRound.next())
 				{
 					Order::Id order_id = selectOrdersFromPrevRound.value(0).toInt();
-					CancelOrder cancel(storage, funds[secret_id], order_id);
+					CancelOrder cancel(storage, funds, order_id);
 					performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
 				}
 
@@ -1770,12 +1771,10 @@ int main(int argc, char *argv[])
 				double sum =0;
 
 				for (int j=0; j<n; j++)
-				{
 					sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
-				}
 
 				double execute_rate = pair.ticker.last;
-				double u = qMax(qMin(funds[secret_id][currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
+				double u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
 				double total_currency_spent = 0;
 
 				for(int j=0; j<n; j++)
@@ -1783,13 +1782,13 @@ int main(int argc, char *argv[])
 					double amount = u * qPow(1+martingale, j);
 					double rate = execute_rate * ( 1 - first_step - (coverage - first_step) * j/(n-1));
 
-					if (amount * rate > funds[secret_id][currency] ||
+					if (amount * rate > funds[currency] ||
 						total_currency_spent + amount*rate > dep+0.00001)
 					{
 						std::clog << QString("Not enought %1 for full bids").arg(pair.currency()) << std::endl;
 						break;
 					}
-					Trade trade(storage, funds[secret_id], pair.name, Order::Buy, rate, amount);
+					Trade trade(storage, funds, pair.name, Order::Buy, rate, amount);
 					if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
 					{
 						insertOrderParam[":order_id"] = trade.order_id;
@@ -1831,8 +1830,8 @@ int main(int argc, char *argv[])
 					sell_order_id = selectSellOrder.value(0).toInt();
 					double sell_order_amount = selectSellOrder.value(1).toDouble();
 					double sell_order_rate = selectSellOrder.value(2).toDouble();
-					need_recreate_sell = (qAbs(sell_order_amount - amount_gain) > 0.000001
-							|| qAbs(sell_rate - sell_order_rate) > 0.001);
+					need_recreate_sell = (!qFuzzyCompare(sell_order_amount, amount_gain)
+							|| qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places));
 
 					std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
 								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
@@ -1844,7 +1843,7 @@ int main(int argc, char *argv[])
 				{
 					if (sell_order_id > 0)
 					{
-						CancelOrder cancel(storage, funds[secret_id], sell_order_id);
+						CancelOrder cancel(storage, funds, sell_order_id);
 						performTradeRequest("cancel order", cancel);
 						OrderInfo info(storage, sell_order_id);
 						performTradeRequest("get canceled sell order info", info);
@@ -1857,16 +1856,25 @@ int main(int argc, char *argv[])
 						upd_param[":rate"] = info.order.rate;
 
 						performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, upd_param);
+
+						if (!qFuzzyCompare(info.order.amount, info.order.start_amount))
+							amount_gain -= (info.order.start_amount - info.order.amount);
 					}
 
-					amount_gain = qMin(amount_gain, funds[secret_id][pair.goods()]);
+					amount_gain = qMin(amount_gain, funds[pair.goods()]);
+
+					if (funds[pair.goods()] - amount_gain < pair.min_amount)
+					{
+						amount_gain = funds[pair.goods()];
+					}
+
 					if (amount_gain > pair.min_amount)
 					{
-						Trade sell(storage, funds[secret_id], pair.name, Order::Sell, sell_rate, amount_gain);
+						Trade sell(storage, funds, pair.name, Order::Sell, sell_rate, amount_gain);
 						if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
 						{
 							insertOrderParam[":order_id"] = sell.order_id;
-							insertOrderParam[":status"] = 0;
+							insertOrderParam[":status"] = (sell.remains==0)?1:0;
 							insertOrderParam[":type"] = "sell";
 							insertOrderParam[":amount"] = sell.remains;
 							insertOrderParam[":start_amount"] = sell.received + sell.remains;
