@@ -1350,7 +1350,7 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 	return ok;
 }
 
-#define USE_SQLITE
+
 int main(int argc, char *argv[])
 {
 	(void) argc;
