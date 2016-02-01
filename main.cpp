@@ -513,7 +513,7 @@ public:
 	TransHistory& setCount(int count =-1) {_count = count;return *this;}
 	TransHistory& setFromId(int from_id =-1) {_from_id = from_id;return *this;}
 	TransHistory& setEndId(int end_id =-1) {_end_id = end_id;return *this;}
-	TransHistory& setorder(bool desc=true) {_descending = desc; return *this;}
+	TransHistory& setOrder(bool desc=true) {_descending = desc; return *this;}
 	TransHistory& setSince(const QDateTime& d = QDateTime()) {_since = d.isValid()?d.toTime_t():-1;return *this;}
 	TransHistory& setEnd(const QDateTime& d = QDateTime()) {_end= d.isValid()?d.toTime_t():-1;return *this;}
 
@@ -1803,7 +1803,7 @@ int main(int argc, char *argv[])
 				performSql("get max transaction id", selectMaxTransHistoryId, hist_param);
 				if (selectMaxTransHistoryId.next())
 					hist.setFromId(selectMaxTransHistoryId.value(0).toInt()+1);
-				hist.setCount(100);
+				hist.setCount(100).setOrder(false);
 				performTradeRequest("get history", hist);
 				for(Transaction transaction: hist.trans)
 				{
@@ -1816,7 +1816,14 @@ int main(int argc, char *argv[])
 					ins_params[":status"] = transaction.status;
 					ins_params[":secret_id"] = id;
 
-					performSql("insert transaction info", insertTransaction, ins_params);
+					try
+					{
+						performSql("insert transaction info", insertTransaction, ins_params);
+					}
+					catch (const QSqlQuery& e)
+					{
+
+					}
 				}
 			}
 
