@@ -403,7 +403,9 @@ class BrokenJson : public std::runtime_error
 {public : BrokenJson(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
 class HttpError : public std::runtime_error
-{public : HttpError(const QString& msg): std::runtime_error(msg.toStdString()){}};
+{public : HttpError(const QString& msg): std::runtime_error(msg.toStdString()){}
+	HttpError(CURLcode code): HttpError(curl_easy_strerror(code)){}
+};
 
 class FileKeyStorage;
 
@@ -737,7 +739,7 @@ bool BtcTradeApi::performQuery()
 		} while (retry_count);
 
 		if (curlResult != CURLE_OK)
-			throw curlResult;
+			throw HttpError(curlResult);
 
 		long http_code = 0;
 		curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
@@ -981,44 +983,31 @@ void Ticker::display() const
 
 bool BtcPublicApi::performQuery()
 {
-//	CURL* curlHandle = nullptr;
 	CURLcode curlResult = CURLE_OK;
 
 	jsonData.clear();
-	try {
-//		curlHandle = curl_easy_init();
+	curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
 
-		curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
+	curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
+	curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
 
-		curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
-		curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
+	QByteArray sUrl = path().toUtf8();
+	curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
 
-		QByteArray sUrl = path().toUtf8();
-		curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
-
-		curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
+	curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
 //		qDebug() << "perform query" << sUrl.constData();
 
-		curlResult = curl_easy_perform(curlHandle);
-		if (curlResult != CURLE_OK)
-			throw HttpError(sUrl);
+	curlResult = curl_easy_perform(curlHandle);
+	if (curlResult != CURLE_OK)
+		throw HttpError(curlResult);
 
-		long http_code = 0;
-		curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
-		if (http_code != 200 )
-		{
-			std::cerr << "Bad HTTP reply code: " << http_code << std::endl;
-			return false;
-		}
-
-//		curl_easy_cleanup(curlHandle);
-	}
-	catch(std::runtime_error& e)
+	long http_code = 0;
+	curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
+	if (http_code != 200 )
 	{
-		std::cerr << "error while executing query " << e.what() << " : " << curl_easy_strerror(curlResult) << std::endl;
+		std::cerr << "Bad HTTP reply code: " << http_code << std::endl;
 		return false;
 	}
-
 	return parse(jsonData);
 }
 
@@ -1355,9 +1344,6 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 
 	std::clog << std::endl;
 
-	if (!ok)
-		throw 1;
-
 	return ok;
 }
 
@@ -1474,6 +1460,7 @@ int main(int argc, char *argv[])
 	catch (QSqlQuery& e)
 	{
 		std::clog << " FAIL. query: " << e.lastQuery() << ". " << "Reason: " << e.lastError().text() << std::endl;
+		return 1;
 	}
 
 	std::clog << "Initialize key storage ... ";
@@ -1512,386 +1499,404 @@ int main(int argc, char *argv[])
 	std::clog << "start main cycle" << std::endl;
 	while (1)
 	{
-		timer.restart();
-		std::clog << std::endl;
-
-		std::clog << "update currencies rate info ...";
-		if (!pticker.performQuery())
-			std::clog << "fail" << std::endl;
-		else
-			std::clog << "ok" << std::endl;
-
-		std::clog << "update orders depth ...";
-		if (!pdepth.performQuery())
-			std::clog << "fail" << std::endl;
-		else
-			std::clog << "ok" << std::endl;
-
-		performSql("Mark all active orders as unknown status", sql, "UPDATE orders set status=-1 where status=0");
-
-		for(int id: storage.allKeys())
+		try
 		{
-			std::clog << "for keypair "  << id << " mark active orders status: -1 --> 0" << std::endl;
-			storage.setCurrent(id);
+			timer.restart();
+			std::clog << std::endl;
 
-			Info info(storage, allFunds[id]);
-			performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
+			std::clog << "update currencies rate info ...";
+			if (!pticker.performQuery())
+				std::clog << "fail" << std::endl;
+			else
+				std::clog << "ok" << std::endl;
 
-			ActiveOrders activeOrders(storage);
-			if (performTradeRequest(QString("get active orders for keypair %1").arg(id),activeOrders))
+			std::clog << "update orders depth ...";
+			if (!pdepth.performQuery())
+				std::clog << "fail" << std::endl;
+			else
+				std::clog << "ok" << std::endl;
+
+			performSql("Mark all active orders as unknown status", sql, "UPDATE orders set status=-1 where status=0");
+
+			for(int id: storage.allKeys())
 			{
-				for (Order& order: activeOrders.orders)
+				std::clog << "for keypair "  << id << " mark active orders status: -1 --> 0" << std::endl;
+				storage.setCurrent(id);
+
+				Info info(storage, allFunds[id]);
+				performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
+
+				ActiveOrders activeOrders(storage);
+				if (performTradeRequest(QString("get active orders for keypair %1").arg(id),activeOrders))
 				{
-					QVariantMap params;
-					params[":order_id"] = order.order_id;
-					params[":amount"]  = order.amount;
-					params[":rate"] = order.rate;
-					performSql(QString("Order %1 still active, mark it").arg(order.order_id), updateActiveOrder, params);
+					for (Order& order: activeOrders.orders)
+					{
+						QVariantMap params;
+						params[":order_id"] = order.order_id;
+						params[":amount"]  = order.amount;
+						params[":rate"] = order.rate;
+						performSql(QString("Order %1 still active, mark it").arg(order.order_id), updateActiveOrder, params);
+					}
 				}
+
+				QString pname;
+				pname = "btc_usd";
+
+				auto seller = [](const QString& pname, double& goods, double& currency)
+				{
+					Pair& p = Pairs::ref(pname);
+					double gain = 0;
+					double sold = 0;
+	//				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
+					for(auto d: p.depth.bids)
+					{
+						if (goods < p.min_amount)
+							break;
+						double amount = d.amount;
+						double rate = d.rate;
+						double trade_amount = qMin(goods, amount);
+						gain += rate * trade_amount * (1-p.fee/100);
+						goods -= trade_amount;
+						sold += trade_amount;
+					}
+
+					currency += gain;
+
+	//				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
+				};
+
+				auto buyer = [](const QString& pname, double& goods, double& currency)
+				{
+					Pair& p = Pairs::ref(pname);
+					double bought = 0;
+					double spent = 0;
+	//				qDebug() << QString("we have %1 %2").arg(currency).arg(p.currency());
+					for(auto d: p.depth.asks)
+					{
+						if (currency < 0.000001)
+							break;
+						double amount = d.amount;
+						double rate = d.rate;
+						double price = qMin(currency, amount*rate);
+						bought += ((price / rate) * (1-p.fee/100));
+						currency -= price;
+						spent += price;
+					}
+
+					goods += bought;
+
+	//				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
+				};
+
+				double btc = allFunds[id]["btc"] / 10;
+				double start_btc = btc;
+				double usd = 0;
+				double eur = 0;
+				double ltc = 0;
+
+				seller("btc_usd", btc, usd);
+				buyer("eur_usd", eur, usd);
+				buyer("btc_eur", btc, eur);
+
+				if (btc - start_btc > 0)
+					std::cout << QString("btc -> usd -> eur -> btc : %1").arg(btc - start_btc) << std::endl;
+
+				btc = start_btc;
+				usd = 0;
+				eur = 0;
+
+				seller("btc_eur", btc, eur);
+				seller("eur_usd", eur, usd);
+				buyer("btc_usd", btc, usd);
+
+				if (btc - start_btc > 0)
+					std::cout << QString("btc -> eur -> usd -> btc : %1").arg(btc - start_btc) << std::endl;
+
+				btc = start_btc;
+				usd = 0;
+				ltc = 0;
+
+				buyer("ltc_btc", ltc, btc);
+				seller("ltc_usd", ltc, usd);
+				buyer("btc_usd", btc, usd);
+				if (btc - start_btc > 0)
+					std::cout << QString("btc -> ltc -> usd -> btc : %1").arg(btc - start_btc) << std::endl;
+
+				btc = start_btc;
+				usd = 0;
+				ltc = 0;
+
+				seller("btc_usd", btc, usd);
+				buyer("ltc_usd", ltc, usd);
+				seller("ltc_btc", ltc, btc);
+				if (btc - start_btc > 0)
+					std::cout << QString("btc -> usd -> ltc -> btc : %1").arg(btc - start_btc) << std::endl;
 			}
 
-			QString pname;
-			pname = "btc_usd";
-
-			auto seller = [](const QString& pname, double& goods, double& currency)
+			if (!performSql("get settings list", selectSettings))
 			{
-				Pair& p = Pairs::ref(pname);
-				double gain = 0;
-				double sold = 0;
-//				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
-				for(auto d: p.depth.bids)
-				{
-					if (goods < p.min_amount)
-						break;
-					double amount = d.amount;
-					double rate = d.rate;
-					double trade_amount = qMin(goods, amount);
-					gain += rate * trade_amount * (1-p.fee/100);
-					goods -= trade_amount;
-					sold += trade_amount;
-				}
-
-				currency += gain;
-
-//				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
-			};
-
-			auto buyer = [](const QString& pname, double& goods, double& currency)
-			{
-				Pair& p = Pairs::ref(pname);
-				double bought = 0;
-				double spent = 0;
-//				qDebug() << QString("we have %1 %2").arg(currency).arg(p.currency());
-				for(auto d: p.depth.asks)
-				{
-					if (currency < 0.000001)
-						break;
-					double amount = d.amount;
-					double rate = d.rate;
-					double price = qMin(currency, amount*rate);
-					bought += ((price / rate) * (1-p.fee/100));
-					currency -= price;
-					spent += price;
-				}
-
-				goods += bought;
-
-//				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
-			};
-
-			double btc = allFunds[id]["btc"] / 10;
-			double start_btc = btc;
-			double usd = 0;
-			double eur = 0;
-			double ltc = 0;
-
-			seller("btc_usd", btc, usd);
-			buyer("eur_usd", eur, usd);
-			buyer("btc_eur", btc, eur);
-
-			if (btc - start_btc > 0)
-				std::cout << QString("btc -> usd -> eur -> btc : %1").arg(btc - start_btc) << std::endl;
-
-			btc = start_btc;
-			usd = 0;
-			eur = 0;
-
-			seller("btc_eur", btc, eur);
-			seller("eur_usd", eur, usd);
-			buyer("btc_usd", btc, usd);
-
-			if (btc - start_btc > 0)
-				std::cout << QString("btc -> eur -> usd -> btc : %1").arg(btc - start_btc) << std::endl;
-
-			btc = start_btc;
-			usd = 0;
-			ltc = 0;
-
-			buyer("ltc_btc", ltc, btc);
-			seller("ltc_usd", ltc, usd);
-			buyer("btc_usd", btc, usd);
-			if (btc - start_btc > 0)
-				std::cout << QString("btc -> ltc -> usd -> btc : %1").arg(btc - start_btc) << std::endl;
-
-			btc = start_btc;
-			usd = 0;
-			ltc = 0;
-
-			seller("btc_usd", btc, usd);
-			buyer("ltc_usd", ltc, usd);
-			seller("ltc_btc", ltc, btc);
-			if (btc - start_btc > 0)
-				std::cout << QString("btc -> usd -> ltc -> btc : %1").arg(btc - start_btc) << std::endl;
-		}
-
-		if (!performSql("get settings list", selectSettings))
-		{
-			std::clog << "Sleep for 10 seconds" << std::endl;
-			usleep(1000 * 1000 * 10);
-			continue;
-		}
-
-		while (selectSettings.next())
-		{
-			settings_id = selectSettings.value(0).toInt();
-			comission = selectSettings.value(1).toDouble();
-			first_step = selectSettings.value(2).toDouble();
-			martingale = selectSettings.value(3).toDouble();
-			dep = selectSettings.value(4).toDouble();
-			coverage = selectSettings.value(5).toDouble();
-			n = selectSettings.value(6).toInt();
-			currency = selectSettings.value(7).toString();
-			goods = selectSettings.value(8).toString();
-			secret_id = selectSettings.value(9).toInt();
-
-			QString pairName = QString("%1_%2").arg(goods, currency);
-
-			std::clog << QString("Processing settings_id %1. Pair: %2").arg(settings_id).arg(pairName) << std::endl;
-			if (!Pairs::ref().contains(pairName))
-			{
-				std::cerr << "no pair" << pairName << "available" <<std::endl;
+				std::clog << "Sleep for 10 seconds" << std::endl;
+				usleep(1000 * 1000 * 10);
 				continue;
 			}
 
-			storage.setCurrent(secret_id);
-			Pair& pair = Pairs::ref(pairName);
-			Funds& funds = allFunds[secret_id];
-
-			std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[pair.currency()])
-															.arg(pair.currency())
-															.arg(funds[pair.goods()])
-															.arg(pair.goods())
-					 << std::endl;
-
-			std::clog << QString("last buy rate: %1. last sell rate: %2").arg(pair.ticker.buy).arg(pair.ticker.sell) << std::endl;
-			bool round_in_progress = false;
-
-
-			QVariantMap param;
-			QVariantMap insertOrderParam;
-
-			param[":settings_id"] = settings_id;
-			if (performSql("get active orders count", selectCurrentRoundActiveOrdersCount, param))
-				if (selectCurrentRoundActiveOrdersCount.next())
-				{
-					int count = selectCurrentRoundActiveOrdersCount.value(0).toInt();
-					round_in_progress = count > 0;
-					std::clog << QString("active orders count: %1").arg(count)  << std::endl;
-				}
-
-			if (performSql("check if any orders have status changed", selectOrdersWithChangedStatus, param))
-				while (selectOrdersWithChangedStatus.next())
-				{
-					Order::Id order_id = selectOrdersWithChangedStatus.value(0).toInt();
-					OrderInfo info(storage, order_id);
-					performTradeRequest(QString("get info for order %1").arg(order_id), info);
-
-					std::clog << QString("order %1 changed status to %2").arg(order_id).arg(info.order.status) << std::endl;
-					QVariantMap upd_param;
-					upd_param[":order_id"] = order_id;
-					upd_param[":status"] = info.order.status;
-					upd_param[":amount"] = info.order.amount;
-					upd_param[":start_amount"] = info.order.start_amount;
-					upd_param[":rate"] = info.order.rate;
-
-					performSql(QString("update order %1").arg(order_id), updateSetCanceled, upd_param);
-
-					if (info.order.type == Order::Sell)
-					{
-						std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
-						performSql(QString("Finish round"), finishRound, param);
-						round_in_progress = false;
-					}
-				}
-
-			double amount_gain = 0;
-			double sell_rate = 0;
-			performSql("Get current round amoumt gain", selectCurrentRoundGain, param);
-			if(selectCurrentRoundGain.next())
+			while (selectSettings.next())
 			{
-				//int settings_id = selectCurrentRoundGain.value(0).toInt();
-				amount_gain = selectCurrentRoundGain.value(1).toDouble();
-				double payment = selectCurrentRoundGain.value(2).toDouble();
-				sell_rate = selectCurrentRoundGain.value(3).toDouble();
-				double profit = selectCurrentRoundGain.value(4).toDouble();
+				settings_id = selectSettings.value(0).toInt();
+				comission = selectSettings.value(1).toDouble();
+				first_step = selectSettings.value(2).toDouble();
+				martingale = selectSettings.value(3).toDouble();
+				dep = selectSettings.value(4).toDouble();
+				coverage = selectSettings.value(5).toDouble();
+				n = selectSettings.value(6).toInt();
+				currency = selectSettings.value(7).toString();
+				goods = selectSettings.value(8).toString();
+				secret_id = selectSettings.value(9).toInt();
 
-				std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get %6% profit we need to sell it back with rate %5")
-							 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate).arg(profit * 100)
-						  << std::endl;
-			}
+				QString pairName = QString("%1_%2").arg(goods, currency);
 
-			if (amount_gain == 0)
-			{
-				std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
-				performSql("Get maximum buy rate", checkMaxBuyRate, param);
-				if (checkMaxBuyRate.next())
+				std::clog << QString("Processing settings_id %1. Pair: %2").arg(settings_id).arg(pairName) << std::endl;
+				if (!Pairs::ref().contains(pairName))
 				{
-					double rate = checkMaxBuyRate.value(0).toDouble();
-					std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
-					if (rate > 0 && pair.ticker.last > rate)
-					{
-						std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
-						performSql("Finish buy orders for round", finishRound, param);
-						round_in_progress = false;
-					}
-				}
-			}
-
-			if (!round_in_progress)
-			{
-				performSql("check for orders left from previous round", selectOrdersFromPrevRound, param);
-				while(selectOrdersFromPrevRound.next())
-				{
-					Order::Id order_id = selectOrdersFromPrevRound.value(0).toInt();
-					CancelOrder cancel(storage, funds, order_id);
-					performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
-				}
-
-				std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
-				double sum =0;
-
-				for (int j=0; j<n; j++)
-					sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
-
-				double execute_rate = pair.ticker.last;
-				double u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
-				double total_currency_spent = 0;
-
-				for(int j=0; j<n; j++)
-				{
-					double amount = u * qPow(1+martingale, j);
-					double rate = execute_rate * ( 1 - first_step - (coverage - first_step) * j/(n-1));
-
-					if (amount * rate > funds[currency] ||
-						total_currency_spent + amount*rate > dep+0.00001)
-					{
-						std::clog << QString("Not enought %1 for full bids").arg(pair.currency()) << std::endl;
-						break;
-					}
-					Trade trade(storage, funds, pair.name, Order::Buy, rate, amount);
-					if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
-					{
-						insertOrderParam[":order_id"] = trade.order_id;
-						insertOrderParam[":status"] = 0;
-						insertOrderParam[":type"] = "buy";
-						insertOrderParam[":amount"] = trade.remains;
-						insertOrderParam[":start_amount"] = trade.received + trade.remains;
-						insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
-						insertOrderParam[":settings_id"] = settings_id;
-						performSql("insert buy order record", insertOrder, insertOrderParam);
-
-						total_currency_spent += amount * rate;
-						std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
-					}
-				}
-
-				round_in_progress = true;
-				std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())
-						  << std::endl;
-			}
-			else
-			{
-			//	std::cout << qPrintable(QString("round for %1(%2) already in progress").arg(settings_id).arg(pair.name)) << std::endl;
-			}
-
-			if (round_in_progress)
-			{
-				if (pair.min_amount > amount_gain)
-				{
-					std::clog << "An amount we have is less then minimal trade amount. skip creating sell order" << std::endl;
+					std::cerr << "no pair" << pairName << "available" <<std::endl;
 					continue;
 				}
 
-				bool need_recreate_sell = true;
-				Order::Id sell_order_id = 0;
-				performSql("get sell order id and amount", selectSellOrder, param);
-				if (selectSellOrder.next())
-				{
-					sell_order_id = selectSellOrder.value(0).toInt();
-					double sell_order_amount = selectSellOrder.value(1).toDouble();
-					double sell_order_rate = selectSellOrder.value(2).toDouble();
-					need_recreate_sell = (qAbs(sell_order_amount - amount_gain) > pair.min_amount)
-							|| qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places);
+				storage.setCurrent(secret_id);
+				Pair& pair = Pairs::ref(pairName);
+				Funds& funds = allFunds[secret_id];
 
-					std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
-								 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
-							  << std::endl;
+				std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[pair.currency()])
+																.arg(pair.currency())
+																.arg(funds[pair.goods()])
+																.arg(pair.goods())
+						 << std::endl;
 
-				}
+				std::clog << QString("last buy rate: %1. last sell rate: %2").arg(pair.ticker.buy).arg(pair.ticker.sell) << std::endl;
+				bool round_in_progress = false;
 
-				if (need_recreate_sell)
-				{
-					if (sell_order_id > 0)
+
+				QVariantMap param;
+				QVariantMap insertOrderParam;
+
+				param[":settings_id"] = settings_id;
+				if (performSql("get active orders count", selectCurrentRoundActiveOrdersCount, param))
+					if (selectCurrentRoundActiveOrdersCount.next())
 					{
-						CancelOrder cancel(storage, funds, sell_order_id);
-						performTradeRequest("cancel order", cancel);
-						OrderInfo info(storage, sell_order_id);
-						performTradeRequest("get canceled sell order info", info);
+						int count = selectCurrentRoundActiveOrdersCount.value(0).toInt();
+						round_in_progress = count > 0;
+						std::clog << QString("active orders count: %1").arg(count)  << std::endl;
+					}
 
+				if (performSql("check if any orders have status changed", selectOrdersWithChangedStatus, param))
+					while (selectOrdersWithChangedStatus.next())
+					{
+						Order::Id order_id = selectOrdersWithChangedStatus.value(0).toInt();
+						OrderInfo info(storage, order_id);
+						performTradeRequest(QString("get info for order %1").arg(order_id), info);
+
+						std::clog << QString("order %1 changed status to %2").arg(order_id).arg(info.order.status) << std::endl;
 						QVariantMap upd_param;
-						upd_param[":order_id"] = sell_order_id;
+						upd_param[":order_id"] = order_id;
 						upd_param[":status"] = info.order.status;
 						upd_param[":amount"] = info.order.amount;
 						upd_param[":start_amount"] = info.order.start_amount;
 						upd_param[":rate"] = info.order.rate;
 
-						performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, upd_param);
+						performSql(QString("update order %1").arg(order_id), updateSetCanceled, upd_param);
 
-						if (!qFuzzyCompare(info.order.amount, info.order.start_amount))
-							amount_gain -= (info.order.start_amount - info.order.amount);
-					}
-
-					amount_gain = qMin(amount_gain, funds[pair.goods()]);
-
-					if (funds[pair.goods()] - amount_gain < pair.min_amount)
-					{
-						amount_gain = funds[pair.goods()];
-					}
-
-					if (amount_gain > pair.min_amount)
-					{
-						Trade sell(storage, funds, pair.name, Order::Sell, sell_rate, amount_gain);
-						if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
+						if (info.order.type == Order::Sell)
 						{
-							insertOrderParam[":order_id"] = sell.order_id;
-							insertOrderParam[":status"] = (sell.remains==0)?1:0;
-							insertOrderParam[":type"] = "sell";
-							insertOrderParam[":amount"] = sell.remains;
-							insertOrderParam[":start_amount"] = sell.received + sell.remains;
-							insertOrderParam[":rate"] = sell_rate;
+							std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
+							performSql(QString("Finish round"), finishRound, param);
+							round_in_progress = false;
+						}
+					}
+
+				double amount_gain = 0;
+				double sell_rate = 0;
+				performSql("Get current round amoumt gain", selectCurrentRoundGain, param);
+				if(selectCurrentRoundGain.next())
+				{
+					//int settings_id = selectCurrentRoundGain.value(0).toInt();
+					amount_gain = selectCurrentRoundGain.value(1).toDouble();
+					double payment = selectCurrentRoundGain.value(2).toDouble();
+					sell_rate = selectCurrentRoundGain.value(3).toDouble();
+					double profit = selectCurrentRoundGain.value(4).toDouble();
+
+					std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get %6% profit we need to sell it back with rate %5")
+								 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate).arg(profit * 100)
+							  << std::endl;
+				}
+
+				if (amount_gain == 0)
+				{
+					std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
+					performSql("Get maximum buy rate", checkMaxBuyRate, param);
+					if (checkMaxBuyRate.next())
+					{
+						double rate = checkMaxBuyRate.value(0).toDouble();
+						std::clog << QString("max buy rate is %1, last rate is %2").arg(rate).arg(pair.ticker.last) << std::endl;
+						if (rate > 0 && pair.ticker.last > rate)
+						{
+							std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
+							performSql("Finish buy orders for round", finishRound, param);
+							round_in_progress = false;
+						}
+					}
+				}
+
+				if (!round_in_progress)
+				{
+					performSql("check for orders left from previous round", selectOrdersFromPrevRound, param);
+					while(selectOrdersFromPrevRound.next())
+					{
+						Order::Id order_id = selectOrdersFromPrevRound.value(0).toInt();
+						CancelOrder cancel(storage, funds, order_id);
+						performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
+					}
+
+					std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
+					double sum =0;
+
+					for (int j=0; j<n; j++)
+						sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
+
+					double execute_rate = pair.ticker.last;
+					double u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
+					double total_currency_spent = 0;
+
+					for(int j=0; j<n; j++)
+					{
+						double amount = u * qPow(1+martingale, j);
+						double rate = execute_rate * ( 1 - first_step - (coverage - first_step) * j/(n-1));
+
+						if (amount * rate > funds[currency] ||
+							total_currency_spent + amount*rate > dep+0.00001)
+						{
+							std::clog << QString("Not enought %1 for full bids").arg(pair.currency()) << std::endl;
+							break;
+						}
+						Trade trade(storage, funds, pair.name, Order::Buy, rate, amount);
+						if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
+						{
+							insertOrderParam[":order_id"] = trade.order_id;
+							insertOrderParam[":status"] = 0;
+							insertOrderParam[":type"] = "buy";
+							insertOrderParam[":amount"] = trade.remains;
+							insertOrderParam[":start_amount"] = trade.received + trade.remains;
+							insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
 							insertOrderParam[":settings_id"] = settings_id;
-							performSql("insert sell order record", insertOrder, insertOrderParam);
+							performSql("insert buy order record", insertOrder, insertOrderParam);
+
+							total_currency_spent += amount * rate;
+							std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
+						}
+					}
+
+					round_in_progress = true;
+					std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())
+							  << std::endl;
+				}
+				else
+				{
+				//	std::cout << qPrintable(QString("round for %1(%2) already in progress").arg(settings_id).arg(pair.name)) << std::endl;
+				}
+
+				if (round_in_progress)
+				{
+					if (pair.min_amount > amount_gain)
+					{
+						std::clog << "An amount we have is less then minimal trade amount. skip creating sell order" << std::endl;
+						continue;
+					}
+
+					bool need_recreate_sell = true;
+					Order::Id sell_order_id = 0;
+					performSql("get sell order id and amount", selectSellOrder, param);
+					if (selectSellOrder.next())
+					{
+						sell_order_id = selectSellOrder.value(0).toInt();
+						double sell_order_amount = selectSellOrder.value(1).toDouble();
+						double sell_order_rate = selectSellOrder.value(2).toDouble();
+						need_recreate_sell = (qAbs(sell_order_amount - amount_gain) > pair.min_amount)
+								|| qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places);
+
+						std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
+									 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
+								  << std::endl;
+
+					}
+
+					if (need_recreate_sell)
+					{
+						if (sell_order_id > 0)
+						{
+							CancelOrder cancel(storage, funds, sell_order_id);
+							performTradeRequest("cancel order", cancel);
+							OrderInfo info(storage, sell_order_id);
+							performTradeRequest("get canceled sell order info", info);
+
+							QVariantMap upd_param;
+							upd_param[":order_id"] = sell_order_id;
+							upd_param[":status"] = info.order.status;
+							upd_param[":amount"] = info.order.amount;
+							upd_param[":start_amount"] = info.order.start_amount;
+							upd_param[":rate"] = info.order.rate;
+
+							performSql(QString("update order %1").arg(sell_order_id), updateSetCanceled, upd_param);
+
+							if (!qFuzzyCompare(info.order.amount, info.order.start_amount))
+								amount_gain -= (info.order.start_amount - info.order.amount);
+						}
+
+						amount_gain = qMin(amount_gain, funds[pair.goods()]);
+
+						if (funds[pair.goods()] - amount_gain < pair.min_amount)
+						{
+							amount_gain = funds[pair.goods()];
+						}
+
+						if (amount_gain > pair.min_amount)
+						{
+							Trade sell(storage, funds, pair.name, Order::Sell, sell_rate, amount_gain);
+							if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
+							{
+								insertOrderParam[":order_id"] = sell.order_id;
+								insertOrderParam[":status"] = (sell.remains==0)?1:0;
+								insertOrderParam[":type"] = "sell";
+								insertOrderParam[":amount"] = sell.remains;
+								insertOrderParam[":start_amount"] = sell.received + sell.remains;
+								insertOrderParam[":rate"] = sell_rate;
+								insertOrderParam[":settings_id"] = settings_id;
+								performSql("insert sell order record", insertOrder, insertOrderParam);
+							}
 						}
 					}
 				}
 			}
-		}
 
-		quint64 t = timer.elapsed();
-		std::clog << QString("iteration done in %1 ms").arg(t) << std::endl;
-		quint64 ms_sleep = 10 * 1000;
-		if (t < ms_sleep)
-			usleep(1000 * (ms_sleep-t));
+			quint64 t = timer.elapsed();
+			std::clog << QString("iteration done in %1 ms").arg(t) << std::endl;
+			quint64 ms_sleep = 10 * 1000;
+			if (t < ms_sleep)
+				usleep(1000 * (ms_sleep-t));
+		}
+		catch(const QSqlQuery& e)
+		{
+			std::cerr << "Fail sql query:" << e.executedQuery() << e.lastError().text() << std::endl;
+			usleep(1000 * 1000 * 30);
+		}
+		catch (const BtcTradeApi& e)
+		{
+			std::cerr << "Fail http query: " << e.error() << std::endl;
+			usleep(1000 * 1000 * 60);
+		}
+		catch (const std::runtime_error& e)
+		{
+			std::cerr << "Runtime error: " << e.what() << std::endl;
+			usleep(1000 * 1000 * 60);
+		}
 	}
 	return 0;
 }
