@@ -409,6 +409,7 @@ struct Transaction
 	QString currency;
 	QString desc;
 	int status;
+    QDateTime timestamp;
 
 	bool parse(const QVariantMap& map);
 };
@@ -420,6 +421,7 @@ bool Transaction::parse(const QVariantMap& map)
 	currency = read_string(map, "currency");
 	desc = read_string(map, "desc");
 	status = read_long(map, "status");
+    timestamp = read_timestamp(map, "timestamp");
 
 	if (map.contains("transaction_id"))
 		id = read_long(map, "transaction_id");
@@ -1520,7 +1522,8 @@ int main(int argc, char *argv[])
 			"currency char(3) not null, "
 			"description varchar(255), "
 			"status integer check (status>0 and status<5), "
-			"secret_id integer references secrets(id)"
+			"secret_id integer references secrets(id),"
+            "timestamp DATETIME not null"
 			")";
 
 	QSqlQuery sql(db);
@@ -1579,10 +1582,10 @@ int main(int argc, char *argv[])
 		if (!selectOrdersFromPrevRound.prepare("SELECT order_id from orders where backed_up=1 and status<1 and settings_id=:settings_id"))
 			throw selectOrdersFromPrevRound;
 
-		if (!selectMaxTransHistoryId.prepare("select max(id) from transactions where secret_id=:secret_id"))
+		if (!selectMaxTransHistoryId.prepare("select count(id) from transactions where secret_id=:secret_id"))
 			throw selectMaxTransHistoryId;
 
-		if (!insertTransaction.prepare("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id)"))
+		if (!insertTransaction.prepare("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp)"))
 			throw insertTransaction;
 
 		std::clog << "ok" << std::endl;
@@ -1823,8 +1826,8 @@ int main(int argc, char *argv[])
 				hist_param["secret_id"] = id;
 				performSql("get max transaction id", selectMaxTransHistoryId, hist_param);
 				if (selectMaxTransHistoryId.next())
-					hist.setFromId(selectMaxTransHistoryId.value(0).toInt()+1);
-				hist.setCount(100).setOrder(false);
+					hist.setFrom(selectMaxTransHistoryId.value(0).toInt()+1);
+				hist.setCount(100);
 				performTradeRequest("get history", hist);
 				for(Transaction transaction: hist.trans)
 				{
@@ -1835,6 +1838,7 @@ int main(int argc, char *argv[])
 					ins_params[":currency"] = transaction.currency;
 					ins_params[":desription"] = transaction.desc;
 					ins_params[":status"] = transaction.status;
+                    ins_params[":timestamp"] = transaction.timestamp;
 					ins_params[":secret_id"] = id;
 
 					try
