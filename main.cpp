@@ -459,7 +459,7 @@ protected:
 
     virtual bool parse(const QByteArray& serverAnswer) override;
 
-    virtual QMap<QString, QString> extraQueryParams();
+    virtual QVariantMap extraQueryParams();
     virtual void showSuccess() const = 0;
 
 public:
@@ -505,7 +505,7 @@ class TransHistory : public BtcTradeApi
     virtual bool parseSuccess(const QVariantMap &returnMap) override;
     virtual QString methodName() const  override {return "TransHistory";}
 
-    virtual QMap<QString, QString> extraQueryParams() override;
+    virtual QVariantMap extraQueryParams() override;
 public:
     QMap<Transaction::Id, Transaction> trans;
 
@@ -543,9 +543,9 @@ bool TransHistory::parseSuccess(const QVariantMap& returnMap)
 
 }
 
-QMap<QString, QString> TransHistory::extraQueryParams()
+QVariantMap TransHistory::extraQueryParams()
 {
-    QMap<QString, QString> map = BtcTradeApi::extraQueryParams();
+    QVariantMap map = BtcTradeApi::extraQueryParams();
     if (_from > -1)
         map["from"] = _from;
     if (_count > -1)
@@ -554,7 +554,7 @@ QMap<QString, QString> TransHistory::extraQueryParams()
         map["from_id"] = _from_id;
     if (_end_id > -1)
         map["end_id"] = _end_id;
-    map["order"] = _order?"desc":"asc";
+    map["order"] = _order?"DESC":"ASC";
     if (_since > -1)
         map["since"] = _since;
     if (_end > -1)
@@ -571,7 +571,7 @@ class Trade : public BtcTradeApi
 protected:
     virtual QString methodName() const override;
     virtual bool parseSuccess(const QVariantMap& returnMap) override;
-    virtual QMap<QString, QString> extraQueryParams() override;
+    virtual QVariantMap extraQueryParams() override;
     virtual void showSuccess() const override;
 
 public:
@@ -600,7 +600,7 @@ public:
 protected:
     virtual QString methodName() const override;
     virtual bool parseSuccess(const QVariantMap& returnMap) override;
-    virtual QMap<QString, QString> extraQueryParams() override;
+    virtual QVariantMap extraQueryParams() override;
     virtual void showSuccess() const override;
 };
 
@@ -620,7 +620,7 @@ class OrderInfo : public BtcTradeApi
     Order::Id order_id;
     virtual bool parseSuccess(const QVariantMap& returnMap) override;
     virtual QString methodName() const  override {return "OrderInfo";}
-    virtual QMap<QString, QString> extraQueryParams() override;
+    virtual QVariantMap extraQueryParams() override;
 public:
     Order order;
 
@@ -651,10 +651,10 @@ void Info::showSuccess() const
 
 QByteArray BtcTradeApi::queryParams()
 {
-    QMap<QString, QString> extraParams = extraQueryParams();
-    for(QString& param: extraParams.keys())
+    QVariantMap extraParams = extraQueryParams();
+    for(const QString& param: extraParams.keys())
     {
-        query.addQueryItem(param, extraParams[param]);
+        query.addQueryItem(param, extraParams[param].toString());
     }
     return query.query().toUtf8();
 }
@@ -757,9 +757,9 @@ bool BtcTradeApi::parse(const QByteArray& serverAnswer)
 
 }
 
-QMap<QString, QString> BtcTradeApi::extraQueryParams()
+QVariantMap BtcTradeApi::extraQueryParams()
 {
-    QMap<QString, QString> params;
+    QVariantMap params;
     params["method"] = methodName();
     params["nonce"] = BtcTradeApi::nonce();
     return params;
@@ -825,7 +825,7 @@ bool BtcTradeApi::performQuery()
             query.clear();
             QByteArray params = queryParams();
 
-            //		qDebug() << "perform query" << sUrl.constData() << params;
+            std::clog << QString("perform query: %1. Params: %2").arg(path()).arg(params.constData()) << std::endl;
 
             QByteArray sign = hmac_sha512(params, storage.secret());
             curl_easy_setopt(curlHandle, CURLOPT_POSTFIELDS, params.constData());
@@ -975,10 +975,10 @@ bool OrderInfo::parseSuccess(const QVariantMap& returnMap)
     return true;
 }
 
-QMap<QString, QString> OrderInfo::extraQueryParams()
+QVariantMap OrderInfo::extraQueryParams()
 {
-    QMap<QString, QString> params = BtcTradeApi::extraQueryParams();
-    params["order_id"] = QString::number(order_id);
+    QVariantMap params = BtcTradeApi::extraQueryParams();
+    params["order_id"] = order_id;
     return params;
 }
 
@@ -1002,9 +1002,9 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
     return true;
 }
 
-QMap<QString, QString> Trade::extraQueryParams()
+QVariantMap Trade::extraQueryParams()
 {
-    QMap<QString, QString> params = BtcTradeApi::extraQueryParams();
+    QVariantMap params = BtcTradeApi::extraQueryParams();
     params["pair"] = pair;
     params["type"] = (type==Order::Sell)?"sell":"buy";
     params["amount"] = QString::number(amount, 'f', 8);
@@ -1033,10 +1033,10 @@ bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
     return true;
 }
 
-QMap<QString, QString> CancelOrder::extraQueryParams()
+QVariantMap CancelOrder::extraQueryParams()
 {
-    QMap<QString, QString> params = BtcTradeApi::extraQueryParams();
-    params["order_id"] = QString::number(order_id);
+    QVariantMap params = BtcTradeApi::extraQueryParams();
+    params["order_id"] = order_id;
     return params;
 }
 
@@ -1458,7 +1458,7 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
     return ok;
 }
 
-#define USE_SQLITE
+//#define USE_SQLITE
 int main(int argc, char *argv[])
 {
     (void) argc;
@@ -1829,11 +1829,11 @@ int main(int argc, char *argv[])
 
                 TransHistory hist(storage);
                 QVariantMap hist_param;
-                hist_param["secret_id"] = id;
+                hist_param[":secret_id"] = id;
                 performSql("get max transaction id", selectMaxTransHistoryId, hist_param);
                 if (selectMaxTransHistoryId.next())
-                    hist.setFrom(selectMaxTransHistoryId.value(0).toInt()+1);
-                hist.setCount(100);
+                    hist.setFrom(selectMaxTransHistoryId.value(0).toInt());
+                hist.setCount(100).setOrder(false);
                 performTradeRequest("get history", hist);
                 for(Transaction transaction: hist.trans)
                 {
@@ -1842,7 +1842,7 @@ int main(int argc, char *argv[])
                     ins_params[":type"] = transaction.type;
                     ins_params[":amount"] = transaction.amount;
                     ins_params[":currency"] = transaction.currency;
-                    ins_params[":desription"] = transaction.desc;
+                    ins_params[":description"] = transaction.desc;
                     ins_params[":status"] = transaction.status;
                     ins_params[":timestamp"] = transaction.timestamp;
                     ins_params[":secret_id"] = id;
