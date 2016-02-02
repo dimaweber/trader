@@ -1478,6 +1478,7 @@ int main(int argc, char *argv[])
     db.setUserName("trader");
     db.setPassword("traderpassword");
     db.setDatabaseName("trade");
+    db.setConnectOptions("MYSQL_OPT_RECONNECT=true");
 #endif
 
     std::clog << "connecting to database ... ";
