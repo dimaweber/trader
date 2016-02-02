@@ -1101,7 +1101,7 @@ bool BtcPublicApi::performQuery()
     curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
 
     curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
-    std::clog << "perform query" << sUrl.constData() << std::endl;
+//    std::clog << "perform query" << sUrl.constData() << std::endl;
 
     curlResult = curl_easy_perform(curlHandle);
     if (curlResult != CURLE_OK)
