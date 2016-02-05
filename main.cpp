@@ -1531,7 +1531,7 @@ int main(int argc, char *argv[])
 			"status integer check (status>0 and status<5), "
 			"secret_id integer references secrets(id),"
 			"timestamp DATETIME not null"
-			")";
+			") character set utf8 COLLATE utf8_general_ci";
 
 	QSqlQuery sql(db);
     performSql("set utf8", sql, "SET NAMES utf8");
@@ -1841,7 +1841,9 @@ int main(int argc, char *argv[])
 
 					try
 					{
+                        db.transaction();
 						performSql("insert transaction info", insertTransaction, ins_params);
+                        db.commit();
 					}
 					catch (const QSqlQuery& e)
 					{
