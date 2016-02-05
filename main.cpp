@@ -1534,6 +1534,7 @@ int main(int argc, char *argv[])
 			")";
 
 	QSqlQuery sql(db);
+    performSql("set utf8", sql, "SET NAMES utf8");
 	performSql("create settings table", sql, createSettingsSql);
 	performSql("create orders table", sql, createOrdersSql);
 	performSql("create secrets table", sql, createSecretsSql);
