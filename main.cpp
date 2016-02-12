@@ -2053,7 +2053,7 @@ int main(int argc, char *argv[])
 						double sell_order_amount = selectSellOrder.value(1).toDouble();
 						double sell_order_rate = selectSellOrder.value(2).toDouble();
 						need_recreate_sell = (qAbs(sell_order_amount - amount_gain) > pair.min_amount)
-								|| qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places);
+								|| qAbs(sell_rate - sell_order_rate) >= qPow(10, -pair.decimal_places);
 
 						std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
 									 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
