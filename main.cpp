@@ -1943,6 +1943,10 @@ int main(int argc, char *argv[])
 					sell_rate = selectCurrentRoundGain.value(3).toDouble();
 					double profit = selectCurrentRoundGain.value(4).toDouble();
 
+					std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get %6% profit we need to sell it back with rate %5")
+								 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate).arg(profit * 100)
+							  << std::endl;
+
 					// adjust sell rate -- increase it till lowest price that is greater then sell_rate - 0.001
 					// for example we decide to sell @ 122.340, but currently depth looks like 123.000, 122.890, 122.615, 122.112
 					// so there is no point to create 122.340 order, we can create 122.614 order
@@ -1953,11 +1957,8 @@ int main(int argc, char *argv[])
 							adjusted_sell_rate = pos.rate;
 					}
 					sell_rate = adjusted_sell_rate - qPow(10, -pair.decimal_places);
-					std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate);
+					std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate) << std::endl;
 
-					std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get %6% profit we need to sell it back with rate %5")
-								 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate).arg(profit * 100)
-							  << std::endl;
 				}
 
 				if (amount_gain == 0)
