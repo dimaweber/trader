@@ -1534,7 +1534,7 @@ int main(int argc, char *argv[])
 			") character set utf8 COLLATE utf8_general_ci";
 
 	QSqlQuery sql(db);
-    performSql("set utf8", sql, "SET NAMES utf8");
+	performSql("set utf8", sql, "SET NAMES utf8");
 	performSql("create settings table", sql, createSettingsSql);
 	performSql("create orders table", sql, createOrdersSql);
 	performSql("create secrets table", sql, createSecretsSql);
@@ -1782,7 +1782,7 @@ int main(int argc, char *argv[])
 				auto equCalc = [buyer, seller](const Funds& f, const QString& curr) -> double
 				{
 					double equ = 0;
-					for(QString key : f.keys()) //allFunds[id].keys())
+					for(QString key : f.keys())
 					{
 						double v = f[key];
 						double s = 0;
@@ -1841,9 +1841,9 @@ int main(int argc, char *argv[])
 
 					try
 					{
-                        db.transaction();
+						db.transaction();
 						performSql("insert transaction info", insertTransaction, ins_params);
-                        db.commit();
+						db.commit();
 					}
 					catch (const QSqlQuery& e)
 					{
@@ -1942,6 +1942,18 @@ int main(int argc, char *argv[])
 					double payment = selectCurrentRoundGain.value(2).toDouble();
 					sell_rate = selectCurrentRoundGain.value(3).toDouble();
 					double profit = selectCurrentRoundGain.value(4).toDouble();
+
+					// adjust sell rate -- increase it till lowest price that is greater then sell_rate - 0.001
+					// for example we decide to sell @ 122.340, but currently depth looks like 123.000, 122.890, 122.615, 122.112
+					// so there is no point to create 122.340 order, we can create 122.614 order
+					double calculated_sell_rate = sell_rate;
+					double adjusted_sell_rate =  sell_rate + 100;
+					for (Depth::Position& pos: pair.depth.asks) {
+						if (pos.rate > calculated_sell_rate && pos.rate < adjusted_sell_rate)
+							adjusted_sell_rate = pos.rate;
+					}
+					sell_rate = adjusted_sell_rate - qPow(10, -pair.decimal_places);
+					std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate);
 
 					std::clog << QString("in current round we got %1 %2 and payed %3 %4 for it. To get %6% profit we need to sell it back with rate %5")
 								 .arg(amount_gain).arg(pair.goods()).arg(payment).arg(pair.currency()).arg(sell_rate).arg(profit * 100)
