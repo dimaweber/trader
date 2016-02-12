@@ -1781,7 +1781,7 @@ int main(int argc, char *argv[])
 				auto equCalc = [buyer, seller](const Funds& f, const QString& curr) -> double
 				{
 					double equ = 0;
-					for(QString key : f.keys()) //allFunds[id].keys())
+					for(QString key : f.keys())
 					{
 						double v = f[key];
 						double s = 0;
