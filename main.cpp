@@ -1952,12 +1952,12 @@ int main(int argc, char *argv[])
 					// so there is no point to create 122.340 order, we can create 122.614 order
 					double calculated_sell_rate = sell_rate;
 					double adjusted_sell_rate =  sell_rate + 100;
-					double decimal_fix = qPow(10, -pair.decimal_places);
+					//double decimal_fix = qPow(10, -pair.decimal_places);
 					for (Depth::Position& pos: pair.depth.asks) {
 						if (pos.rate > calculated_sell_rate && pos.rate < adjusted_sell_rate)
 							adjusted_sell_rate = pos.rate;
 					}
-					sell_rate = qMax(adjusted_sell_rate - decimal_fix, calculated_sell_rate);
+					sell_rate = qMax(adjusted_sell_rate/* - decimal_fix*/, calculated_sell_rate);
 					std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate) << std::endl;
 
 				}
