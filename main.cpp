@@ -1612,7 +1612,7 @@ int main(int argc, char *argv[])
 	QMap<int, Funds> allFunds;
 	BtcPublicInfo pinfo;
 	BtcPublicTicker pticker;
-	BtcPublicDepth pdepth(200);
+	BtcPublicDepth pdepth(500);
 
 	std::clog << "get currencies info ...";
 	if (!pinfo.performQuery())
