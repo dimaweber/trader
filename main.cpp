@@ -825,7 +825,7 @@ bool BtcTradeApi::performQuery()
 			query.clear();
 			QByteArray params = queryParams();
 
-			std::clog << QString("perform query: %1. Params: %2").arg(path()).arg(params.constData()) << std::endl;
+//			std::clog << QString("perform query: %1. Params: %2").arg(path()).arg(params.constData()) << std::endl;
 
 			QByteArray sign = hmac_sha512(params, storage.secret());
 			curl_easy_setopt(curlHandle, CURLOPT_POSTFIELDS, params.constData());
@@ -839,7 +839,7 @@ bool BtcTradeApi::performQuery()
 				break;
 			if (curlResult == CURLE_OPERATION_TIMEDOUT)
 			{
-				std::cerr << "http oeration timed out. Retry";
+				std::cerr << "http operation timed out. Retry";
 				retry_count--;
 			}
 		} while (retry_count);
@@ -1377,10 +1377,11 @@ class CurlWrapper
 CurlWrapper w;
 
 
-bool performSql(const QString& message, QSqlQuery& query, const QString& sql)
+bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=true)
 {
 	bool ok;
-	std::clog << QString("[sql] %1 ... ").arg(message);
+	if (!silent)
+        std::clog << QString("[sql] %1 ... ").arg(message);
 	if (sql.isEmpty())
 		ok = query.exec();
 	else
@@ -1388,7 +1389,8 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql)
 
 	if (ok)
 	{
-		std::clog << "ok";
+        if(!silent)
+    		std::clog << "ok";
 		if (query.isSelect())
 		{
 			int count = 0;
@@ -1404,18 +1406,22 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql)
 			else
 				count = -1;
 
-			std::clog << QString("(return %1 records)").arg(count);
+            if (!silent)
+    			std::clog << QString("(return %1 records)").arg(count);
 		}
 		else
-			std::clog << QString("(affected %1 records)").arg(query.numRowsAffected());
+            if (!silent)
+    			std::clog << QString("(affected %1 records)").arg(query.numRowsAffected());
 	}
 	else
 	{
-		std::clog << "Fail.";
+        if (!silent)
+    		std::clog << "Fail.";
 		std::cerr << "SQL: " << query.lastQuery() << "."
 				  << "Reason: " << query.lastError().text();
 	}
-	std::clog << std::endl;
+    if(!silent)
+    	std::clog << std::endl;
 	if (!ok)
 		throw query;
 	return ok;
@@ -1430,14 +1436,16 @@ bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& bin
 	return performSql(message, query, QString());
 }
 
-bool performTradeRequest(const QString& message, BtcTradeApi& req)
+bool performTradeRequest(const QString& message, BtcTradeApi& req, bool silent=true)
 {
 	bool ok = true;
-	std::clog << QString("[http] %1 ... ").arg(message);
+    if (!silent)
+        std::clog << QString("[http] %1 ... ").arg(message);
 	ok = req.performQuery();
 	if (!ok)
 	{
-		std::clog << "Fail.";
+        if (!silent)
+            std::clog << "Fail.";
 		std::cerr << QString("Failed method: %1").arg(req.methodName());
 	}
 	else
@@ -1445,15 +1453,17 @@ bool performTradeRequest(const QString& message, BtcTradeApi& req)
 		ok = req.isSuccess();
 		if (!ok)
 		{
-			std::clog << "Fail.";
+            if (!silent)   
+    			std::clog << "Fail.";
 			std::cerr << QString("Non success result: %1").arg(req.error());
 		}
 	}
 
-	if (ok)
+	if (ok && !silent)
 		std::clog << "ok";
-
-	std::clog << std::endl;
+    
+    if(!silent)
+    	std::clog << std::endl;
 
 	return ok;
 }
@@ -1553,6 +1563,7 @@ int main(int argc, char *argv[])
 	QSqlQuery selectOrdersFromPrevRound(db);
 	QSqlQuery selectMaxTransHistoryId(db);
 	QSqlQuery insertTransaction(db);
+    QSqlQuery currentRoundPayback(db);
 
 	std::clog << "prepare sql statements ... ";
 	try
@@ -1583,6 +1594,9 @@ int main(int argc, char *argv[])
 
 		if (!checkMaxBuyRate.prepare("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join settings s on s.id = o.settings_id where o.backed_up=0 and o.status=0 and type='buy' and o.settings_id=:settings_id"))
 			throw checkMaxBuyRate;
+
+        if (!currentRoundPayback.prepare("select sum(start_amount-amount) from orders where backed_up=0 and type='sell' and status > 1 and settings_id=:settings_id"))
+            throw currentRoundPayback;
 
 		if (!selectOrdersWithChangedStatus.prepare("SELECT order_id from orders where status=-1 and settings_id=:settings_id"))
 			throw selectOrdersWithChangedStatus;
@@ -1874,7 +1888,7 @@ int main(int argc, char *argv[])
 
 				QString pairName = QString("%1_%2").arg(goods, currency);
 
-				std::clog << QString("Processing settings_id %1. Pair: %2").arg(settings_id).arg(pairName) << std::endl;
+				std::clog << QString("\n -------     Processing settings_id %1. Pair: %2      --------------- ").arg(settings_id).arg(pairName) << std::endl;
 				if (!Pairs::ref().contains(pairName))
 				{
 					std::cerr << "no pair" << pairName << "available" <<std::endl;
@@ -1950,16 +1964,19 @@ int main(int argc, char *argv[])
 					// adjust sell rate -- increase it till lowest price that is greater then sell_rate - 0.001
 					// for example we decide to sell @ 122.340, but currently depth looks like 123.000, 122.890, 122.615, 122.112
 					// so there is no point to create 122.340 order, we can create 122.614 order
-					double calculated_sell_rate = sell_rate;
+					
+                    double calculated_sell_rate = sell_rate;
 					double adjusted_sell_rate =  sell_rate + 100;
-//					double decimal_fix = qPow(10, -pair.decimal_places);
-					for (Depth::Position& pos: pair.depth.asks) {
+                    double decimal_fix = 0;
+//					decimal_fix = qPow(10, -pair.decimal_places);
+					for (Depth::Position& pos: pair.depth.asks) 
+                    {
 						if (pos.rate > calculated_sell_rate && pos.rate < adjusted_sell_rate)
 							adjusted_sell_rate = pos.rate;
 					}
-					sell_rate = qMax(adjusted_sell_rate /*- decimal_fix*/, calculated_sell_rate);
+					sell_rate = qMax(adjusted_sell_rate - decimal_fix, calculated_sell_rate);
+                    
 					std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate) << std::endl;
-
 				}
 
 				if (amount_gain == 0)
@@ -2052,8 +2069,16 @@ int main(int argc, char *argv[])
 						sell_order_id = selectSellOrder.value(0).toInt();
 						double sell_order_amount = selectSellOrder.value(1).toDouble();
 						double sell_order_rate = selectSellOrder.value(2).toDouble();
-						need_recreate_sell = (qAbs(sell_order_amount - amount_gain) > pair.min_amount)
-								|| qAbs(sell_rate - sell_order_rate) >= 0.0000001 ; //qPow(10, -pair.decimal_places);
+                        double closed_sells_sold_amount = 0;
+                        performSql("get closed sell orders sold amount ", currentRoundPayback, param);
+                        if (currentRoundPayback.next())
+                        {
+                            closed_sells_sold_amount = currentRoundPayback.value(0).toDouble();
+                            std::clog << QString("closed sells sold %1 %2").arg(closed_sells_sold_amount).arg(pair.goods()) << std::endl; 
+                        }
+
+						need_recreate_sell = (qAbs(sell_order_amount + closed_sells_sold_amount - amount_gain) > pair.min_amount)
+								|| qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places);
 
 						std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
 									 .arg(sell_order_id).arg(sell_order_amount).arg(need_recreate_sell?"yes":"no").arg(sell_order_rate)
@@ -2110,7 +2135,7 @@ int main(int argc, char *argv[])
 			}
 
 			quint64 t = timer.elapsed();
-			std::clog << QString("iteration done in %1 ms").arg(t) << std::endl;
+			std::clog << QString("iteration done in %1 ms").arg(t) << std::endl << std::endl << std::endl;
 			quint64 ms_sleep = 10 * 1000;
 			if (t < ms_sleep)
 				usleep(1000 * (ms_sleep-t));
