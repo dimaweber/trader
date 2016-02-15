@@ -1703,16 +1703,20 @@ int main(int argc, char *argv[])
 				QString pname;
 				pname = "btc_usd";
 
-				auto seller = [](const QString& pname, double& goods, double& currency)
+				auto seller = [](const QString& pname, double& goods, double& currency) -> bool
 				{
 					Pair& p = Pairs::ref(pname);
 					double gain = 0;
 					double sold = 0;
+                    bool no_overflow = false;
 	//				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
 					for(auto d: p.depth.bids)
 					{
-						if (goods < p.min_amount)
+						if (goods < p.min_amount) 
+                        {
+                            no_overflow = true;
 							break;
+                        }
 						double amount = d.amount;
 						double rate = d.rate;
 						double trade_amount = qMin(goods, amount);
@@ -1723,19 +1727,24 @@ int main(int argc, char *argv[])
 
 					currency += gain;
 
+                    return no_overflow;
 	//				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
 				};
 
-				auto buyer = [](const QString& pname, double& goods, double& currency)
+				auto buyer = [](const QString& pname, double& goods, double& currency) -> bool
 				{
 					Pair& p = Pairs::ref(pname);
 					double bought = 0;
 					double spent = 0;
+                    bool no_overflow = false;
 	//				qDebug() << QString("we have %1 %2").arg(currency).arg(p.currency());
 					for(auto d: p.depth.asks)
 					{
 						if (currency < 0.000001)
+                        {
+                            no_overflow = true;
 							break;
+                        }
 						double amount = d.amount;
 						double rate = d.rate;
 						double price = qMin(currency, amount*rate);
@@ -1746,6 +1755,7 @@ int main(int argc, char *argv[])
 
 					goods += bought;
 
+                    return no_overflow;
 	//				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
 				};
 
@@ -1793,9 +1803,10 @@ int main(int argc, char *argv[])
 				if (btc - start_btc > 0)
 					std::cout << QString("btc -> usd -> ltc -> btc : %1").arg(btc - start_btc) << std::endl;
 
-				auto equCalc = [buyer, seller](const Funds& f, const QString& curr) -> double
+				auto equCalc = [buyer, seller](const Funds& f, const QString& curr, bool& no_overflow) -> double
 				{
 					double equ = 0;
+                    no_overflow = true;
 					for(QString key : f.keys())
 					{
 						double v = f[key];
@@ -1810,28 +1821,29 @@ int main(int argc, char *argv[])
 							continue;
 						else if (Pairs::ref().contains(pname))
 						{
-							buyer(pname, s, v);
+							no_overflow &= buyer(pname, s, v);
 							equ += s;
 						}
 						else if (Pairs::ref().contains(rname))
 						{
-							seller(rname, v, s);
+							no_overflow &= seller(rname, v, s);
 							equ += s;
 						}
 					}
 					return equ;
 				};
 
-				btc = equCalc(allFunds[id], "btc")
-					+ equCalc(onOrders, "btc");
-				usd = equCalc(allFunds[id], "usd")
-					+ equCalc(onOrders, "usd");
-				eur = equCalc(allFunds[id], "eur")
-					+ equCalc(onOrders, "eur");
-
-				std::clog << "BTC equ: " << btc << std::endl;
-				std::clog << "USD equ: " << usd << std::endl;
-				std::clog << "EUR equ: " << eur << std::endl;
+                auto displayEqu = [equCalc, id, &allFunds, &onOrders](const QString& name)
+                {
+                    bool funds_overflowControl, orders_overflowControl;
+				    double equ = equCalc(allFunds[id], name.toLower(), funds_overflowControl)
+					           + equCalc(onOrders, name.toLower(), orders_overflowControl);
+    				std::clog << QString("%1 equ: %2 %3").arg(name.toUpper()).arg(equ).arg((funds_overflowControl && orders_overflowControl)?"":" +") << std::endl;
+                };
+                
+                QStringList equList = {"btc", "usd", "eur"};
+                for(const QString& n: equList)
+                    displayEqu(n);
 
 				TransHistory hist(storage);
 				QVariantMap hist_param;
@@ -2070,11 +2082,11 @@ int main(int argc, char *argv[])
 						double sell_order_amount = selectSellOrder.value(1).toDouble();
 						double sell_order_rate = selectSellOrder.value(2).toDouble();
                         double closed_sells_sold_amount = 0;
-                        performSql("get closed sell orders sold amount ", currentRoundPayback, param);
+                        performSql("get canelled sell orders sold amount ", currentRoundPayback, param);
                         if (currentRoundPayback.next())
                         {
                             closed_sells_sold_amount = currentRoundPayback.value(0).toDouble();
-                            std::clog << QString("closed sells sold %1 %2").arg(closed_sells_sold_amount).arg(pair.goods()) << std::endl; 
+                            std::clog << QString("cancelled sells sold %1 %2").arg(closed_sells_sold_amount).arg(pair.goods()) << std::endl; 
                         }
 
 						need_recreate_sell = (qAbs(sell_order_amount + closed_sells_sold_amount - amount_gain) > pair.min_amount)
