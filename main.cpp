@@ -8,6 +8,7 @@
 #include <QtMath>
 #include <QElapsedTimer>
 #include <QMap>
+#include <QRegExp>
 #include <QVariant>
 
 #include <QSqlDatabase>
@@ -1540,7 +1541,8 @@ int main(int argc, char *argv[])
 			"description varchar(255), "
 			"status integer check (status>0 and status<5), "
 			"secret_id integer references secrets(id),"
-			"timestamp DATETIME not null"
+			"timestamp DATETIME not null,"
+            "order_id INTEGER NOT NULL default 0"
 			") character set utf8 COLLATE utf8_general_ci";
 
 	QSqlQuery sql(db);
@@ -1607,7 +1609,7 @@ int main(int argc, char *argv[])
 		if (!selectMaxTransHistoryId.prepare("select count(id) from transactions where secret_id=:secret_id"))
 			throw selectMaxTransHistoryId;
 
-		if (!insertTransaction.prepare("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp)"))
+		if (!insertTransaction.prepare("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)"))
 			throw insertTransaction;
 
 		std::clog << "ok" << std::endl;
@@ -1856,6 +1858,10 @@ int main(int argc, char *argv[])
 				for(Transaction transaction: hist.trans)
 				{
 					QVariantMap ins_params;
+                    QRegExp order_rx (":order:([0-9]*):");
+                    Order::Id order_id = 0;
+                    if (order_rx.indexIn(transaction.desc) > -1)
+                        order_id = order_rx.cap(1).toLongLong();
 					ins_params[":id"] = transaction.id;
 					ins_params[":type"] = transaction.type;
 					ins_params[":amount"] = transaction.amount;
@@ -1864,7 +1870,7 @@ int main(int argc, char *argv[])
 					ins_params[":status"] = transaction.status;
 					ins_params[":timestamp"] = transaction.timestamp;
 					ins_params[":secret_id"] = id;
-
+                    ins_params[":order_id"] = order_id;
 					try
 					{
 						db.transaction();
