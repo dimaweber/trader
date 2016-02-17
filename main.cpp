@@ -1552,7 +1552,8 @@ int main(int argc, char *argv[])
             "settings_id INTEGER NOT NULL references settings(id), "
             "start_time DATETIME NOT NULL, "
             "end_time DATETIME, "
-            "income DECIMAL(14,6) "
+            "income DECIMAL(14,6),"
+            "reason char(16) not null default 'active'"
             ")";
 
     QSqlQuery sql(db);
@@ -1629,7 +1630,7 @@ int main(int argc, char *argv[])
         if (!insertRound.prepare("insert into rounds (settings_id, start_time, income) values (:settings_id, now(), 0)"))
             throw insertRound;
 
-        if (!updateRound.prepare("update rounds set end_time=now(), income=:income where round_id=:round_id"))
+        if (!updateRound.prepare("update rounds set end_time=now(), income=:income, reason=:reason where round_id=:round_id"))
             throw updateRound;
 
         if (!getRoundId.prepare("select round_id from rounds where settings_id=:settings_id and end_time is null"))
@@ -1990,6 +1991,12 @@ int main(int argc, char *argv[])
                             std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
                             performSql(QString("Finish round"), finishRound, param);
                             round_in_progress = false;
+
+                            QVariantMap round_upd;
+                            round_upd[":round_id"] = round_id;
+                            round_upd[":income"] = 0;
+                            round_upd[":reason"] = "sell";
+                            performSql("close round", updateRound, round_upd, false);
                         }
                     }
 
@@ -2039,6 +2046,12 @@ int main(int argc, char *argv[])
                             std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
                             performSql("Finish buy orders for round", finishRound, param);
                             round_in_progress = false;
+
+                            QVariantMap round_upd;
+                            round_upd[":round_id"] = round_id;
+                            round_upd[":income"] = 0;
+                            round_upd[":reason"] = "rate inc";
+                            performSql("close round", updateRound, round_upd, false);
                         }
                     }
                 }
@@ -2052,11 +2065,6 @@ int main(int argc, char *argv[])
                         CancelOrder cancel(storage, funds, order_id);
                         performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
                     }
-
-                    QVariantMap round_upd;
-                    round_upd[":round_id"] = round_id;
-                    round_upd[":income"] = 0;
-                    performSql("close round", updateRound, round_upd, false);
 
                     std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
                     performSql("create new round record", insertRound, param, false);
