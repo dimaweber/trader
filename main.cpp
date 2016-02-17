@@ -1581,6 +1581,8 @@ int main(int argc, char *argv[])
     QSqlQuery insertRound(db);
     QSqlQuery updateRound(db);
     QSqlQuery getRoundId(db);
+    QSqlQuery roundBuyStat(db);
+    QSqlQuery roundSellStat(db);
 
     std::clog << "prepare sql statements ... ";
     try
@@ -1635,6 +1637,12 @@ int main(int argc, char *argv[])
 
         if (!getRoundId.prepare("select round_id from rounds where settings_id=:settings_id and end_time is null"))
             throw getRoundId;
+
+        if (!roundBuyStat.prepare("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders left join settings on id=settings_id where type='buy' and round_id=:round_id"))
+            throw roundBuyStat;
+
+        if (!roundSellStat.prepare("select type, sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders left join settings on id=settings_id where type='sell' and round_id=:round_id"))
+            throw roundSellStat;
 
         std::clog << "ok" << std::endl;
     }
@@ -1994,7 +2002,25 @@ int main(int argc, char *argv[])
 
                             QVariantMap round_upd;
                             round_upd[":round_id"] = round_id;
-                            round_upd[":income"] = 0;
+
+                            double currency_out = 0;
+                            double currency_in = 0;
+                            double goods_out = 0;
+                            double goods_in = 0;
+                            performSql("get round buy stats", roundBuyStat, round_upd);
+                            if (roundBuyStat.next())
+                            {
+                                currency_out = roundBuyStat.value(1).toDouble();
+                                goods_in = roundBuyStat.value(0).toDouble();
+                            }
+                            performSql("get round sell stats", roundSellStat, round_upd);
+                            if (roundSellStat.next())
+                            {
+                                currency_in = roundSellStat.value(1).toDouble();
+                                goods_out = roundSellStat.value(0).toDouble();
+                            }
+
+                            round_upd[":income"] = currency_in - currency_out;
                             round_upd[":reason"] = "sell";
                             performSql("close round", updateRound, round_upd, false);
                         }
