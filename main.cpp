@@ -1,3 +1,5 @@
+// select s.goods, truncate(sum(o.start_amount*o.rate),2) as 'used', truncate(sum(o.start_amount*o.rate) / s.dep * 100,2) as '%' from orders o left join settings s on s.id=o.settings_id where o.backed_up=0 and o.type='buy' group by o.settings_id;
+//
 #include <QByteArray>
 #include <QString>
 #include <QUrlQuery>
@@ -1523,7 +1525,8 @@ int main(int argc, char *argv[])
 				"rate decimal(11,6) DEFAULT NULL,"
 				"settings_id int(11) DEFAULT NULL,"
 				"backed_up INTEGER NOT NULL DEFAULT 0,"
-				"start_amount decimal(11,6) DEFAULT NULL"
+				"start_amount decimal(11,6) DEFAULT NULL,"
+                "round_id INTEGER NOT NULL DEFAULT 0 REFERENCES rounds(id)"
 			  ") ";
 
 	QString createSecretsSql = "CREATE TABLE IF NOT EXISTS secrets ("
@@ -1544,6 +1547,7 @@ int main(int argc, char *argv[])
 			"timestamp DATETIME not null,"
             "order_id INTEGER NOT NULL default 0"
 			") character set utf8 COLLATE utf8_general_ci";
+    QString createRoundsSql = "create table rounds(round_id integer primary key auto_increment, settings_id INTEGER NOT NULL references settings(id), start_time DATETIME NOT NULL, end_time DATETIME, income DECIMAL(14,6) )";
 
 	QSqlQuery sql(db);
 	performSql("set utf8", sql, "SET NAMES utf8");
@@ -1551,6 +1555,7 @@ int main(int argc, char *argv[])
 	performSql("create orders table", sql, createOrdersSql);
 	performSql("create secrets table", sql, createSecretsSql);
 	performSql("create transactions table", sql, createTransactionsSql);
+    performSql("create rounds table", sql, createRoundsSql);
 
 	QSqlQuery insertOrder(db);
 	QSqlQuery updateActiveOrder(db);
@@ -1855,10 +1860,10 @@ int main(int argc, char *argv[])
 					hist.setFrom(selectMaxTransHistoryId.value(0).toInt());
 				hist.setCount(100).setOrder(false);
 				performTradeRequest("get history", hist);
+                QRegExp order_rx (":order:([0-9]*):");
 				for(Transaction transaction: hist.trans)
 				{
 					QVariantMap ins_params;
-                    QRegExp order_rx (":order:([0-9]*):");
                     Order::Id order_id = 0;
                     if (order_rx.indexIn(transaction.desc) > -1)
                         order_id = order_rx.cap(1).toLongLong();
@@ -1984,7 +1989,7 @@ int main(int argc, char *argv[])
 					// so there is no point to create 122.340 order, we can create 122.614 order
 					
                     double calculated_sell_rate = sell_rate;
-					double adjusted_sell_rate =  sell_rate + 100;
+					double adjusted_sell_rate =  sell_rate + 10;
                     double decimal_fix = 0;
 //					decimal_fix = qPow(10, -pair.decimal_places);
 					for (Depth::Position& pos: pair.depth.asks) 
