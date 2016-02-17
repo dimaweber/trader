@@ -1553,7 +1553,11 @@ int main(int argc, char *argv[])
             "start_time DATETIME NOT NULL, "
             "end_time DATETIME, "
             "income DECIMAL(14,6),"
-            "reason char(16) not null default 'active'"
+            "reason char(16) not null default 'active', "
+            "g_in decimal(14,6) not null default 0, "
+            "g_out decimal(14,6) not null default 0, "
+            "c_in decimal(14,6) not null default 0, "
+            "c_out decimal(14,6) not null default 0 "
             ")";
 
     QSqlQuery sql(db);
@@ -1632,7 +1636,7 @@ int main(int argc, char *argv[])
         if (!insertRound.prepare("insert into rounds (settings_id, start_time, income) values (:settings_id, now(), 0)"))
             throw insertRound;
 
-        if (!updateRound.prepare("update rounds set end_time=now(), income=:income, reason=:reason where round_id=:round_id"))
+        if (!updateRound.prepare("update rounds set end_time=now(), income=:income, reason=:reason, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out where round_id=:round_id"))
             throw updateRound;
 
         if (!getRoundId.prepare("select round_id from rounds where settings_id=:settings_id and end_time is null"))
@@ -2022,6 +2026,10 @@ int main(int argc, char *argv[])
 
                             round_upd[":income"] = currency_in - currency_out;
                             round_upd[":reason"] = "sell";
+                            round_upd[":c_in"] = currency_in;
+                            round_upd[":c_out"] = currency_out;
+                            round_upd[":g_in"] = goods_in;
+                            round_upd[":g_out"] = goods_out;
                             performSql("close round", updateRound, round_upd, false);
                         }
                     }
@@ -2077,6 +2085,10 @@ int main(int argc, char *argv[])
                             round_upd[":round_id"] = round_id;
                             round_upd[":income"] = 0;
                             round_upd[":reason"] = "rate inc";
+                            round_upd[":c_in"] = 0;
+                            round_upd[":c_out"] = 0;
+                            round_upd[":g_in"] = 0;
+                            round_upd[":g_out"] = 0;
                             performSql("close round", updateRound, round_upd, false);
                         }
                     }
