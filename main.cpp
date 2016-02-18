@@ -1982,6 +1982,8 @@ int main(int argc, char *argv[])
 				performSql("get current round id", getRoundId, param);
 				if (getRoundId.next())
 					round_id = getRoundId.value(0).toInt();
+				else
+					round_id = 0;
 
 				std::clog << QString("\n -------     Processing settings_id %1. Pair: %2   [%3]   --------------- ").arg(settings_id).arg(pairName).arg(round_id) << std::endl;
 				std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[pair.currency()])
