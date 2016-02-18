@@ -12,6 +12,7 @@
 #include <QMap>
 #include <QRegExp>
 #include <QVariant>
+#include <QVector>
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -1601,6 +1602,7 @@ int main(int argc, char *argv[])
 	QSqlQuery roundBuyStat(db);
 	QSqlQuery roundSellStat(db);
 	QSqlQuery depositIncrease(db);
+	QSqlQuery orderTransition(db);
 
 	std::clog << "prepare sql statements ... ";
 	try
@@ -1635,7 +1637,7 @@ int main(int argc, char *argv[])
 		if (!currentRoundPayback.prepare("select sum(start_amount-amount) from orders where backed_up=0 and type='sell' and status > 1 and settings_id=:settings_id"))
 			throw currentRoundPayback;
 
-		if (!selectOrdersWithChangedStatus.prepare("SELECT order_id from orders where status=-1 and settings_id=:settings_id"))
+		if (!selectOrdersWithChangedStatus.prepare("SELECT order_id from orders where status=-1 and settings_id=:settings_id order by type desc"))
 			throw selectOrdersWithChangedStatus;
 
 		if (!selectOrdersFromPrevRound.prepare("SELECT order_id from orders where backed_up=1 and status<1 and settings_id=:settings_id"))
@@ -1664,6 +1666,9 @@ int main(int argc, char *argv[])
 
 		if (!depositIncrease.prepare("update settings set dep = dep+:dep_inc where id=:settings_id"))
 			throw depositIncrease;
+
+		if (!orderTransition.prepare("update orders set round_id=:round_id wehre order_id=:order_id"))
+			throw orderTransition;
 
 		std::clog << "ok" << std::endl;
 	}
@@ -2002,6 +2007,7 @@ int main(int argc, char *argv[])
 						std::clog << QString("active orders count: %1").arg(count)  << std::endl;
 					}
 
+				QVector<Order::Id> orders_for_round_transition;
 				if (performSql("check if any orders have status changed", selectOrdersWithChangedStatus, param))
 					while (selectOrdersWithChangedStatus.next())
 					{
@@ -2019,6 +2025,8 @@ int main(int argc, char *argv[])
 
 						performSql(QString("update order %1").arg(order_id), updateSetCanceled, upd_param);
 
+						// orders are sorted by type field, so sell orders come first
+						// if  buy order is chnaged and sell orders have changed also -- we translate buy order to next round
 						if (info.order.type == Order::Sell)
 						{
 							std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
@@ -2059,6 +2067,15 @@ int main(int argc, char *argv[])
 							performSql("increase deposit", depositIncrease, dep_upd);
 
 							round_id = 0;
+						}
+						else
+						{
+							// this is buy order
+							if (!round_in_progress)
+							{
+								// and round has finished (thus -- sell order exists)
+								orders_for_round_transition << order_id;
+							}
 						}
 					}
 
@@ -2172,6 +2189,18 @@ int main(int argc, char *argv[])
 					round_in_progress = true;
 					std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())
 							  << std::endl;
+
+					if (!orders_for_round_transition.isEmpty())
+					{
+						std::clog << "some orders from previous round got transition to this round";
+						QVariantMap trans_param;
+						trans_param[":round_id"] = round_id;
+						for(Order::Id order_id: orders_for_round_transition)
+						{
+							trans_param[":order_id"] = order_id;
+							performSql("transit order", orderTransition, trans_param);
+						}
+					}
 				}
 				else
 				{
