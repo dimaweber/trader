@@ -1527,7 +1527,8 @@ int main(int argc, char *argv[])
 			 "count int(11) NOT NULL DEFAULT '10', "
 			"currency char(3) not null default 'usd',"
 			"goods char(3) not null default 'btc',"
-			"secret_id integer not null references secrets(id)"
+			"secret_id integer not null references secrets(id), "
+			"dep_inc decimal(5,2) not null default 0.0"
 		   ")";
 	QString createOrdersSql = "CREATE TABLE IF NOT EXISTS `orders`  ("
 				"order_id INTEGER PRIMARY KEY,"
@@ -1599,6 +1600,7 @@ int main(int argc, char *argv[])
 	QSqlQuery getRoundId(db);
 	QSqlQuery roundBuyStat(db);
 	QSqlQuery roundSellStat(db);
+	QSqlQuery depositIncrease(db);
 
 	std::clog << "prepare sql statements ... ";
 	try
@@ -1618,7 +1620,7 @@ int main(int argc, char *argv[])
 		if (!selectSellOrder.prepare("SELECT order_id, start_amount, rate from orders where status < 1 and backed_up=0 and settings_id=:settings_id and type='sell'"))
 			throw selectSellOrder;
 
-		if (!selectSettings.prepare("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id from settings"))
+		if (!selectSettings.prepare("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings"))
 			throw selectSettings;
 
 		if (!selectCurrentRoundActiveOrdersCount.prepare("SELECT count(*) from orders where status=0 and settings_id=:settings_id and backed_up=0"))
@@ -1660,6 +1662,9 @@ int main(int argc, char *argv[])
 		if (!roundSellStat.prepare("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders left join settings on id=settings_id where type='sell' and round_id=:round_id"))
 			throw roundSellStat;
 
+		if (!depositIncrease.prepare("update settings set dep = dep+:dep_inc where settings_id=:settings_id"))
+			throw depositIncrease;
+
 		std::clog << "ok" << std::endl;
 	}
 	catch (QSqlQuery& e)
@@ -1698,6 +1703,7 @@ int main(int argc, char *argv[])
 	int secret_id = 0;
 	QString currency = "usd";
 	QString goods = "ppc";
+	double dep_inc = 0;
 
 	QElapsedTimer timer;
 	timer.start();
@@ -1952,6 +1958,7 @@ int main(int argc, char *argv[])
 				currency = selectSettings.value(7).toString();
 				goods = selectSettings.value(8).toString();
 				secret_id = selectSettings.value(9).toInt();
+				dep_inc = selectSettings.value(10).toDouble();
 
 				QString pairName = QString("%1_%2").arg(goods, currency);
 
@@ -2036,13 +2043,18 @@ int main(int argc, char *argv[])
 								currency_in = roundSellStat.value(1).toDouble();
 							}
 
-							round_upd[":income"] = currency_in - currency_out;
+							double income = currency_in - currency_out;
+							round_upd[":income"] = income;
 							round_upd[":reason"] = "sell";
 							round_upd[":c_in"] = currency_in;
 							round_upd[":c_out"] = currency_out;
 							round_upd[":g_in"] = goods_in;
 							round_upd[":g_out"] = goods_out;
 							performSql("close round", updateRound, round_upd, false);
+
+							QVariantMap dep_upd = param;
+							dep_upd[":dep_inc"] = income * dep_inc;
+							performSql("increase deposit", depositIncrease, dep_upd);
 
 							round_id = 0;
 						}
