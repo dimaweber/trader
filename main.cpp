@@ -1960,7 +1960,7 @@ int main(int argc, char *argv[])
 
                 param[":settings_id"] = settings_id;
 
-                performSql("get current round id", getRoundId, param, false);
+                performSql("get current round id", getRoundId, param);
                 if (getRoundId.next())
                     round_id = getRoundId.value(0).toInt();
 
@@ -2011,13 +2011,13 @@ int main(int argc, char *argv[])
                             double currency_in = 0;
                             double goods_out = 0;
                             double goods_in = 0;
-                            performSql("get round buy stats", roundBuyStat, round_upd);
+                            performSql("get round buy stats", roundBuyStat, round_upd, false);
                             if (roundBuyStat.next())
                             {
                                 goods_in = roundBuyStat.value(0).toDouble();
                                 currency_out = roundBuyStat.value(1).toDouble();
                             }
-                            performSql("get round sell stats", roundSellStat, round_upd);
+                            performSql("get round sell stats", roundSellStat, round_upd, false);
                             if (roundSellStat.next())
                             {
                                 goods_out = roundSellStat.value(0).toDouble();
