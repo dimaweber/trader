@@ -1662,7 +1662,7 @@ int main(int argc, char *argv[])
 		if (!roundSellStat.prepare("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders left join settings on id=settings_id where type='sell' and round_id=:round_id"))
 			throw roundSellStat;
 
-		if (!depositIncrease.prepare("update settings set dep = dep+:dep_inc where settings_id=:settings_id"))
+		if (!depositIncrease.prepare("update settings set dep = dep+:dep_inc where id=:settings_id"))
 			throw depositIncrease;
 
 		std::clog << "ok" << std::endl;
