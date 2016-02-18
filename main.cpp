@@ -1667,7 +1667,7 @@ int main(int argc, char *argv[])
 		if (!depositIncrease.prepare("update settings set dep = dep+:dep_inc where id=:settings_id"))
 			throw depositIncrease;
 
-		if (!orderTransition.prepare("update orders set round_id=:round_id wehre order_id=:order_id"))
+		if (!orderTransition.prepare("update orders set round_id=:round_id where order_id=:order_id"))
 			throw orderTransition;
 
 		std::clog << "ok" << std::endl;
