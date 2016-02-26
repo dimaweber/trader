@@ -11,4 +11,15 @@ TEMPLATE = app
 
 LIBS += -lcrypto -lcurl -lreadline
 
-SOURCES += main.cpp
+SOURCES += main.cpp \
+    key_storage.cpp \
+    utils.cpp \
+    http_query.cpp \
+    btce.cpp
+
+HEADERS += \
+    btce.h \
+    utils.h \
+    http_query.h \
+    curl_wrapper.h \
+    key_storage.h
