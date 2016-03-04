@@ -310,7 +310,7 @@ int main(int argc, char *argv[])
 		if (!depositIncrease.prepare("update settings set dep = dep+:dep_inc where id=:settings_id"))
 			throw depositIncrease;
 
-		if (!orderTransition.prepare("update orders set round_id=:round_id where order_id=:order_id"))
+		if (!orderTransition.prepare("update orders set round_id=:round_id, backed_up=0 where order_id=:order_id"))
 			throw orderTransition;
 
 		std::clog << "ok" << std::endl;
@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
 	QMap<int, BtcObjects::Funds> allFunds;
 	BtcPublicApi::Info pinfo;
 	BtcPublicApi::Ticker pticker;
-	BtcPublicApi::Depth pdepth(500);
+	BtcPublicApi::Depth pdepth(1000);
 
 	std::clog << "get currencies info ...";
 	if (!pinfo.performQuery())
@@ -390,6 +390,7 @@ int main(int argc, char *argv[])
 				BtcTradeApi::ActiveOrders activeOrders(storage);
 				if (performTradeRequest(QString("get active orders for keypair %1").arg(id),activeOrders))
 				{
+                    db.transaction();
 					for (BtcObjects::Order& order: activeOrders.orders)
 					{
 						QVariantMap params;
@@ -403,6 +404,7 @@ int main(int argc, char *argv[])
 						else
 							onOrders[order.goods()] += order.amount;
 					}
+                    db.commit();
 				}
 
 				QString pname;
@@ -743,7 +745,7 @@ int main(int argc, char *argv[])
 					// so there is no point to create 122.340 order, we can create 122.614 order
 
 					double calculated_sell_rate = sell_rate;
-					double adjusted_sell_rate =  sell_rate + 10;
+					double adjusted_sell_rate =  sell_rate + 1;
 					double decimal_fix = 0;
 //					decimal_fix = qPow(10, -pair.decimal_places);
 					for (BtcObjects::Depth::Position& pos: pair.depth.asks)
