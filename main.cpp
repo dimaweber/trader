@@ -818,7 +818,7 @@ int main(int argc, char *argv[])
                         BtcTradeApi::Trade trade(storage, funds, pair.name, BtcObjects::Order::Buy, rate, amount);
                         if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
                         {
-                            insertOrderParam[":order_id"] = (trade.order_id==0)?round_id * 100 + auto_executed_counter++:trade.order_id;
+                            insertOrderParam[":order_id"] = (trade.order_id==0)?-(round_id * 100 + auto_executed_counter++):trade.order_id;
                             insertOrderParam[":status"] = (trade.order_id==0)?1:0;
                             insertOrderParam[":type"] = "buy";
                             insertOrderParam[":amount"] = trade.remains;
@@ -922,7 +922,7 @@ int main(int argc, char *argv[])
                             BtcTradeApi::Trade sell(storage, funds, pair.name, BtcObjects::Order::Sell, sell_rate, amount_gain);
                             if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
                             {
-                                insertOrderParam[":order_id"] = (sell.order_id==0)?round_id*100+99:sell.order_id;
+                                insertOrderParam[":order_id"] = (sell.order_id==0)?-(round_id*100+99):sell.order_id;
                                 insertOrderParam[":status"] = (sell.order_id==0)?1:0;
                                 insertOrderParam[":type"] = "sell";
                                 insertOrderParam[":amount"] = sell.remains;
