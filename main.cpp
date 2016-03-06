@@ -214,7 +214,8 @@ int main(int argc, char *argv[])
             "g_in decimal(14,6) not null default 0, "
             "g_out decimal(14,6) not null default 0, "
             "c_in decimal(14,6) not null default 0, "
-            "c_out decimal(14,6) not null default 0 "
+            "c_out decimal(14,6) not null default 0, "
+            "dep_usage decimal(14,6) not null default 0"
             ")";
 
     QSqlQuery sql(db);
@@ -246,7 +247,7 @@ int main(int argc, char *argv[])
     QSqlQuery roundSellStat(db);
     QSqlQuery depositIncrease(db);
     QSqlQuery orderTransition(db);
-
+    QSqlQuery setRoundsDepUsage(db);
     std::clog << "prepare sql statements ... ";
     try
     {
@@ -312,6 +313,9 @@ int main(int argc, char *argv[])
 
         if (!orderTransition.prepare("update orders set round_id=:round_id, backed_up=0 where order_id=:order_id"))
             throw orderTransition;
+
+        if (setRoundsDepUsage.prepare("update rounds set dep_usage=:usage where round_id=:round_id"))
+            throw setRoundsDepUsage;
 
         std::clog << "ok" << std::endl;
     }
@@ -801,7 +805,8 @@ int main(int argc, char *argv[])
                     double execute_rate = pair.ticker.last;
                     double u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
                     double total_currency_spent = 0;
-
+                    QVariantMap usage_params;
+                    usage_params[":round_id"] = round_id;
                     for(int j=0; j<n; j++)
                     {
                         double amount = u * qPow(1+martingale, j);
@@ -833,6 +838,8 @@ int main(int argc, char *argv[])
                             std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
                         }
                     }
+                    usage_params[":usage"] = total_currency_spent;
+                    performSql("set dep_usage", setRoundsDepUsage, usage_params);
 
                     round_in_progress = true;
                     std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())
