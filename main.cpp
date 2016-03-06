@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
         if (!orderTransition.prepare("update orders set round_id=:round_id, backed_up=0 where order_id=:order_id"))
             throw orderTransition;
 
-        if (setRoundsDepUsage.prepare("update rounds set dep_usage=:usage where round_id=:round_id"))
+        if (!setRoundsDepUsage.prepare("update rounds set dep_usage=:usage where round_id=:round_id"))
             throw setRoundsDepUsage;
 
         std::clog << "ok" << std::endl;
