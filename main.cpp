@@ -81,6 +81,8 @@ bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& bin
     for(QString param: binds.keys())
     {
         query.bindValue(param, binds[param]);
+        if (!silent)
+            std::clog << "bind: " << param << " : " << binds[param].toString() << std::endl;
     }
     return performSql(message, query, QString(), silent);
 }
@@ -658,12 +660,12 @@ int main(int argc, char *argv[])
                     }
 
                 QVector<BtcObjects::Order::Id> orders_for_round_transition;
-                QVariantMap round_upd;
-                round_upd[":round_id"] = round_id;
                 double currency_out = 0;
                 double currency_in = 0;
                 double goods_out = 0;
                 double goods_in = 0;
+                QVariantMap round_upd;
+                round_upd[":round_id"] = round_id;
 
                 db.transaction();
                 performSql("get round buy stats", *vault.roundBuyStat, round_upd, false);
