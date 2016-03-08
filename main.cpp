@@ -82,7 +82,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& bin
     {
         query.bindValue(param, binds[param]);
         if (!silent)
-            std::clog << "bind: " << param << " : " << binds[param].toString() << std::endl;
+            std::clog << "\tbind: " << param << " : " << binds[param].toString() << std::endl;
     }
     return performSql(message, query, QString(), silent);
 }
@@ -203,7 +203,7 @@ bool SqlVault::prepare()
     prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, now(), 0)", insertRound);
 
     prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out where round_id=:round_id", updateRound);
-    prepareSql("update rounds set end_time=now(), reason=:reason where round_id=:round_id", closeRound);
+    prepareSql("update rounds set end_time=now(), reason='sell' where round_id=:round_id", closeRound);
 
     prepareSql("select round_id from rounds where settings_id=:settings_id and end_time is null", getRoundId);
 
@@ -668,13 +668,13 @@ int main(int argc, char *argv[])
                 round_upd[":round_id"] = round_id;
 
                 db.transaction();
-                performSql("get round buy stats", *vault.roundBuyStat, round_upd, false);
+                performSql("get round buy stats", *vault.roundBuyStat, round_upd);
                 if (vault.roundBuyStat->next())
                 {
                     goods_in = vault.roundBuyStat->value(0).toDouble();
                     currency_out = vault.roundBuyStat->value(1).toDouble();
                 }
-                performSql("get round sell stats", *vault.roundSellStat, round_upd, false);
+                performSql("get round sell stats", *vault.roundSellStat, round_upd);
                 if (vault.roundSellStat->next())
                 {
                     goods_out = vault.roundSellStat->value(0).toDouble();
@@ -687,7 +687,7 @@ int main(int argc, char *argv[])
                 round_upd[":c_out"] = currency_out;
                 round_upd[":g_in"] = goods_in;
                 round_upd[":g_out"] = goods_out;
-                performSql("update round", *vault.updateRound, round_upd, false);
+                performSql("update round", *vault.updateRound, round_upd);
 
                 if (performSql("check if any orders have status changed", *vault.selectOrdersWithChangedStatus, param))
                 {
@@ -717,8 +717,7 @@ int main(int argc, char *argv[])
 
                             QVariantMap round_close;
                             round_close[":round_id"] = round_id;
-                            round_close[":reason"] = "sell";
-                            performSql("close round", *vault.closeRound, round_close, false);
+                            performSql("close round", *vault.closeRound, round_close);
 
                             QVariantMap dep_upd = param;
                             dep += income * dep_inc;
