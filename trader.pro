@@ -23,3 +23,6 @@ HEADERS += \
     http_query.h \
     curl_wrapper.h \
     key_storage.h
+
+OBJECTS_DIR = obj
+MOC_DIR = moc
