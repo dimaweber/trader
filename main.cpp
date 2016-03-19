@@ -25,7 +25,6 @@
 
 //#define USE_SQLITE
 
-
 CurlWrapper w;
 
 bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=true)
@@ -598,25 +597,32 @@ int main(int argc, char *argv[])
                 if (vault.selectMaxTransHistoryId->next())
                     hist.setFrom(vault.selectMaxTransHistoryId->value(0).toInt());
                 hist.setCount(100).setOrder(false);
-                performTradeRequest("get history", hist);
-                QRegExp order_rx (":order:([0-9]*):");
-                for(BtcObjects::Transaction transaction: hist.trans)
-                {
-                    QVariantMap ins_params;
-                    BtcObjects::Order::Id order_id = 0;
-                    if (order_rx.indexIn(transaction.desc) > -1)
-                        order_id = order_rx.cap(1).toLongLong();
-                    ins_params[":id"] = transaction.id;
-                    ins_params[":type"] = transaction.type;
-                    ins_params[":amount"] = transaction.amount;
-                    ins_params[":currency"] = transaction.currency;
-                    ins_params[":description"] = transaction.desc;
-                    ins_params[":status"] = transaction.status;
-                    ins_params[":timestamp"] = transaction.timestamp;
-                    ins_params[":secret_id"] = id;
-                    ins_params[":order_id"] = order_id;
-                    performSql("insert transaction info", *vault.insertTransaction, ins_params);
+                try {
+                    performTradeRequest("get history", hist);
+                    QRegExp order_rx (":order:([0-9]*):");
+                    for(BtcObjects::Transaction transaction: hist.trans)
+                    {
+                        QVariantMap ins_params;
+                        BtcObjects::Order::Id order_id = 0;
+                        if (order_rx.indexIn(transaction.desc) > -1)
+                            order_id = order_rx.cap(1).toLongLong();
+                        ins_params[":id"] = transaction.id;
+                        ins_params[":type"] = transaction.type;
+                        ins_params[":amount"] = transaction.amount;
+                        ins_params[":currency"] = transaction.currency;
+                        ins_params[":description"] = transaction.desc;
+                        ins_params[":status"] = transaction.status;
+                        ins_params[":timestamp"] = transaction.timestamp;
+                        ins_params[":secret_id"] = id;
+                        ins_params[":order_id"] = order_id;
+                        performSql("insert transaction info", *vault.insertTransaction, ins_params);
+                    }
                 }
+                catch (const MissingField& e)
+                {
+                    // no transactions -- just ignore
+                }
+
                 db.commit();
             }
 
