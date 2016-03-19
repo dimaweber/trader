@@ -845,7 +845,7 @@ int main(int argc, char *argv[])
                         sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
 
                     double execute_rate = pair.ticker.last;
-                    double u = funds[currency] / execute_rate / sum;
+                    double u = dep / execute_rate / sum;
                     //u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
                     double total_currency_spent = 0;
                     QVariantMap usage_params;
