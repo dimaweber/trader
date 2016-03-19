@@ -23,8 +23,10 @@
 #include <signal.h>
 #include <memory>
 
-CurlWrapper w;
+//#define USE_SQLITE
 
+
+CurlWrapper w;
 
 bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=true)
 {
@@ -98,6 +100,7 @@ bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool sil
         if (!silent)
             std::clog << "Fail.";
         std::cerr << QString("Failed method: %1").arg(req.methodName());
+        throw std::runtime_error(req.methodName().toStdString());
     }
     else
     {
@@ -107,6 +110,7 @@ bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool sil
             if (!silent)
                 std::clog << "Fail.";
             std::cerr << QString("Non success result: %1").arg(req.error());
+            throw std::runtime_error(req.error().toStdString());
         }
     }
 
@@ -127,6 +131,11 @@ void sig_handler(int signum)
         exit_asked = true;
 }
 
+#ifdef USE_SQLITE
+#   define SQL_NOW "date('now')"
+#else
+#   define SQL_NOW "now()"
+#endif
 struct SqlVault
 {
     SqlVault(QSqlDatabase& db)
@@ -200,10 +209,10 @@ bool SqlVault::prepare()
 
     prepareSql("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)", insertTransaction);
 
-    prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, now(), 0)", insertRound);
+    prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, " SQL_NOW ", 0)", insertRound);
 
     prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out where round_id=:round_id", updateRound);
-    prepareSql("update rounds set end_time=now(), reason='sell' where round_id=:round_id", closeRound);
+    prepareSql("update rounds set end_time=" SQL_NOW ", reason='sell' where round_id=:round_id", closeRound);
 
     prepareSql("select round_id from rounds where settings_id=:settings_id and end_time is null", getRoundId);
 
@@ -220,7 +229,6 @@ bool SqlVault::prepare()
     return true;
 }
 
-//#define USE_SQLITE
 int main(int argc, char *argv[])
 {
 
@@ -299,10 +307,17 @@ int main(int argc, char *argv[])
             "secret_id integer references secrets(id),"
             "timestamp DATETIME not null,"
             "order_id INTEGER NOT NULL default 0"
-            ") character set utf8 COLLATE utf8_general_ci";
+            ") ";
+#ifndef USE_SQLITE
+            createTransactionsSql += "character set utf8 COLLATE utf8_general_ci";
+#endif
+
     QString createRoundsSql = "create table if not exists rounds( "
-            "round_id integer primary key auto_increment, "
-            "settings_id INTEGER NOT NULL references settings(id), "
+            "round_id integer primary key "
+#ifndef USE_SQLITE
+                              "auto_increment"
+#endif
+            ", settings_id INTEGER NOT NULL references settings(id), "
             "start_time DATETIME NOT NULL, "
             "end_time DATETIME, "
             "income DECIMAL(14,6),"
@@ -315,12 +330,21 @@ int main(int argc, char *argv[])
             ")";
 
     QSqlQuery sql(db);
-    performSql("set utf8", sql, "SET NAMES utf8");
-    performSql("create settings table", sql, createSettingsSql);
-    performSql("create orders table", sql, createOrdersSql);
-    performSql("create secrets table", sql, createSecretsSql);
-    performSql("create transactions table", sql, createTransactionsSql);
-    performSql("create rounds table", sql, createRoundsSql);
+    try {
+#ifndef USE_SQLITE
+        performSql("set utf8", sql, "SET NAMES utf8");
+#endif
+        performSql("create settings table", sql, createSettingsSql);
+        performSql("create orders table", sql, createOrdersSql);
+        performSql("create secrets table", sql, createSecretsSql);
+        performSql("create transactions table", sql, createTransactionsSql);
+        performSql("create rounds table", sql, createRoundsSql);
+    }
+    catch (const QSqlQuery& e)
+    {
+        std::cerr << e.lastError().text() << std::endl;
+        return 1;
+    }
 
     SqlVault vault(db);
     try
@@ -660,7 +684,7 @@ int main(int argc, char *argv[])
                     }
 
                 QVector<BtcObjects::Order::Id> orders_for_round_transition;
-                
+
                 db.transaction();
                 if (performSql("check if any orders have status changed", *vault.selectOrdersWithChangedStatus, param))
                 {
@@ -715,7 +739,7 @@ int main(int argc, char *argv[])
                             round_upd[":g_in"] = goods_in;
                             round_upd[":g_out"] = goods_out;
                             performSql("update round", *vault.updateRound, round_upd);
-                            
+
                             QVariantMap round_close;
                             round_close[":round_id"] = round_id;
                             performSql("close round", *vault.closeRound, round_close);
@@ -972,6 +996,11 @@ int main(int argc, char *argv[])
         catch (const BtcTradeApi::Api& e)
         {
             std::cerr << "Fail http query: " << e.error() << std::endl;
+            usleep(1000 * 1000 * 60);
+        }
+        catch (const HttpError& e)
+        {
+            std::cerr << "Http error: " << e.what() << std::endl;
             usleep(1000 * 1000 * 60);
         }
         catch (const std::runtime_error& e)
