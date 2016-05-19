@@ -12,6 +12,8 @@
 
 #include <stdexcept>
 
+class QSqlQuery;
+
 class MissingField : public std::runtime_error
 {public : MissingField(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
@@ -31,4 +33,6 @@ QDateTime read_timestamp(const QVariantMap& map, const QString& name);
 
 std::ostream& operator << (std::ostream& stream, const QString& str);
 
+bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=true);
+bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=true);
 #endif // UTILS_H

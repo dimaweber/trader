@@ -27,66 +27,6 @@
 
 CurlWrapper w;
 
-bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=true)
-{
-    bool ok;
-    if (!silent)
-        std::clog << QString("[sql] %1 ... ").arg(message);
-    if (sql.isEmpty())
-        ok = query.exec();
-    else
-        ok = query.exec(sql);
-
-    if (ok)
-    {
-        if(!silent)
-            std::clog << "ok";
-        if (query.isSelect())
-        {
-            int count = 0;
-            if (query.driver()->hasFeature(QSqlDriver::QuerySize))
-                count = query.size();
-            else if (!query.isForwardOnly())
-            {
-                while(query.next())
-                    count++;
-                query.first();
-                query.previous();
-            }
-            else
-                count = -1;
-
-            if (!silent)
-                std::clog << QString("(return %1 records)").arg(count);
-        }
-        else
-            if (!silent)
-                std::clog << QString("(affected %1 records)").arg(query.numRowsAffected());
-    }
-    else
-    {
-        if (!silent)
-            std::clog << "Fail.";
-        std::cerr << "SQL: " << query.lastQuery() << "."
-                  << "Reason: " << query.lastError().text();
-    }
-    if(!silent)
-        std::clog << std::endl;
-    if (!ok)
-        throw query;
-    return ok;
-}
-
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=true)
-{
-    for(QString param: binds.keys())
-    {
-        query.bindValue(param, binds[param]);
-        if (!silent)
-            std::clog << "\tbind: " << param << " : " << binds[param].toString() << std::endl;
-    }
-    return performSql(message, query, QString(), silent);
-}
 
 bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=true)
 {
