@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <tgbot/tgbot.h>
-#include "../utils.h"
+#include "utils.h"
 
 #include <QCoreApplication>
 #include <QSqlDatabase>

@@ -26,8 +26,10 @@
 *.exe
 *.out
 *.app
-trader
+daemon/trader
+infobot/infobot
+common/libcommon.a
 
 Makefile*
-*user.pro
+*.pro.user
 *.log
