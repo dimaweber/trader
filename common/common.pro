@@ -11,3 +11,5 @@ HEADERS += utils.h
 OBJECTS_DIR = .obj
 UI_DIR = .ui
 MOC_DIR = .moc
+
+DESTDIR = ../lib

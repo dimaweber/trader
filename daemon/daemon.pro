@@ -12,7 +12,7 @@ TEMPLATE = app
 INCLUDEPATH += ../common
 
 LIBS += -lcrypto -lcurl -lreadline
-LIBS += -L../common -lcommon
+LIBS += -L../lib -lcommon
 
 SOURCES += daemon.cpp \
     key_storage.cpp \
@@ -28,3 +28,5 @@ HEADERS += \
 OBJECTS_DIR = .obj
 UI_DIR = .ui
 MOC_DIR = .moc
+
+DESTDIR = ../bin
