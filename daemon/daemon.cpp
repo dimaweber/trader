@@ -322,7 +322,7 @@ int main(int argc, char *argv[])
 	double first_step = 0.01;
 	double martingale = 0.05;
 	double coverage = 0.15;
-	double comission = 0.002;
+//	double comission = 0.002;
 	int n = 8;
 	int secret_id = 0;
 	QString currency = "usd";
@@ -576,7 +576,7 @@ int main(int argc, char *argv[])
 			while (vault.selectSettings->next())
 			{
 				settings_id = vault.selectSettings->value(0).toInt();
-				comission = vault.selectSettings->value(1).toDouble();
+//				comission = vault.selectSettings->value(1).toDouble();
 				first_step = vault.selectSettings->value(2).toDouble();
 				martingale = vault.selectSettings->value(3).toDouble();
 				dep = vault.selectSettings->value(4).toDouble();

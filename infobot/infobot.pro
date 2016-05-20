@@ -1,7 +1,7 @@
 QT += core sql
 QT -= gui
 
-CONFIG += c++11
+CONFIG += c++11 warn_on
 
 TEMAPLTE=app
 

@@ -1,6 +1,6 @@
 QT += sql
 
-CONFIG += staticlib c++11
+CONFIG += staticlib c++11 warn_on
 
 TEMPLATE = lib
 
