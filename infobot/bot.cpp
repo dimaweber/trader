@@ -84,66 +84,105 @@ int main(int argc, char* argv[])
         bot.getApi().sendMessage(message->chat->id, answer);
     });
 
+
     bot.getEvents().onCommand("set", [&bot, &setQueriesId, &setQueriesName, verbs](TgBot::Message::Ptr message)
     {
+        QString idRxStr ("[0-9]+|([a-z]{3})/([a-z]{3})");
+        QString actionRxStr = QString("(%1)\\s*(?::|=)\\s*([0-9]+(?:\\.[0-9]+)?%?)").arg(verbs.join('|'));
+        QString setRxStr = QString("set\\s+(%1)((?:\\s+%2)+)").arg(idRxStr).arg(actionRxStr);
+
+        std::cout << setRxStr << std::endl;
+
         QString text = QString::fromStdString(message->text);
-        QString rxStr = QString("set (%1) ([0-9]+|([a-z]+)/([a-z]+)) ([0-9]+(\\.[0-9]+)?)").arg(verbs.join('|'));
-        QRegExp  rx(rxStr);
-        QString answer = "unknown action";
+        QRegExp  rx(setRxStr);
+        QRegExp idRx(idRxStr);
+        QRegExp actionRx(actionRxStr);
+
+        QString answer;
         QVariantMap params;
 
-        QString verb;
         int id = -1;
+        QString verb;
         QString goods;
         QString currency;
         QString value;
 
         if (rx.indexIn(text) > -1)
         {
-            if (rx.cap(3).isEmpty() && rx.cap(4).isEmpty())
-                id = rx.cap(2).toInt();
-            else
-            {
-                goods = rx.cap(3);
-                currency = rx.cap(4);
-            }
-            verb = rx.cap(1);
-            value = rx.cap(5);
+            QString idStr = rx.cap(1);
+            QString actionStr = rx.cap(4);
 
-            params[":value"] = value;
+            std::cout << "id: " << idStr << std::endl
+                      << "actions: " << actionStr << std::endl;
 
             QSqlQuery* pQ;
             QString pairName;
+            bool isId;
 
-            if (id != -1)
+            if (idRx.indexIn(idStr) > -1)
             {
-                params[":id"] = id;
-                pairName = QString::number(id);
-                pQ = setQueriesId[verb].get();
+                pairName = idRx.cap(0);
+                id = pairName.toInt(&isId);
+                goods = idRx.cap(1);
+                currency = idRx.cap(2);
+
+                if (isId)
+                {
+                    params[":id"] = id;
+                }
+                else
+                {
+                    params[":goods"] = goods;
+                    params[":currency"] = currency;
+                }
+
+
+                std::cout << "id: " << id
+                          << ", goods: " << goods
+                          << ", currency: " << currency
+                          << std::endl;
             }
-            else
+
+            int pos = 0;
+            while (actionRx.indexIn(actionStr, pos) > -1)
             {
-                pairName = QString("%1/%2").arg(goods).arg(currency);
-                params[":goods"] = goods;
-                params[":currency"] = currency;
-                pQ = setQueriesName[verb].get();
+                verb = actionRx.cap(1);
+                value = actionRx.cap(2);
+
+                if (isId)
+                    pQ = setQueriesId[verb].get();
+                else
+                    pQ = setQueriesName[verb].get();
+
+                if (value.endsWith('%'))
+                {
+                    value.chop(1);
+                    value = QString::number( value.toDouble() / 100);
+                }
+
+                std::cout << "action: " << verb << ", value: " << value << std::endl;
+
+                pos += actionRx.matchedLength();
+
+                params[":value"] = value;
+
+                if (performSql("set deposit", *pQ, params))
+                    answer += QString("%3 for pair %1 set to %2\n")
+                             .arg(pairName)
+                             .arg(value)
+                            .arg(verb);
+                else
+                    answer = QString("fail to set %1 for pair %2\n").arg(verb).arg(pairName);
             }
-
-
-            if (performSql("set deposit", *pQ, params))
-                answer = QString("ok, %3 for pair %1 set to %2")
-                         .arg(pairName)
-                         .arg(value)
-                        .arg(verb);
-            else
-                answer = "fail to set dep";
         }
+        else
+            answer = "unknown action";
         bot.getApi().sendMessage(message->chat->id,answer.toStdString());
     });
 
     bot.getEvents().onCommand("test", [&bot](TgBot::Message::Ptr message)
     {
-        bot.getApi().sendMessage(message->chat->id, "|1|2|\n|---|---|\n|1|2|",
+        bot.getApi().sendMessage(message->chat->id, "`|1|2|\n|-|-|\n|1|2|`",
                                  false, message->messageId, TgBot::GenericReply::Ptr(), "Markdown");
     });
 
