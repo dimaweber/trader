@@ -53,7 +53,7 @@ bool Pair::parse(const QVariantMap& map)
     min_amount = read_double(map, "min_amount");
     fee = read_double(map, "fee");
     hidden = read_long(map, "hidden") == 1;
-    name = read_string(map, "__key");
+    name = read_string(map, key_field);
 
     return true;
 }
@@ -67,7 +67,7 @@ bool Pairs::parse(const QVariantMap& map)
     clear();
     for (QString pairName: map.keys())
     {
-        if (pairName == "__key")
+        if (pairName == key_field)
             continue;
 
         Pair pair;
@@ -139,15 +139,15 @@ bool Order::parse(const QVariantMap& map)
 
     if (map.contains("order_id"))
         order_id = read_long(map, "order_id");
-    else if (map.contains("__key"))
-        order_id = read_long(map, "__key");
+    else if (map.contains(key_field))
+        order_id = read_long(map, key_field);
 
     return true;
 }
 
 bool Ticker::parse(const QVariantMap& map)
 {
-    name = read_string(map, "__key");
+    name = read_string(map, key_field);
     high = read_double(map, "high");
     low = read_double(map, "low");
     avg = read_double(map, "avg");
@@ -220,8 +220,8 @@ bool Transaction::parse(const QVariantMap& map)
 
     if (map.contains("transaction_id"))
         id = read_long(map, "transaction_id");
-    else if (map.contains("__key"))
-        id = read_long(map, "__key");
+    else if (map.contains(key_field))
+        id = read_long(map, key_field);
 
     return true;
 }
@@ -345,7 +345,7 @@ bool TransHistory::parseSuccess(const QVariantMap& returnMap)
     trans.clear();
     for (QString sId: returnMap.keys())
     {
-        if (sId == "__key")
+        if (sId == key_field)
             continue;
 
         BtcObjects::Transaction transaction;
@@ -530,7 +530,7 @@ bool ActiveOrders::parseSuccess(const QVariantMap& returnMap)
     orders.clear();
     for (QString sOrderId: returnMap.keys())
     {
-        if (sOrderId == "__key")
+        if (sOrderId == key_field)
             continue;
 
         BtcObjects::Order order;

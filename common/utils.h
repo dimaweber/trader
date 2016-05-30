@@ -14,6 +14,8 @@
 
 class QSqlQuery;
 
+const QString key_field = "__key";
+
 class MissingField : public std::runtime_error
 {public : MissingField(const QString& msg): std::runtime_error(msg.toStdString()){}};
 

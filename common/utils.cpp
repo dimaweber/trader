@@ -60,7 +60,7 @@ QVariantMap read_map(const QVariantMap& map, const QString& name)
         throw BrokenJson(name);
 
     QVariantMap ret = map[name].toMap();
-    ret["__key"] = name;
+    ret[key_field] = name;
 
     return ret;
 }
