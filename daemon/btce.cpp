@@ -301,6 +301,24 @@ bool Api::performQuery()
     if (curlResult != CURLE_OK)
         throw HttpError(curlResult);
 
+    double responce_size =0;
+    double request_size =0;
+    double dl_speed = 0;
+    double ul_speed =0;
+    double transfer_time = 0;
+    double headers_size =0;
+
+    curl_easy_getinfo(curlHandle, CURLINFO_SIZE_DOWNLOAD, &responce_size);
+    curl_easy_getinfo(curlHandle, CURLINFO_HEADER_SIZE, &headers_size);
+    curl_easy_getinfo(curlHandle, CURLINFO_SIZE_UPLOAD, &request_size);
+    curl_easy_getinfo(curlHandle, CURLINFO_SPEED_DOWNLOAD, &dl_speed);
+    curl_easy_getinfo(curlHandle, CURLINFO_SPEED_UPLOAD, &ul_speed);
+    curl_easy_getinfo(curlHandle, CURLINFO_TOTAL_TIME, &transfer_time);
+
+    std::clog << "upload " << request_size << " bytes " << " with speed " << ul_speed << " b/sec" << std::endl;
+    std::clog << "download" << responce_size << " bytes " << " with speed " << dl_speed << " b/sec" << std::endl;
+    std::clog << "transfer time: " << transfer_time << " sec" << std::endl;
+
     long http_code = 0;
     curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
     if (http_code != 200 )

@@ -388,14 +388,14 @@ int main(int argc, char *argv[])
             {
                 std::clog << "ok" << std::endl;
 
-                std::clog << ratesUpdateTime.toString() << std::endl;
                 QVariantMap params;
-                params[":time"] = ratesUpdateTime;
+//                params[":time"] = ratesUpdateTime;
                 try
                 {
                     db.transaction();
                     for (const BtcObjects::Pair& pair: BtcObjects::Pairs::ref().values())
                     {
+                        params[":time"] = pair.ticker.updated;
                         params[":currency"] = pair.currency();
                         params[":goods"] = pair.goods();
                         params[":buy"] = pair.ticker.buy;
