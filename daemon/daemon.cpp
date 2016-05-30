@@ -185,7 +185,7 @@ bool SqlVault::prepare()
 
     prepareSql("update rounds set dep_usage=:usage where round_id=:round_id", setRoundsDepUsage);
 
-    prepareSql("insert into rates values (:time, :currency, :goods, :buy, :sell, :last)", insertRate);
+    prepareSql("insert into rates values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
     prepareSql("insert into dep values (:time, :name, :secret, :dep)", insertDep);
 
@@ -294,6 +294,8 @@ int main(int argc, char *argv[])
                              "buy_rate decimal(14,6) not null, "
                              "sell_rate decimal(14,6) not null, "
                              "last_rate decimal(14,6) not null, "
+                             "currency_volume decimal(14,6) not null, "
+                             "goods_volume decimal(14,6) not null, "
                              "CONSTRAINT uniq_rate UNIQUE (time, currency, goods)"
                              ")";
 
@@ -399,6 +401,8 @@ int main(int argc, char *argv[])
                         params[":buy"] = pair.ticker.buy;
                         params[":sell"] = pair.ticker.sell;
                         params[":last"] = pair.ticker.last;
+                        params[":goods_volume"] = pair.ticker.vol;
+                        params[":currency_volume"] = pair.ticker.vol_cur;
                         performSql("Add rate", *vault.insertRate, params);
                     }
                     db.commit();
