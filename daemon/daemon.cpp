@@ -27,41 +27,6 @@
 
 CurlWrapper w;
 
-
-bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=true)
-{
-    bool ok = true;
-    if (!silent)
-        std::clog << QString("[http] %1 ... ").arg(message);
-    ok = req.performQuery();
-    if (!ok)
-    {
-        if (!silent)
-            std::clog << "Fail.";
-        std::cerr << QString("Failed method: %1").arg(req.methodName());
-        throw std::runtime_error(req.methodName().toStdString());
-    }
-    else
-    {
-        ok = req.isSuccess();
-        if (!ok)
-        {
-            if (!silent)
-                std::clog << "Fail.";
-            std::cerr << QString("Non success result: %1").arg(req.error());
-            throw std::runtime_error(req.error().toStdString());
-        }
-    }
-
-    if (ok && !silent)
-        std::clog << "ok";
-
-    if(!silent)
-        std::clog << std::endl;
-
-    return ok;
-}
-
 bool exit_asked = false;
 
 void sig_handler(int signum)
@@ -97,9 +62,21 @@ struct SqlVault
 {
     SqlVault(QSqlDatabase& db)
         :db(db)
-    {}
+    {
+        try
+        {
+            create_tables();
+            prepare();
+        }
+        catch (const QSqlQuery& e)
+        {
+            std::cerr << "Fail to perform " << e.lastQuery() << " : " << e.lastError().text() << std::endl;
+            throw e;
+        }
+    }
 
     bool prepare();
+    bool create_tables();
 
     std::unique_ptr<QSqlQuery> insertOrder;
     std::unique_ptr<QSqlQuery> updateActiveOrder;
@@ -126,7 +103,7 @@ struct SqlVault
     std::unique_ptr<QSqlQuery> setRoundsDepUsage;
     std::unique_ptr<QSqlQuery> insertRate;
     std::unique_ptr<QSqlQuery> insertDep;
-
+    std::unique_ptr<QSqlQuery> updateOrdersCheckToActive;
     QSqlDatabase& db;
 };
 
@@ -138,6 +115,8 @@ bool SqlVault::prepare()
         if (!sql->prepare(str))
             throw *sql;
     };
+
+    prepareSql("UPDATE orders set status=" ORDER_STATUS_CHECKING " where status=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
     prepareSql("INSERT INTO orders (order_id, status, type, amount, start_amount, rate, settings_id, round_id) "
                " values (:order_id, :status, :type, :amount, :start_amount, :rate, :settings_id, :round_id)", insertOrder);
@@ -192,6 +171,105 @@ bool SqlVault::prepare()
     return true;
 }
 
+bool SqlVault::create_tables()
+{
+    QMap<QString, QStringList> createSqls;
+    createSqls["settings"]
+             << "id INTEGER PRIMARY KEY " SQL_AUTOINCREMENT
+             << "profit decimal(6,4) NOT NULL DEFAULT '0.0100'"
+             << "comission decimal(6,4) NOT NULL DEFAULT '0.0020'"
+             << "first_step decimal(6,4) NOT NULL DEFAULT '0.0500'"
+             << "martingale decimal(6,4) NOT NULL DEFAULT '0.0500'"
+             << "dep decimal(10,4) NOT NULL DEFAULT '100.0000'"
+             << "coverage decimal(6,4) NOT NULL DEFAULT '0.1500'"
+             << "count int(11) NOT NULL DEFAULT '10'"
+             << "currency char(3) not null default 'usd'"
+             << "goods char(3) not null default 'btc'"
+             << "secret_id integer not null references secrets(id)"
+             << "dep_inc decimal(5,2) not null default 0.0"
+             << "enabled boolean not null default " SQL_TRUE
+             ;
+    createSqls["orders"]
+             <<  "order_id INTEGER PRIMARY KEY"
+             <<  "status int(11) NOT NULL DEFAULT '0'"
+             <<  "type char(4) NOT NULL DEFAULT 'buy'"
+             <<  "amount decimal(11,6) DEFAULT NULL"
+             <<  "rate decimal(11,6) DEFAULT NULL"
+             <<  "settings_id int(11) DEFAULT NULL"
+             <<  "backed_up INTEGER NOT NULL DEFAULT 0"
+             <<  "start_amount decimal(11,6) DEFAULT NULL"
+             <<  "round_id INTEGER NOT NULL DEFAULT 0 REFERENCES rounds(id)"
+             ;
+
+    createSqls["secrets"]
+            << "apikey char(255) not null"
+            << "secret char(255) not null"
+            << "id integer primary key"
+            << "is_crypted BOOLEAN not null default " SQL_FALSE
+            ;
+
+    createSqls["transactions"]
+            << "id integer primary key"
+            << "type integer not null check (type < 6 and type > 0)"
+            << "amount double not null check (amount>0)"
+            << "currency char(3) not null"
+            << "description varchar(255)"
+            << "status integer check (status>0 and status<5)"
+            << "secret_id integer references secrets(id)"
+            << "timestamp DATETIME not null"
+            << "order_id INTEGER NOT NULL default 0"
+            ;
+
+    createSqls["rounds"]
+            << "round_id integer primary key " SQL_AUTOINCREMENT
+            << "settings_id INTEGER NOT NULL references settings(id)"
+            << "start_time DATETIME NOT NULL"
+            << "end_time DATETIME"
+            << "income DECIMAL(14,6)"
+            << "reason char(16) not null default 'active'"
+            << "g_in decimal(14,6) not null default 0"
+            << "g_out decimal(14,6) not null default 0"
+            << "c_in decimal(14,6) not null default 0"
+            << "c_out decimal(14,6) not null default 0"
+            << "dep_usage decimal(14,6) not null default 0"
+            ;
+
+    createSqls["rates"]
+            << "time DATETIME not null"
+            << "currency char(3) not null"
+            << "goods char(3) not null"
+            << "buy_rate decimal(14,6) not null"
+            << "sell_rate decimal(14,6) not null"
+            << "last_rate decimal(14,6) not null"
+            << "currency_volume decimal(14,6) not null"
+            << "goods_volume decimal(14,6) not null"
+            << "CONSTRAINT uniq_rate UNIQUE (time, currency, goods)"
+            ;
+
+    createSqls["dep"]
+            << "time DATETIME not null"
+            << "name char(3) not null"
+            << "secret_id integer not null references secrets(id)"
+            << "value decimal(14,6) not null"
+            << "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
+               ;
+
+    QSqlQuery sql(db);
+    for (const QString& tableName : createSqls.keys())
+    {
+        QStringList& fields = createSqls[tableName];
+        QString createSql = QString("CREATE TABLE IF NOT EXISTS %1 (%2) " SQL_UTF8SUPPORT)
+                            .arg(tableName)
+                            .arg(fields.join(','))
+                            ;
+        QString caption = QString("create %1 table").arg(tableName);
+
+        performSql(caption, sql, createSql);
+    }
+
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -224,118 +302,15 @@ int main(int argc, char *argv[])
             usleep(1000 * 1000 * 5);
         }
         else
+        {
             std::clog << " ok" << std::endl;
-    }
-
-    QString createSettingsSql = "CREATE TABLE IF NOT EXISTS `settings`("
-             "id INTEGER PRIMARY KEY, "
-             "profit decimal(6,4) NOT NULL DEFAULT '0.0100',"
-             "comission decimal(6,4) NOT NULL DEFAULT '0.0020', "
-             "first_step decimal(6,4) NOT NULL DEFAULT '0.0500',"
-             "martingale decimal(6,4) NOT NULL DEFAULT '0.0500',"
-             "dep decimal(10,4) NOT NULL DEFAULT '100.0000',"
-             "coverage decimal(6,4) NOT NULL DEFAULT '0.1500',"
-             "count int(11) NOT NULL DEFAULT '10', "
-            "currency char(3) not null default 'usd',"
-            "goods char(3) not null default 'btc',"
-            "secret_id integer not null references secrets(id), "
-            "dep_inc decimal(5,2) not null default 0.0, "
-            "enabled boolean not null default " SQL_TRUE
-           ")";
-    QString createOrdersSql = "CREATE TABLE IF NOT EXISTS `orders`  ("
-                "order_id INTEGER PRIMARY KEY,"
-                "status int(11) NOT NULL DEFAULT '0',"
-                "type char(4) NOT NULL DEFAULT 'buy',"
-                "amount decimal(11,6) DEFAULT NULL,"
-                "rate decimal(11,6) DEFAULT NULL,"
-                "settings_id int(11) DEFAULT NULL,"
-                "backed_up INTEGER NOT NULL DEFAULT 0,"
-                "start_amount decimal(11,6) DEFAULT NULL,"
-                "round_id INTEGER NOT NULL DEFAULT 0 REFERENCES rounds(id)"
-              ") ";
-
-    QString createSecretsSql = "CREATE TABLE IF NOT EXISTS secrets ("
-            "apikey char(255) not null,"
-            "secret char(255) not null,"
-            "id integer primary key,"
-            "is_crypted BOOLEAN not null default " SQL_FALSE
-            ")";
-
-    QString createTransactionsSql = "create table if not exists transactions ( "
-            "id integer primary key, "
-            "type integer not null check (type < 6 and type > 0), "
-            "amount double not null check (amount>0), "
-            "currency char(3) not null, "
-            "description varchar(255), "
-            "status integer check (status>0 and status<5), "
-            "secret_id integer references secrets(id),"
-            "timestamp DATETIME not null,"
-            "order_id INTEGER NOT NULL default 0"
-            ") " SQL_UTF8SUPPORT;
-
-    QString createRoundsSql = "create table if not exists rounds( "
-            "round_id integer primary key " SQL_AUTOINCREMENT ", "
-            "settings_id INTEGER NOT NULL references settings(id), "
-            "start_time DATETIME NOT NULL, "
-            "end_time DATETIME, "
-            "income DECIMAL(14,6),"
-            "reason char(16) not null default 'active', "
-            "g_in decimal(14,6) not null default 0, "
-            "g_out decimal(14,6) not null default 0, "
-            "c_in decimal(14,6) not null default 0, "
-            "c_out decimal(14,6) not null default 0, "
-            "dep_usage decimal(14,6) not null default 0"
-            ")";
-
-    QString createRatesSql = "create table if not exists rates ("
-                             "time DATETIME not null, "
-                             "currency char(3) not null, "
-                             "goods char(3) not null, "
-                             "buy_rate decimal(14,6) not null, "
-                             "sell_rate decimal(14,6) not null, "
-                             "last_rate decimal(14,6) not null, "
-                             "currency_volume decimal(14,6) not null, "
-                             "goods_volume decimal(14,6) not null, "
-                             "CONSTRAINT uniq_rate UNIQUE (time, currency, goods)"
-                             ")";
-
-    QString createDepSql = "create table if not exists dep ("
-                           "time DATETIME not null, "
-                           "name char(3) not null, "
-                           "secret_id integer not null references secrets(id), "
-                           "value decimal(14,6) not null, "
-                           "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
-                           ")";
-    QSqlQuery sql(db);
-    try {
 #ifndef USE_SQLITE
-        performSql("set utf8", sql, "SET NAMES utf8");
+            performSql("set utf8", QSqlQuery(db), "SET NAMES utf8");
 #endif
-        performSql("create settings table", sql, createSettingsSql);
-        performSql("create orders table", sql, createOrdersSql);
-        performSql("create secrets table", sql, createSecretsSql);
-        performSql("create transactions table", sql, createTransactionsSql);
-        performSql("create rounds table", sql, createRoundsSql);
-        performSql("create rates table", sql, createRatesSql);
-        performSql("create dep table", sql, createDepSql);
-    }
-    catch (const QSqlQuery& e)
-    {
-        std::cerr << e.lastError().text() << std::endl;
-        return 1;
+        }
     }
 
     SqlVault vault(db);
-    try
-    {
-        vault.prepare();
-        std::clog << "ok" << std::endl;
-    }
-    catch (QSqlQuery& e)
-    {
-        std::clog << " FAIL. query: " << e.lastQuery() << ". " << "Reason: " << e.lastError().text() << std::endl;
-        return 1;
-    }
 
     std::clog << "Initialize key storage ... ";
     SqlKeyStorage storage(db, "secrets");
@@ -353,8 +328,6 @@ int main(int argc, char *argv[])
     else
         std::clog << "ok" << std::endl;
 
-
-    /// Settings
     int settings_id = 1;
     int round_id = 0;
 
@@ -362,7 +335,6 @@ int main(int argc, char *argv[])
     double first_step = 0.01;
     double martingale = 0.05;
     double coverage = 0.15;
-//	double comission = 0.002;
     int n = 8;
     int secret_id = 0;
     QString currency = "usd";
@@ -389,7 +361,6 @@ int main(int argc, char *argv[])
                 std::clog << "ok" << std::endl;
 
                 QVariantMap params;
-//                params[":time"] = ratesUpdateTime;
                 try
                 {
                     db.transaction();
@@ -419,7 +390,7 @@ int main(int argc, char *argv[])
             else
                 std::clog << "ok" << std::endl;
 
-            performSql("Mark all active orders as unknown status", sql, "UPDATE orders set status=" ORDER_STATUS_CHECKING " where status=" ORDER_STATUS_ACTIVE);
+            performSql("Mark all active orders as unknown status", *vault.updateOrdersCheckToActive);
 
             BtcObjects::Funds onOrders;
             for(int id: storage.allKeys())
@@ -429,6 +400,31 @@ int main(int argc, char *argv[])
 
                 BtcTradeApi::Info info(storage, allFunds[id]);
                 performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
+
+                BtcObjects::Funds& funds = allFunds[id];
+                QVariantMap params;
+                params[":secret"] = id;
+                try
+                {
+                    db.transaction();
+                    for (const QString& name: funds.keys())
+                    {
+                        if (name == key_field)
+                            continue;
+
+                        double value = funds[name];
+                        params[":name"] = name;
+                        params[":dep"] = value;
+                        params[":time"] = ratesUpdateTime;
+
+                        performSql("Add dep", *vault.insertDep, params);
+                    }
+                    db.commit();
+                }
+                catch(const QSqlQuery& e)
+                {
+                    db.rollback();
+                }
 
                 BtcTradeApi::ActiveOrders activeOrders(storage);
                 if (performTradeRequest(QString("get active orders for keypair %1").arg(id),activeOrders))
@@ -510,7 +506,7 @@ int main(int argc, char *argv[])
     //				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
                 };
 
-                double btc = allFunds[id]["btc"] / 10;
+                double btc = funds["btc"] / 10;
                 double start_btc = btc;
                 double usd = 0;
                 double eur = 0;
@@ -584,10 +580,10 @@ int main(int argc, char *argv[])
                     return equ;
                 };
 
-                auto displayEqu = [equCalc, id, &allFunds, &onOrders](const QString& name)
+                auto displayEqu = [equCalc, &funds, &onOrders](const QString& name)
                 {
                     bool funds_overflowControl, orders_overflowControl;
-                    double equ = equCalc(allFunds[id], name.toLower(), funds_overflowControl)
+                    double equ = equCalc(funds, name.toLower(), funds_overflowControl)
                                + equCalc(onOrders, name.toLower(), orders_overflowControl);
                     std::clog << QString("%1 equ: %2 %3").arg(name.toUpper()).arg(equ).arg((funds_overflowControl && orders_overflowControl)?"":" +") << std::endl;
                 };
@@ -992,34 +988,6 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
-                }
-            }
-
-            for(int id: allFunds.keys())
-            {
-                BtcObjects::Funds funds = allFunds[id];
-                QVariantMap params;
-                params[":secret"] = id;
-                try
-                {
-                    db.transaction();
-                    for (const QString& name: funds.keys())
-                    {
-                        if (name == key_field)
-                            continue;
-
-                        double value = funds[name];
-                        params[":name"] = name;
-                        params[":dep"] = value;
-                        params[":time"] = ratesUpdateTime;
-
-                        performSql("Add dep", *vault.insertDep, params);
-                    }
-                    db.commit();
-                }
-                catch(const QSqlQuery& e)
-                {
-                    db.rollback();
                 }
             }
 

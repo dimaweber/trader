@@ -9,18 +9,19 @@
 class HttpQuery : public CurlHandleWrapper
 {
 protected:
-	bool valid;
+    bool valid;
+    static size_t writeFunc(char *ptr, size_t size, size_t nmemb, void *userdata);
+    QByteArray jsonData;
 
-	static size_t writeFunc(char *ptr, size_t size, size_t nmemb, void *userdata);
-	QByteArray jsonData;
+    virtual void setHeaders(CurlListWrapper& headers);
 
-	virtual  bool performQuery() =0;
-	virtual QString path() const = 0;
-	virtual bool parseSuccess(const QVariantMap& returnMap) =0;
-	virtual bool parse(const QByteArray& serverAnswer) =0;
+    virtual QString path() const = 0;
+    virtual bool parseSuccess(const QVariantMap& returnMap) =0;
+    virtual bool parse(const QByteArray& serverAnswer) =0;
 public:
-	HttpQuery():valid(false){}
-	bool isValid() const { return valid;}
+    HttpQuery():valid(false){}
+    bool isValid() const { return valid;}
+    bool performQuery();
 };
 
 

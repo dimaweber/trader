@@ -281,59 +281,6 @@ bool Depth::parseSuccess(const QVariantMap& returnMap)
     return true;
 }
 
-bool Api::performQuery()
-{
-    CURLcode curlResult = CURLE_OK;
-
-    jsonData.clear();
-    curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
-
-    curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
-    curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
-
-    QByteArray sUrl = path().toUtf8();
-    curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
-
-    curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
-//    std::clog << "perform query" << sUrl.constData() << std::endl;
-
-    curlResult = curl_easy_perform(curlHandle);
-    if (curlResult != CURLE_OK)
-        throw HttpError(curlResult);
-
-    double responce_size =0;
-    double request_size =0;
-    double dl_speed = 0;
-    double ul_speed =0;
-    double transfer_time = 0;
-    double headers_size =0;
-
-    curl_easy_getinfo(curlHandle, CURLINFO_SIZE_DOWNLOAD, &responce_size);
-    curl_easy_getinfo(curlHandle, CURLINFO_HEADER_SIZE, &headers_size);
-    curl_easy_getinfo(curlHandle, CURLINFO_SIZE_UPLOAD, &request_size);
-    curl_easy_getinfo(curlHandle, CURLINFO_SPEED_DOWNLOAD, &dl_speed);
-    curl_easy_getinfo(curlHandle, CURLINFO_SPEED_UPLOAD, &ul_speed);
-    curl_easy_getinfo(curlHandle, CURLINFO_TOTAL_TIME, &transfer_time);
-
-    std::clog << "upload " << request_size << " bytes " << " with speed " << ul_speed << " b/sec" << std::endl;
-    std::clog << "download" << responce_size << " bytes " << " with speed " << dl_speed << " b/sec" << std::endl;
-    std::clog << "transfer time: " << transfer_time << " sec" << std::endl;
-
-    long http_code = 0;
-    curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
-    if (http_code != 200 )
-    {
-        std::cerr << "Bad HTTP reply code: " << http_code << std::endl;
-        return false;
-    }
-
-    bool ok;
-    ok = /*HttpQuery::performQuery()
-            &&*/  parse(jsonData);
-
-    return ok;
-}
-
 QString Api::path() const
 {
     return "https://btc-e.com/api/3/";
@@ -417,6 +364,7 @@ void Info::showSuccess() const
 
 QByteArray Api::queryParams()
 {
+    QUrlQuery query;
     QVariantMap extraParams = extraQueryParams();
     for(const QString& param: extraParams.keys())
     {
@@ -471,66 +419,16 @@ QVariantMap Api::extraQueryParams()
     return params;
 }
 
-bool Api::performQuery()
+void Api::setHeaders(CurlListWrapper& headers)
 {
-//	CURL* curlHandle = nullptr;
-    CURLcode curlResult = CURLE_OK;
+    postParams = queryParams();
 
-    valid = false;
+    QByteArray sign = hmac_sha512(postParams, storage.secret());
+    curl_easy_setopt(curlHandle, CURLOPT_POSTFIELDS, postParams.constData());
+    headers .append(QString("Key: %1").arg(storage.apiKey().constData()).toUtf8())
+            .append(QString("Sign: %1").arg(sign.toHex().constData()).toUtf8());
 
-    //		curlHandle = curl_easy_init();
-
-    jsonData.clear();
-
-    curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
-
-    curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, &jsonData);
-    curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, HttpQuery::writeFunc);
-
-    QByteArray sUrl = path().toUtf8();
-    curl_easy_setopt(curlHandle, CURLOPT_URL, sUrl.constData());
-    curl_easy_setopt(curlHandle, CURLOPT_TIMEOUT, 20L);
-
-    int retry_count = 10;
-    do {
-        CurlListWrapper headers;
-
-        query.clear();
-        QByteArray params = queryParams();
-
-        //			std::clog << QString("perform query: %1. Params: %2").arg(path()).arg(params.constData()) << std::endl;
-
-        QByteArray sign = hmac_sha512(params, storage.secret());
-        curl_easy_setopt(curlHandle, CURLOPT_POSTFIELDS, params.constData());
-        headers.append(QString("Key: %1").arg(storage.apiKey().constData()).toUtf8());
-        headers.append(QString("Sign: %1").arg(sign.toHex().constData()).toUtf8());
-
-        headers.setHeaders(curlHandle);
-
-        curlResult = curl_easy_perform(curlHandle);
-        if (curlResult == CURLE_OK)
-            break;
-        if (curlResult == CURLE_OPERATION_TIMEDOUT)
-        {
-            std::cerr << "http operation timed out. Retry";
-            retry_count--;
-        }
-    } while (retry_count);
-
-    if (curlResult != CURLE_OK)
-        throw HttpError(curl_easy_strerror(curlResult));
-
-    long http_code = 0;
-    curl_easy_getinfo (curlHandle, CURLINFO_RESPONSE_CODE, &http_code);
-    if (http_code != 200 )
-    {
-        std::cerr << "Bad HTTP reply code: " << http_code << std::endl;
-        throw HttpError(QString("HTTP code: %1").arg(http_code));
-    }
-
-    //		curl_easy_cleanup(curlHandle);
-
-    return parse(jsonData);
+    HttpQuery::setHeaders(headers);
 }
 
 void Api::display() const
@@ -649,4 +547,38 @@ void CancelOrder::showSuccess() const
 {
 
 }
+}
+
+bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent)
+{
+    bool ok = true;
+    if (!silent)
+        std::clog << QString("[http] %1 ... ").arg(message);
+    ok = req.performQuery();
+    if (!ok)
+    {
+        if (!silent)
+            std::clog << "Fail.";
+        std::cerr << QString("Failed method: %1").arg(req.methodName());
+        throw std::runtime_error(req.methodName().toStdString());
+    }
+    else
+    {
+        ok = req.isSuccess();
+        if (!ok)
+        {
+            if (!silent)
+                std::clog << "Fail.";
+            std::cerr << QString("Non success result: %1").arg(req.error());
+            throw std::runtime_error(req.error().toStdString());
+        }
+    }
+
+    if (ok && !silent)
+        std::clog << "ok";
+
+    if(!silent)
+        std::clog << std::endl;
+
+    return ok;
 }

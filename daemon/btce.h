@@ -133,8 +133,6 @@ class Api : public HttpQuery
 protected:
     virtual QString path() const override;
     virtual bool parse(const QByteArray& serverAnswer) final override;
-public:
-    virtual bool performQuery() override final;
 };
 
 class Ticker : public Api
@@ -172,11 +170,11 @@ class Api : public HttpQuery
     KeyStorage& storage;
     static quint32 _nonce;
     static QString nonce() { return QString::number(++_nonce);}
+    QByteArray postParams;
 protected:
     bool success;
     QString errorMsg;
 
-    QUrlQuery query;
     QByteArray queryParams();
 
     virtual bool parse(const QByteArray& serverAnswer) override;
@@ -191,7 +189,7 @@ public:
     {}
 
     virtual QString path() const override { return "https://btc-e.com/tapi";}
-    virtual bool performQuery() override;
+    virtual void setHeaders(CurlListWrapper& headers) override final;
     void display() const;
     bool isSuccess() const {return isValid() && success;}
     QString error() const {return errorMsg;}
@@ -312,4 +310,5 @@ public:
 };
 }
 
+bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=true);
 #endif // BTCE_H
