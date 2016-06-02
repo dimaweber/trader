@@ -10,7 +10,7 @@
 
 #include <iostream>
 
-#define USE_SQLITE
+//#define USE_SQLITE
 
 int main(int argc, char* argv[])
 {

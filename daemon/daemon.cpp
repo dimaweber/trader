@@ -166,7 +166,7 @@ bool SqlVault::prepare()
 
     prepareSql("insert into rates values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
-    prepareSql("insert into dep values (:time, :name, :secret, :dep)", insertDep);
+    prepareSql("insert into dep values (:time, :name, :secret, :dep, :orders)", insertDep);
 
     return true;
 }
@@ -209,9 +209,9 @@ bool SqlVault::create_tables()
             ;
 
     createSqls["transactions"]
-            << "id integer primary key"
+            << "id bigint primary key"
             << "type integer not null check (type < 6 and type > 0)"
-            << "amount double not null check (amount>0)"
+            << "amount double not null check (amount>=0)"
             << "currency char(3) not null"
             << "description varchar(255)"
             << "status integer check (status>0 and status<5)"
@@ -251,6 +251,7 @@ bool SqlVault::create_tables()
             << "name char(3) not null"
             << "secret_id integer not null references secrets(id)"
             << "value decimal(14,6) not null"
+            << "on_orders decimal(14,6) not null default 0"
             << "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
                ;
 
@@ -305,7 +306,8 @@ int main(int argc, char *argv[])
         {
             std::clog << " ok" << std::endl;
 #ifndef USE_SQLITE
-            performSql("set utf8", QSqlQuery(db), "SET NAMES utf8");
+            QSqlQuery sql(db);
+            performSql("set utf8", sql, "SET NAMES utf8");
 #endif
         }
     }
@@ -401,31 +403,6 @@ int main(int argc, char *argv[])
                 BtcTradeApi::Info info(storage, allFunds[id]);
                 performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
 
-                BtcObjects::Funds& funds = allFunds[id];
-                QVariantMap params;
-                params[":secret"] = id;
-                try
-                {
-                    db.transaction();
-                    for (const QString& name: funds.keys())
-                    {
-                        if (name == key_field)
-                            continue;
-
-                        double value = funds[name];
-                        params[":name"] = name;
-                        params[":dep"] = value;
-                        params[":time"] = ratesUpdateTime;
-
-                        performSql("Add dep", *vault.insertDep, params);
-                    }
-                    db.commit();
-                }
-                catch(const QSqlQuery& e)
-                {
-                    db.rollback();
-                }
-
                 BtcTradeApi::ActiveOrders activeOrders(storage);
                 if (performTradeRequest(QString("get active orders for keypair %1").arg(id),activeOrders))
                 {
@@ -444,6 +421,31 @@ int main(int argc, char *argv[])
                             onOrders[order.goods()] += order.amount;
                     }
                     db.commit();
+                }
+
+                BtcObjects::Funds& funds = allFunds[id];
+                QVariantMap params;
+                params[":secret"] = id;
+                try
+                {
+                    db.transaction();
+                    for (const QString& name: funds.keys())
+                    {
+                        if (name == key_field)
+                            continue;
+
+                        double value = funds[name];
+                        params[":name"] = name;
+                        params[":dep"] = value;
+                        params[":time"] = ratesUpdateTime;
+                        params[":orders"] = onOrders[name];
+                        performSql("Add dep", *vault.insertDep, params);
+                    }
+                    db.commit();
+                }
+                catch(const QSqlQuery& e)
+                {
+                    db.rollback();
                 }
 
                 QString pname;
@@ -621,9 +623,9 @@ int main(int argc, char *argv[])
                         performSql("insert transaction info", *vault.insertTransaction, ins_params);
                     }
                 }
-                catch (const MissingField& e)
+                catch (const std::runtime_error& e)
                 {
-                    // no transactions -- just ignore
+
                 }
 
                 db.commit();
