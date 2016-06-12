@@ -5,7 +5,7 @@ CONFIG += c++11 warn_on
 
 TEMAPLTE=app
 
-LIBS  += -L../tgbot-cpp -lTgBot -lboost_system -lpthread -lcrypto -lssl
+LIBS  += -L../lib -ltgbot-cpp -lboost_system -lpthread -lcrypto -lssl
 
 LIBS += -L../lib -lcommon
 
