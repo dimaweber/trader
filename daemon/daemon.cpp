@@ -171,34 +171,121 @@ bool SqlVault::prepare()
     return true;
 }
 
+class TableField
+{
+public:
+    enum Types {Integer, Decimal, Char, Boolean};
+
+    TableField(const QString& name, Types type = Integer, int size=0, qint16 prec=-1)
+        :_name(name), _type(type), _size(size), _prec(prec),
+          _notNull(false), _primaryKey(false), _autoIncrement(false)
+    {}
+
+    TableField& notNull()
+    {
+        _notNull = true;
+        return *this;
+    }
+
+    TableField& defaultValue(const QString& value)
+    {
+        _default = value;
+        return *this;
+    }
+
+    TableField& defaultValue(float value)
+    {
+        _default = QString::number(value, 'f');
+        return *this;
+    }
+
+    TableField& references(const QString& tableName, const QStringList& fields = QStringList())
+    {
+        _refTable = tableName;
+        _refFields = fields;
+        return *this;
+    }
+
+    TableField& primaryKey(bool isAutoInc = true)
+    {
+        _primaryKey = true;
+        _autoIncrement = isAutoInc;
+        return *this;
+    }
+
+    operator QString() const
+    {
+        QString t;
+        switch(_type)
+        {
+            case Decimal: t = "DECIMAL"; break;
+            case Integer:  t = "INTEGER"; break;
+            case Char: t = "CHAR"; break;
+            case Boolean: t = "BOOLEAN"; break;
+        }
+
+        QString ret = QString("%1 %2").arg(_name).arg(t);
+        if (_size > 0)
+        {
+            if (_prec == -1)
+                ret += QString(" (%1)").arg(_size);
+            else
+                ret += QString(" (%1, %2)").arg(_size).arg(_prec);
+        }
+        if (_notNull)
+            ret += " NOT NULL";
+        if (!_default.isEmpty())
+            ret += QString(" DEFAULT '%1'").arg(_default);
+        if (!_refTable.isEmpty())
+        {
+            ret += QString (" REFERENCES %1").arg(_refTable);
+            if (!_refFields.isEmpty())
+                ret += QString(" (%1)").arg(_refFields.join(','));
+        }
+
+        return ret;
+    }
+private:
+    QString _name;
+    Types _type;
+    int _size;
+    int _prec;
+    bool _notNull;
+    bool _primaryKey;
+    bool _autoIncrement;
+    QString _default;
+    QString _refTable;
+    QStringList _refFields;
+};
+
 bool SqlVault::create_tables()
 {
     QMap<QString, QStringList> createSqls;
     createSqls["settings"]
-             << "id INTEGER PRIMARY KEY " SQL_AUTOINCREMENT
-             << "profit decimal(6,4) NOT NULL DEFAULT '0.0100'"
-             << "comission decimal(6,4) NOT NULL DEFAULT '0.0020'"
-             << "first_step decimal(6,4) NOT NULL DEFAULT '0.0500'"
-             << "martingale decimal(6,4) NOT NULL DEFAULT '0.0500'"
-             << "dep decimal(10,4) NOT NULL DEFAULT '100.0000'"
-             << "coverage decimal(6,4) NOT NULL DEFAULT '0.1500'"
-             << "count int(11) NOT NULL DEFAULT '10'"
-             << "currency char(3) not null default 'usd'"
-             << "goods char(3) not null default 'btc'"
-             << "secret_id integer not null references secrets(id)"
-             << "dep_inc decimal(5,2) not null default 0.0"
-             << "enabled boolean not null default " SQL_TRUE
+             << TableField("id").primaryKey()
+             << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
+             << TableField("comission", TableField::Decimal, 6, 4).notNull().defaultValue(0.0020)
+             << TableField("first_step", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
+             << TableField("martingale", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
+             << TableField("dep", TableField::Decimal, 10,4).notNull().defaultValue(100.0)
+             << TableField("coverage", TableField::Decimal, 6,4).notNull().defaultValue(0.1500)
+             << TableField("count", TableField::Integer, 11).notNull().defaultValue(10)
+             << TableField("currency", TableField::Char, 3).notNull().defaultValue("usd")
+             << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
+             << TableField("secret_id").notNull().references("secrets", {"id"})
+             << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
+             << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
              ;
     createSqls["orders"]
-             <<  "order_id INTEGER PRIMARY KEY"
-             <<  "status int(11) NOT NULL DEFAULT '0'"
-             <<  "type char(4) NOT NULL DEFAULT 'buy'"
-             <<  "amount decimal(11,6) DEFAULT NULL"
-             <<  "rate decimal(11,6) DEFAULT NULL"
-             <<  "settings_id int(11) DEFAULT NULL"
-             <<  "backed_up INTEGER NOT NULL DEFAULT 0"
-             <<  "start_amount decimal(11,6) DEFAULT NULL"
-             <<  "round_id INTEGER NOT NULL DEFAULT 0 REFERENCES rounds(id)"
+             <<  TableField("order_id").primaryKey(false)
+             <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
+             <<  TableField("type", TableField::Char, 4).notNull().defaultValue("buy")
+             <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("settings_id").references("settings", {"id"})
+             <<  TableField("backed_up").notNull().defaultValue(0)
+             <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("round_id").notNull().references("rounds", {"round_id"})
              ;
 
     createSqls["secrets"]
@@ -458,7 +545,6 @@ int main(int argc, char *argv[])
                     double gain = 0;
                     double sold = 0;
                     bool no_overflow = false;
-    //				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
                     for(auto d: p.depth.bids)
                     {
                         if (goods < p.min_amount)
@@ -477,7 +563,6 @@ int main(int argc, char *argv[])
                     currency += gain;
 
                     return no_overflow;
-    //				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
                 };
 
                 auto buyer = [](const QString& pname, double& goods, double& currency) -> bool
@@ -486,7 +571,6 @@ int main(int argc, char *argv[])
                     double bought = 0;
                     double spent = 0;
                     bool no_overflow = false;
-    //				qDebug() << QString("we have %1 %2").arg(currency).arg(p.currency());
                     for(auto d: p.depth.asks)
                     {
                         if (currency < 0.000001)
@@ -505,7 +589,6 @@ int main(int argc, char *argv[])
                     goods += bought;
 
                     return no_overflow;
-    //				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
                 };
 
                 double btc = funds["btc"] / 10;

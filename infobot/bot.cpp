@@ -10,7 +10,7 @@
 
 #include <iostream>
 
-//#define USE_SQLITE
+#define USE_SQLITE
 
 int main(int argc, char* argv[])
 {
@@ -53,7 +53,9 @@ int main(int argc, char* argv[])
 #endif
 
     QSqlQuery getPairById(db);
-    getPairById.prepare("SELECT * from settings where id=:id");
+    getPairById.prepare("SELECT id, profit, comission, first_step, martingale,"
+                        "dep, coverage, count, currency, goods, enabled "
+                        "from settings where id=:id");
 
     QSqlQuery getPairByName(db);
     getPairByName.prepare("SELECT * from settings where goods=:goods and currency=:currency");
@@ -61,7 +63,7 @@ int main(int argc, char* argv[])
     QMap<QString, std::shared_ptr<QSqlQuery>> setQueriesId;
     QMap<QString, std::shared_ptr<QSqlQuery>> setQueriesName;
     QStringList verbs;
-    verbs << "dep" << "profit" << "coverage" << "martingale" << "first_step" << "count";
+    verbs << "dep" << "profit" << "coverage" << "martingale" << "first_step" << "count" << "enabled";
 
     for (const QString& verb: verbs)
     {
@@ -191,7 +193,7 @@ int main(int argc, char* argv[])
         auto pairStringFromSqlRow  = [](const QSqlQuery& sql) -> QString
         {
           return   QString("id: %1\n\tprofit: %2%\n\tcomission: %3%\n\tfirst step: %4%\n\tmartingale: %5%"
-                           "\n\tdep: %6\n\tcoverage: %7%\n\tcount: %8\n\tcurrency: %9\n\tgoods: %10")
+                           "\n\tdep: %6\n\tcoverage: %7%\n\tcount: %8\n\tcurrency: %9\n\tgoods: %10\n\tenabled: %11")
                   .arg(sql.value(0).toInt())
                   .arg(sql.value(1).toDouble() * 100)
                   .arg(sql.value(2).toDouble() * 100)
@@ -202,6 +204,7 @@ int main(int argc, char* argv[])
                   .arg(sql.value(7).toInt())
                   .arg(sql.value(8).toString())
                   .arg(sql.value(9).toString())
+                  .arg(sql.value(10).toBool())
                   ;
         };
 
