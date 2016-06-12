@@ -23,7 +23,7 @@
 #include <signal.h>
 #include <memory>
 
-#define USE_SQLITE
+//#define USE_SQLITE
 
 CurlWrapper w;
 
