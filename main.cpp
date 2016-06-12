@@ -618,7 +618,7 @@ int main(int argc, char *argv[])
                         performSql("insert transaction info", *vault.insertTransaction, ins_params);
                     }
                 }
-                catch (const MissingField& e)
+                catch (const std::exception& e)
                 {
                     // no transactions -- just ignore
                 }
@@ -929,7 +929,7 @@ int main(int argc, char *argv[])
                             std::clog << QString("cancelled sells sold %1 %2").arg(closed_sells_sold_amount).arg(pair.goods()) << std::endl;
                         }
 
-                        need_recreate_sell = (qAbs(sell_order_amount + closed_sells_sold_amount - amount_gain) > pair.min_amount)
+                        need_recreate_sell = (amount_gain - sell_order_amount - closed_sells_sold_amount > pair.min_amount && funds[pair.goods()] > 0)
                                 || qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places);
 
                         std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")
