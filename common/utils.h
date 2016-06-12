@@ -28,7 +28,7 @@ QByteArray hmac_sha512(const QByteArray& message, const QByteArray& key, HashFun
 
 double read_double(const QVariantMap& map, const QString& name);
 QString read_string(const QVariantMap& map, const QString& name);
-long read_long(const QVariantMap& map, const QString& name);
+qint64 read_long(const QVariantMap& map, const QString& name);
 QVariantMap read_map(const QVariantMap& map, const QString& name);
 QVariantList read_list(const QVariantMap& map, const QString& name);
 QDateTime read_timestamp(const QVariantMap& map, const QString& name);

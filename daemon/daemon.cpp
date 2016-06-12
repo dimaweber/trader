@@ -174,7 +174,7 @@ bool SqlVault::prepare()
 class TableField
 {
 public:
-    enum Types {Integer, Decimal, Char, Boolean};
+    enum Types {Integer, Decimal, Char, Boolean, BigInt, Double, Varchar, Datetime};
 
     TableField(const QString& name, Types type = Integer, int size=0, qint16 prec=-1)
         :_name(name), _type(type), _size(size), _prec(prec),
@@ -213,6 +213,12 @@ public:
         return *this;
     }
 
+    TableField& check(const QString& check)
+    {
+        _check = check;
+        return *this;
+    }
+
     operator QString() const
     {
         QString t;
@@ -222,6 +228,10 @@ public:
             case Integer:  t = "INTEGER"; break;
             case Char: t = "CHAR"; break;
             case Boolean: t = "BOOLEAN"; break;
+            case BigInt: t = "BIGINT"; break;
+            case Double: t = "DOUBLE"; break;
+            case Varchar: t = "VARCHAR"; break;
+            case Datetime: t = "DATETIME"; break;
         }
 
         QString ret = QString("%1 %2").arg(_name).arg(t);
@@ -236,6 +246,10 @@ public:
             ret += " NOT NULL";
         if (!_default.isEmpty())
             ret += QString(" DEFAULT '%1'").arg(_default);
+        if (!_check.isEmpty())
+        {
+            ret += " CHECK (" + _check + ")";
+        }
         if (!_refTable.isEmpty())
         {
             ret += QString (" REFERENCES %1").arg(_refTable);
@@ -255,6 +269,7 @@ private:
     bool _autoIncrement;
     QString _default;
     QString _refTable;
+    QString _check;
     QStringList _refFields;
 };
 
@@ -262,7 +277,7 @@ bool SqlVault::create_tables()
 {
     QMap<QString, QStringList> createSqls;
     createSqls["settings"]
-             << TableField("id").primaryKey()
+             << TableField("id", TableField::BigInt).primaryKey()
              << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
              << TableField("comission", TableField::Decimal, 6, 4).notNull().defaultValue(0.0020)
              << TableField("first_step", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
@@ -277,7 +292,7 @@ bool SqlVault::create_tables()
              << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
              ;
     createSqls["orders"]
-             <<  TableField("order_id").primaryKey(false)
+             <<  TableField("order_id", TableField::BigInt).primaryKey(false)
              <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
              <<  TableField("type", TableField::Char, 4).notNull().defaultValue("buy")
              <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
@@ -296,15 +311,15 @@ bool SqlVault::create_tables()
             ;
 
     createSqls["transactions"]
-            << "id bigint primary key"
-            << "type integer not null check (type < 6 and type > 0)"
-            << "amount double not null check (amount>=0)"
-            << "currency char(3) not null"
-            << "description varchar(255)"
-            << "status integer check (status>0 and status<5)"
-            << "secret_id integer references secrets(id)"
-            << "timestamp DATETIME not null"
-            << "order_id INTEGER NOT NULL default 0"
+            << TableField("id", TableField::BigInt).primaryKey(false)
+            << TableField("type").notNull().check("type < 6 and type > 0")
+            << TableField("amount", TableField::Double).notNull().check("amount>=0")
+            << TableField("currency", TableField::Char, 3).notNull()
+            << TableField("description", TableField::Varchar, 255)
+            << TableField("status").check("status>0 and status<5")
+            << TableField("secret_id").references("secrets", {"id"})
+            << TableField("timestamp", TableField::Datetime).notNull()
+            << TableField("order_id", TableField::BigInt).notNull().defaultValue(0).references("orders", {"order_id"})
             ;
 
     createSqls["rounds"]
