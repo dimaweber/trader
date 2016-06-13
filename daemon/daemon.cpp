@@ -794,6 +794,7 @@ int main(int argc, char *argv[])
 
                 QVector<BtcObjects::Order::Id> orders_for_round_transition;
 
+                bool sell_order_executed = false;
                 db.transaction();
                 if (performSql("check if any orders have status changed", *vault.selectOrdersWithChangedStatus, param))
                 {
@@ -819,7 +820,7 @@ int main(int argc, char *argv[])
                         {
                             std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
                             performSql(QString("Finish round"), *vault.finishRound, param);
-                            round_in_progress = false;
+                            sell_order_executed = true;
 
                             double currency_out = 0;
                             double currency_in = 0;
@@ -864,7 +865,7 @@ int main(int argc, char *argv[])
                         else
                         {
                             // this is buy order
-                            if (!round_in_progress)
+                            if (sell_order_executed)
                             {
                                 // and round has finished (thus -- sell order exists)
                                 orders_for_round_transition << order_id;
@@ -1016,7 +1017,7 @@ int main(int argc, char *argv[])
                         continue;
                     }
 
-                    bool need_recreate_sell = true;
+                    bool need_recreate_sell = !sell_order_executed;
                     BtcObjects::Order::Id sell_order_id = 0;
                     performSql("get sell order id and amount", *vault.selectSellOrder, param);
                     if (vault.selectSellOrder->next())
