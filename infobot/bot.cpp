@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
     db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
     db.setHostName("192.168.10.112");
     db.setUserName("trader");
-    db.setPassword("traderread");
+    db.setPassword("traderpassword");
     db.setDatabaseName("trade");
     db.setConnectOptions("MYSQL_OPT_RECONNECT=true");
 #endif

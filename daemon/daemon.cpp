@@ -456,7 +456,7 @@ int main(int argc, char *argv[])
         {
             timer.restart();
             std::clog << std::endl;
-
+            std::clog << ratesUpdateTime.toString() << std::endl;
             std::clog << "update currencies rate info ...";
             if (!pticker.performQuery())
                 std::clog << "fail" << std::endl;
