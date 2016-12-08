@@ -3,14 +3,15 @@ QT -= gui
 
 CONFIG += c++11 warn_on
 
-TEMAPLTE=app
+TEMPLATE=app
 
-LIBS  += -L../tgbot-cpp -lTgBot -lboost_system -lpthread -lcrypto -lssl
+LIBS += -L../lib -L../tgbot-cpp
+LIBS += -lTgBot -lcommon
 
-LIBS += -L../lib -lcommon
+LIBS +=  -lboost_system -lpthread -lcrypto -lssl
 
 INCLUDEPATH += ../tgbot-cpp/include \
-			   ../common
+               ../common
 
 SOURCES += bot.cpp
 

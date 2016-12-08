@@ -1,6 +1,6 @@
 TEMPLATE=subdirs
 
-SUBDIRS += daemon infobot common tgbot-cpp
+SUBDIRS += daemon infobot common
 
 daemon.depends = common
-infobot.depends = common tgbot-cpp
+infobot.depends = common

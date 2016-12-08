@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
 
             QSqlQuery* pQ;
             QString pairName;
-            bool isId;
+            bool isId = false;
 
             if (idRx.indexIn(idStr) > -1)
             {
