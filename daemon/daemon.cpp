@@ -1,5 +1,3 @@
-// select s.goods, truncate(sum(o.start_amount*o.rate),2) as 'used', truncate(sum(o.start_amount*o.rate) / s.dep * 100,2) as '%' from orders o left join settings s on s.id=o.settings_id where o.backed_up=0 and o.type='buy' group by o.settings_id;
-//
 #include "btce.h"
 #include "utils.h"
 #include "key_storage.h"
@@ -81,7 +79,6 @@ struct SqlVault
     std::unique_ptr<QSqlQuery> insertOrder;
     std::unique_ptr<QSqlQuery> updateActiveOrder;
     std::unique_ptr<QSqlQuery> updateSetCanceled;
-    std::unique_ptr<QSqlQuery> finishRound;
     std::unique_ptr<QSqlQuery> selectSellOrder;
     std::unique_ptr<QSqlQuery> selectSettings;
     std::unique_ptr<QSqlQuery> selectCurrentRoundActiveOrdersCount;
@@ -118,30 +115,28 @@ bool SqlVault::prepare()
 
     prepareSql("UPDATE orders set status=" ORDER_STATUS_CHECKING " where status=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
-    prepareSql("INSERT INTO orders (order_id, status, type, amount, start_amount, rate, settings_id, round_id) "
-               " values (:order_id, :status, :type, :amount, :start_amount, :rate, :settings_id, :round_id)", insertOrder);
+    prepareSql("INSERT INTO orders (order_id, status, type, amount, start_amount, rate, round_id) "
+               " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id)", insertOrder);
 
     prepareSql("UPDATE orders set status=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate where order_id=:order_id", updateActiveOrder);
 
     prepareSql("UPDATE orders set status=:status, amount=:amount, start_amount=:start_amount, rate=:rate where order_id=:order_id", updateSetCanceled);
 
-    prepareSql("update orders set backed_up= " CLOSED_ORDER " where settings_id=:settings_id", finishRound);
-
-    prepareSql("SELECT order_id, start_amount, rate from orders where status < " ORDER_STATUS_DONE " and backed_up= " ACTIVE_ORDER " and settings_id=:settings_id and type='sell'", selectSellOrder);
+    prepareSql("SELECT order_id, start_amount, rate from orders o where status < " ORDER_STATUS_DONE " and round_id=:round_id and type='sell'", selectSellOrder);
 
     prepareSql("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings where enabled=" SQL_TRUE, selectSettings);
 
-    prepareSql("SELECT count(*) from orders where status= " ORDER_STATUS_ACTIVE" and settings_id=:settings_id and backed_up=" ACTIVE_ORDER, selectCurrentRoundActiveOrdersCount);
+    prepareSql("SELECT count(*) from orders o where status= " ORDER_STATUS_ACTIVE" and round_id=:round_id", selectCurrentRoundActiveOrdersCount);
 
-    prepareSql("select o.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join settings s  on s.id = o.settings_id where o.type='buy' and backed_up= " ACTIVE_ORDER" and o.settings_id=:settings_id", selectCurrentRoundGain);
+    prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
 
-    prepareSql("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join settings s on s.id = o.settings_id where o.backed_up=" ACTIVE_ORDER " and o.status= " ORDER_STATUS_ACTIVE" and type='buy' and o.settings_id=:settings_id", checkMaxBuyRate);
+    prepareSql("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id where o.status= " ORDER_STATUS_ACTIVE" and type='buy' and o.round_id=:round_id", checkMaxBuyRate);
 
-    prepareSql("select sum(start_amount-amount) from orders where backed_up=" CLOSED_ORDER " and type='sell' and status > " ORDER_STATUS_DONE " and settings_id=:settings_id", currentRoundPayback);
+    prepareSql("select sum(start_amount-amount) from orders o where round_id=:round_id and type='sell' and status > " ORDER_STATUS_DONE, currentRoundPayback);
 
-    prepareSql("SELECT order_id from orders where status=" ORDER_STATUS_CHECKING " and settings_id=:settings_id order by type desc", selectOrdersWithChangedStatus);
+    prepareSql("SELECT order_id from orders o where status=" ORDER_STATUS_CHECKING " and round_id=:round_id order by type desc", selectOrdersWithChangedStatus);
 
-    prepareSql("SELECT order_id from orders where backed_up= " CLOSED_ORDER" and status<" ORDER_STATUS_DONE " and settings_id=:settings_id", selectOrdersFromPrevRound);
+    prepareSql("SELECT order_id from orders o where round_id=:round_id and status<" ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
     prepareSql("select count(id) from transactions where secret_id=:secret_id", selectMaxTransHistoryId);
 
@@ -154,13 +149,13 @@ bool SqlVault::prepare()
 
     prepareSql("select round_id from rounds where settings_id=:settings_id and end_time is null", getRoundId);
 
-    prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders left join settings on id=settings_id where type='buy' and round_id=:round_id", roundBuyStat);
+    prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where type='buy' and r.round_id=:round_id", roundBuyStat);
 
-    prepareSql("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders left join settings on id=settings_id where type='sell' and round_id=:round_id", roundSellStat);
+    prepareSql("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where type='sell' and r.round_id=:round_id", roundSellStat);
 
     prepareSql("update settings set dep = dep+:dep_inc where id=:settings_id", depositIncrease);
 
-    prepareSql("update orders set round_id=:round_id, backed_up= " ACTIVE_ORDER" where order_id=:order_id", orderTransition);
+    prepareSql("update orders set round_id=:round_id where order_id=:order_id", orderTransition);
 
     prepareSql("update rounds set dep_usage=:usage where round_id=:round_id", setRoundsDepUsage);
 
@@ -195,8 +190,6 @@ bool SqlVault::create_tables()
              <<  "type char(4) NOT NULL DEFAULT 'buy'"
              <<  "amount decimal(11,6) DEFAULT NULL"
              <<  "rate decimal(11,6) DEFAULT NULL"
-             <<  "settings_id int(11) DEFAULT NULL"
-             <<  "backed_up INTEGER NOT NULL DEFAULT 0"
              <<  "start_amount decimal(11,6) DEFAULT NULL"
              <<  "round_id INTEGER NOT NULL DEFAULT 0 REFERENCES rounds(id)"
              ;
@@ -211,7 +204,7 @@ bool SqlVault::create_tables()
     createSqls["transactions"]
             << "id integer primary key"
             << "type integer not null check (type < 6 and type > 0)"
-            << "amount double not null check (amount>0)"
+            << "amount double not null check (amount>=0)"
             << "currency char(3) not null"
             << "description varchar(255)"
             << "status integer check (status>0 and status<5)"
@@ -427,23 +420,35 @@ int main(int argc, char *argv[])
                 }
 
                 BtcTradeApi::ActiveOrders activeOrders(storage);
-                if (performTradeRequest(QString("get active orders for keypair %1").arg(id),activeOrders))
+                try
                 {
-                    db.transaction();
-                    for (BtcObjects::Order& order: activeOrders.orders)
+                    if (performTradeRequest(QString("get active orders for keypair %1").arg(id), activeOrders))
                     {
-                        QVariantMap params;
-                        params[":order_id"] = order.order_id;
-                        params[":amount"]  = order.amount;
-                        params[":rate"] = order.rate;
-                        performSql(QString("Order %1 still active, mark it").arg(order.order_id), *vault.updateActiveOrder, params);
+                        db.transaction();
+                        for (BtcObjects::Order& order: activeOrders.orders)
+                        {
+                            QVariantMap params;
+                            params[":order_id"] = order.order_id;
+                            params[":amount"]  = order.amount;
+                            params[":rate"] = order.rate;
+                            performSql(QString("Order %1 still active, mark it").arg(order.order_id), *vault.updateActiveOrder, params);
 
-                        if (order.type == BtcObjects::Order::Buy)
-                            onOrders[order.currency()] += order.amount * order.rate;
-                        else
-                            onOrders[order.goods()] += order.amount;
+                            if (order.type == BtcObjects::Order::Buy)
+                                onOrders[order.currency()] += order.amount * order.rate;
+                            else
+                                onOrders[order.goods()] += order.amount;
+                        }
+                        db.commit();
                     }
-                    db.commit();
+                }
+                catch (std::runtime_error& e)
+                {
+                    if (std::string(e.what()) == "no orders")
+                    {
+                        // no orders yet - just ignore
+                    }
+                    else
+                        throw e;
                 }
 
                 QString pname;
@@ -625,6 +630,10 @@ int main(int argc, char *argv[])
                 {
                     // no transactions -- just ignore
                 }
+                catch (std::runtime_error& e)
+                {
+
+                }
 
                 db.commit();
             }
@@ -674,6 +683,7 @@ int main(int argc, char *argv[])
                     round_id = vault.getRoundId->value(0).toInt();
                 else
                     round_id = 0;
+                param[":round_id"] = round_id;
 
                 std::clog << QString("\n -------     Processing settings_id %1. Pair: %2   [%3]   --------------- ").arg(settings_id).arg(pairName).arg(round_id) << std::endl;
                 std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[pair.currency()])
@@ -714,11 +724,10 @@ int main(int argc, char *argv[])
                         performSql(QString("update order %1").arg(order_id), *vault.updateSetCanceled, upd_param);
 
                         // orders are sorted by type field, so sell orders come first
-                        // if  buy order is chnaged and sell orders have changed also -- we translate buy order to next round
+                        // if  buy order is changed and sell orders have changed also -- we translate buy order to next round
                         if (info.order.type == BtcObjects::Order::Sell)
                         {
                             std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
-                            performSql(QString("Finish round"), *vault.finishRound, param);
                             round_in_progress = false;
 
                             double currency_out = 0;
@@ -807,7 +816,7 @@ int main(int argc, char *argv[])
                     std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate) << std::endl;
                 }
 
-                if (amount_gain == 0)
+                if (qFuzzyIsNull(amount_gain))
                 {
                     std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
                     performSql("Get maximum buy rate", *vault.checkMaxBuyRate, param);
@@ -818,7 +827,6 @@ int main(int argc, char *argv[])
                         if (rate > 0 && pair.ticker.last > rate)
                         {
                             std::clog << QString("rate for %1 too high (%2)").arg(pair.name).arg(rate) << std::endl;
-                            performSql("Finish buy orders for round", *vault.finishRound, param);
                             round_in_progress = false;
                         }
                     }
@@ -866,22 +874,29 @@ int main(int argc, char *argv[])
                         }
 
                         int auto_executed_counter = 0;
-                        BtcTradeApi::Trade trade(storage, funds, pair.name, BtcObjects::Order::Buy, rate, amount);
-                        if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
+                        if (amount < pair.min_amount)
                         {
-                            insertOrderParam[":order_id"] = (trade.order_id==0)?-(round_id * 100 + auto_executed_counter++):trade.order_id;
-                            insertOrderParam[":status"] = (trade.order_id==0)?1:0;
-                            insertOrderParam[":type"] = "buy";
-                            insertOrderParam[":amount"] = trade.remains;
-                            insertOrderParam[":start_amount"] = trade.received + trade.remains;
-                            insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
-                            insertOrderParam[":settings_id"] = settings_id;
-                            insertOrderParam[":round_id"] = round_id;
+                            std::clog << "proposed trade amount too low -- skip order" << std::endl;
+                        }
+                        else
+                        {
+                            BtcTradeApi::Trade trade(storage, funds, pair.name, BtcObjects::Order::Buy, rate, amount);
+                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
+                            {
+                                insertOrderParam[":order_id"] = (trade.order_id==0)?-(round_id * 100 + auto_executed_counter++):trade.order_id;
+                                insertOrderParam[":status"] = (trade.order_id==0)?1:0;
+                                insertOrderParam[":type"] = "buy";
+                                insertOrderParam[":amount"] = trade.remains;
+                                insertOrderParam[":start_amount"] = trade.received + trade.remains;
+                                insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
+                                insertOrderParam[":settings_id"] = settings_id;
+                                insertOrderParam[":round_id"] = round_id;
 
-                            performSql("insert buy order record", *vault.insertOrder, insertOrderParam);
+                                performSql("insert buy order record", *vault.insertOrder, insertOrderParam);
 
-                            total_currency_spent += amount * rate;
-                            std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
+                                total_currency_spent += amount * rate;
+                                std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
+                            }
                         }
                     }
                     usage_params[":usage"] = total_currency_spent;

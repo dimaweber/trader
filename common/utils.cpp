@@ -85,12 +85,13 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bo
 {
     bool ok;
     if (!silent)
-        std::clog << QString("[sql] %1 ... ").arg(message);
+        std::clog << QString("[sql] %1:").arg(message) << std::endl;
     if (sql.isEmpty())
         ok = query.exec();
     else
         ok = query.exec(sql);
-
+    if (!silent)
+        std::clog << query.lastQuery() << std::endl;
     if (ok)
     {
         if(!silent)
@@ -137,7 +138,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& bin
     {
         query.bindValue(param, binds[param]);
         if (!silent)
-            std::clog << "\tbind: " << param << " : " << binds[param].toString() << std::endl;
+            std::clog << "\tbind: " << param << " = " << binds[param].toString() << std::endl;
     }
     return performSql(message, query, QString(), silent);
 }

@@ -310,5 +310,5 @@ public:
 };
 }
 
-bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=true);
+bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=false);
 #endif // BTCE_H

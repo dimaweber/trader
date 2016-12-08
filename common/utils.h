@@ -35,6 +35,6 @@ QDateTime read_timestamp(const QVariantMap& map, const QString& name);
 
 std::ostream& operator << (std::ostream& stream, const QString& str);
 
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=true);
-bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=true);
+bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
+bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
 #endif // UTILS_H
