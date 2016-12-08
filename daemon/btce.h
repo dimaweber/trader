@@ -91,7 +91,7 @@ struct Order  : public ExchangeObject
 {
     enum OrderType {Buy, Sell};
     enum OrderStatus {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3};
-    typedef qint32 Id;
+    typedef qint64 Id;
 
     QString pair;
     OrderType type;
@@ -111,7 +111,7 @@ struct Order  : public ExchangeObject
 
 struct Transaction : public ExchangeObject
 {
-    typedef qint32 Id;
+    typedef qint64 Id;
 
     Id id;
     int type;
@@ -214,8 +214,8 @@ class TransHistory : public Api
 {
     int _from;
     int _count;
-    int _from_id;
-    int _end_id;
+    BtcObjects::Transaction::Id _from_id;
+    BtcObjects::Transaction::Id _end_id;
     bool _order;
     int _since;
     int _end;

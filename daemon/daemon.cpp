@@ -161,37 +161,139 @@ bool SqlVault::prepare()
 
     prepareSql("insert into rates values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
-    prepareSql("insert into dep values (:time, :name, :secret, :dep)", insertDep);
+    prepareSql("insert into dep values (:time, :name, :secret, :dep, :orders)", insertDep);
 
     return true;
 }
+
+class TableField
+{
+public:
+    enum Types {Integer, Decimal, Char, Boolean, BigInt, Double, Varchar, Datetime};
+
+    TableField(const QString& name, Types type = Integer, int size=0, qint16 prec=-1)
+        :_name(name), _type(type), _size(size), _prec(prec),
+          _notNull(false), _primaryKey(false), _autoIncrement(false)
+    {}
+
+    TableField& notNull()
+    {
+        _notNull = true;
+        return *this;
+    }
+
+    TableField& defaultValue(const QString& value)
+    {
+        _default = value;
+        return *this;
+    }
+
+    TableField& defaultValue(float value)
+    {
+        _default = QString::number(value, 'f');
+        return *this;
+    }
+
+    TableField& references(const QString& tableName, const QStringList& fields = QStringList())
+    {
+        _refTable = tableName;
+        _refFields = fields;
+        return *this;
+    }
+
+    TableField& primaryKey(bool isAutoInc = true)
+    {
+        _primaryKey = true;
+        _autoIncrement = isAutoInc;
+        return *this;
+    }
+
+    TableField& check(const QString& check)
+    {
+        _check = check;
+        return *this;
+    }
+
+    operator QString() const
+    {
+        QString t;
+        switch(_type)
+        {
+            case Decimal: t = "DECIMAL"; break;
+            case Integer:  t = "INTEGER"; break;
+            case Char: t = "CHAR"; break;
+            case Boolean: t = "BOOLEAN"; break;
+            case BigInt: t = "BIGINT"; break;
+            case Double: t = "DOUBLE"; break;
+            case Varchar: t = "VARCHAR"; break;
+            case Datetime: t = "DATETIME"; break;
+        }
+
+        QString ret = QString("%1 %2").arg(_name).arg(t);
+        if (_size > 0)
+        {
+            if (_prec == -1)
+                ret += QString(" (%1)").arg(_size);
+            else
+                ret += QString(" (%1, %2)").arg(_size).arg(_prec);
+        }
+        if (_notNull)
+            ret += " NOT NULL";
+        if (!_default.isEmpty())
+            ret += QString(" DEFAULT '%1'").arg(_default);
+        if (!_check.isEmpty())
+        {
+            ret += " CHECK (" + _check + ")";
+        }
+        if (!_refTable.isEmpty())
+        {
+            ret += QString (" REFERENCES %1").arg(_refTable);
+            if (!_refFields.isEmpty())
+                ret += QString(" (%1)").arg(_refFields.join(','));
+        }
+
+        return ret;
+    }
+private:
+    QString _name;
+    Types _type;
+    int _size;
+    int _prec;
+    bool _notNull;
+    bool _primaryKey;
+    bool _autoIncrement;
+    QString _default;
+    QString _refTable;
+    QString _check;
+    QStringList _refFields;
+};
 
 bool SqlVault::create_tables()
 {
     QMap<QString, QStringList> createSqls;
     createSqls["settings"]
-             << "id INTEGER PRIMARY KEY " SQL_AUTOINCREMENT
-             << "profit decimal(6,4) NOT NULL DEFAULT '0.0100'"
-             << "comission decimal(6,4) NOT NULL DEFAULT '0.0020'"
-             << "first_step decimal(6,4) NOT NULL DEFAULT '0.0500'"
-             << "martingale decimal(6,4) NOT NULL DEFAULT '0.0500'"
-             << "dep decimal(10,4) NOT NULL DEFAULT '100.0000'"
-             << "coverage decimal(6,4) NOT NULL DEFAULT '0.1500'"
-             << "count int(11) NOT NULL DEFAULT '10'"
-             << "currency char(3) not null default 'usd'"
-             << "goods char(3) not null default 'btc'"
-             << "secret_id integer not null references secrets(id)"
-             << "dep_inc decimal(5,2) not null default 0.0"
-             << "enabled boolean not null default " SQL_TRUE
+             << TableField("id", TableField::BigInt).primaryKey()
+             << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
+             << TableField("comission", TableField::Decimal, 6, 4).notNull().defaultValue(0.0020)
+             << TableField("first_step", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
+             << TableField("martingale", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
+             << TableField("dep", TableField::Decimal, 10,4).notNull().defaultValue(100.0)
+             << TableField("coverage", TableField::Decimal, 6,4).notNull().defaultValue(0.1500)
+             << TableField("count", TableField::Integer, 11).notNull().defaultValue(10)
+             << TableField("currency", TableField::Char, 3).notNull().defaultValue("usd")
+             << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
+             << TableField("secret_id").notNull().references("secrets", {"id"})
+             << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
+             << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
              ;
     createSqls["orders"]
-             <<  "order_id INTEGER PRIMARY KEY"
-             <<  "status int(11) NOT NULL DEFAULT '0'"
-             <<  "type char(4) NOT NULL DEFAULT 'buy'"
-             <<  "amount decimal(11,6) DEFAULT NULL"
-             <<  "rate decimal(11,6) DEFAULT NULL"
-             <<  "start_amount decimal(11,6) DEFAULT NULL"
-             <<  "round_id INTEGER NOT NULL DEFAULT 0 REFERENCES rounds(id)"
+             <<  TableField("order_id", TableField::BigInt).primaryKey(false)
+             <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
+             <<  TableField("type", TableField::Char, 4).notNull().defaultValue("buy")
+             <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("round_id").notNull().references("rounds", {"round_id"})
              ;
 
     createSqls["secrets"]
@@ -202,15 +304,15 @@ bool SqlVault::create_tables()
             ;
 
     createSqls["transactions"]
-            << "id integer primary key"
-            << "type integer not null check (type < 6 and type > 0)"
-            << "amount double not null check (amount>=0)"
-            << "currency char(3) not null"
-            << "description varchar(255)"
-            << "status integer check (status>0 and status<5)"
-            << "secret_id integer references secrets(id)"
-            << "timestamp DATETIME not null"
-            << "order_id INTEGER NOT NULL default 0"
+            << TableField("id", TableField::BigInt).primaryKey(false)
+            << TableField("type").notNull().check("type < 6 and type > 0")
+            << TableField("amount", TableField::Double).notNull().check("amount>=0")
+            << TableField("currency", TableField::Char, 3).notNull()
+            << TableField("description", TableField::Varchar, 255)
+            << TableField("status").check("status>0 and status<5")
+            << TableField("secret_id").references("secrets", {"id"})
+            << TableField("timestamp", TableField::Datetime).notNull()
+            << TableField("order_id", TableField::BigInt).notNull().defaultValue(0).references("orders", {"order_id"})
             ;
 
     createSqls["rounds"]
@@ -244,6 +346,7 @@ bool SqlVault::create_tables()
             << "name char(3) not null"
             << "secret_id integer not null references secrets(id)"
             << "value decimal(14,6) not null"
+            << "on_orders decimal(14,6) not null default 0"
             << "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
                ;
 
@@ -298,7 +401,8 @@ int main(int argc, char *argv[])
         {
             std::clog << " ok" << std::endl;
 #ifndef USE_SQLITE
-            performSql("set utf8", QSqlQuery(db), "SET NAMES utf8");
+            QSqlQuery sql(db);
+            performSql("set utf8", sql, "SET NAMES utf8");
 #endif
         }
     }
@@ -345,7 +449,7 @@ int main(int argc, char *argv[])
         {
             timer.restart();
             std::clog << std::endl;
-
+            std::clog << ratesUpdateTime.toString() << std::endl;
             std::clog << "update currencies rate info ...";
             if (!pticker.performQuery())
                 std::clog << "fail" << std::endl;
@@ -409,7 +513,7 @@ int main(int argc, char *argv[])
                         params[":name"] = name;
                         params[":dep"] = value;
                         params[":time"] = ratesUpdateTime;
-
+                        params[":orders"] = onOrders[name];
                         performSql("Add dep", *vault.insertDep, params);
                     }
                     db.commit();
@@ -461,7 +565,6 @@ int main(int argc, char *argv[])
                     double gain = 0;
                     double sold = 0;
                     bool no_overflow = false;
-    //				qDebug() << QString("we have %1 %2").arg(goods).arg(p.goods());
                     for(auto d: p.depth.bids)
                     {
                         if (goods < p.min_amount)
@@ -480,7 +583,6 @@ int main(int argc, char *argv[])
                     currency += gain;
 
                     return no_overflow;
-    //				qDebug() << QString("we can sell %1 %3, and get %2 %4").arg(sold).arg(gain).arg(p.goods()).arg(p.currency());
                 };
 
                 auto buyer = [](const QString& pname, double& goods, double& currency) -> bool
@@ -489,7 +591,6 @@ int main(int argc, char *argv[])
                     double bought = 0;
                     double spent = 0;
                     bool no_overflow = false;
-    //				qDebug() << QString("we have %1 %2").arg(currency).arg(p.currency());
                     for(auto d: p.depth.asks)
                     {
                         if (currency < 0.000001)
@@ -508,7 +609,6 @@ int main(int argc, char *argv[])
                     goods += bought;
 
                     return no_overflow;
-    //				qDebug() << QString("we can spend %1 %3, and get %2 %4").arg(spent).arg(bought).arg(p.currency()).arg(p.goods());
                 };
 
                 double btc = funds["btc"] / 10;
@@ -626,9 +726,9 @@ int main(int argc, char *argv[])
                         performSql("insert transaction info", *vault.insertTransaction, ins_params);
                     }
                 }
-                catch (const MissingField& e)
+                catch (const std::exception& e)
                 {
-                    // no transactions -- just ignore
+
                 }
                 catch (std::runtime_error& e)
                 {
@@ -704,6 +804,7 @@ int main(int argc, char *argv[])
 
                 QVector<BtcObjects::Order::Id> orders_for_round_transition;
 
+                bool sell_order_executed = false;
                 db.transaction();
                 if (performSql("check if any orders have status changed", *vault.selectOrdersWithChangedStatus, param))
                 {
@@ -728,7 +829,7 @@ int main(int argc, char *argv[])
                         if (info.order.type == BtcObjects::Order::Sell)
                         {
                             std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
-                            round_in_progress = false;
+                            sell_order_executed = true;
 
                             double currency_out = 0;
                             double currency_in = 0;
@@ -773,7 +874,7 @@ int main(int argc, char *argv[])
                         else
                         {
                             // this is buy order
-                            if (!round_in_progress)
+                            if (sell_order_executed)
                             {
                                 // and round has finished (thus -- sell order exists)
                                 orders_for_round_transition << order_id;
@@ -931,7 +1032,7 @@ int main(int argc, char *argv[])
                         continue;
                     }
 
-                    bool need_recreate_sell = true;
+                    bool need_recreate_sell = !sell_order_executed;
                     BtcObjects::Order::Id sell_order_id = 0;
                     performSql("get sell order id and amount", *vault.selectSellOrder, param);
                     if (vault.selectSellOrder->next())
@@ -947,7 +1048,7 @@ int main(int argc, char *argv[])
                             std::clog << QString("cancelled sells sold %1 %2").arg(closed_sells_sold_amount).arg(pair.goods()) << std::endl;
                         }
 
-                        need_recreate_sell = (qAbs(sell_order_amount + closed_sells_sold_amount - amount_gain) > pair.min_amount)
+                        need_recreate_sell = (amount_gain - sell_order_amount - closed_sells_sold_amount > pair.min_amount && funds[pair.goods()] > 0)
                                 || qAbs(sell_rate - sell_order_rate) > qPow(10, -pair.decimal_places);
 
                         std::clog << QString("found sell order %1 for %2 amount, %4 rate. Need recreate sell order: %3")

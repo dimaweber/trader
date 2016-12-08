@@ -40,10 +40,10 @@ double read_double(const QVariantMap& map, const QString& name)
     return ret;
 }
 
-long read_long(const QVariantMap& map, const QString& name)
+qint64 read_long(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    long ret = read_string(map, name).toLong(&ok);
+    long ret = read_string(map, name).toLongLong(&ok);
 
     if (!ok)
         throw BrokenJson(name);
