@@ -7,8 +7,7 @@ TEMPLATE=app
 
 LIBS += -L../lib -L../tgbot-cpp
 LIBS += -lTgBot -lcommon
-
-LIBS +=  -lboost_system -lpthread -lcrypto -lssl
+LIBS += -lboost_system -lpthread -lcrypto -lssl
 
 INCLUDEPATH += ../tgbot-cpp/include \
                ../common
