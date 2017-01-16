@@ -23,9 +23,9 @@
 
 #define USE_SQLITE
 
-CurlWrapper w;
+static CurlWrapper w;
 
-bool exit_asked = false;
+static bool exit_asked = false;
 
 void sig_handler(int signum)
 {
@@ -113,51 +113,72 @@ bool SqlVault::prepare()
             throw *sql;
     };
 
-    prepareSql("UPDATE orders set status=" ORDER_STATUS_CHECKING " where status=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
+    prepareSql("UPDATE orders set status=" ORDER_STATUS_CHECKING
+               " where status=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
     prepareSql("INSERT INTO orders (order_id, status, type, amount, start_amount, rate, round_id) "
-               " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id)", insertOrder);
+                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id)", insertOrder);
 
-    prepareSql("UPDATE orders set status=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate where order_id=:order_id", updateActiveOrder);
+    prepareSql("UPDATE orders set status=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
+               " where order_id=:order_id", updateActiveOrder);
 
-    prepareSql("UPDATE orders set status=:status, amount=:amount, start_amount=:start_amount, rate=:rate where order_id=:order_id", updateSetCanceled);
+    prepareSql("UPDATE orders set status=:status, amount=:amount, start_amount=:start_amount, rate=:rate "
+               " where order_id=:order_id", updateSetCanceled);
 
-    prepareSql("SELECT order_id, start_amount, rate from orders o where status < " ORDER_STATUS_DONE " and round_id=:round_id and type='sell'", selectSellOrder);
+    prepareSql("SELECT order_id, start_amount, rate from orders o "
+               " where o.status < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
 
-    prepareSql("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings where enabled=" SQL_TRUE, selectSettings);
+    prepareSql("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings"
+               " where enabled=" SQL_TRUE, selectSettings);
 
-    prepareSql("SELECT count(*) from orders o where status= " ORDER_STATUS_ACTIVE" and round_id=:round_id", selectCurrentRoundActiveOrdersCount);
+    prepareSql("SELECT count(*) from orders o "
+               " where o.status= " ORDER_STATUS_ACTIVE" and o.round_id=:round_id", selectCurrentRoundActiveOrdersCount);
 
-    prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
+    prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id "
+               " where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
 
-    prepareSql("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id where o.status= " ORDER_STATUS_ACTIVE" and type='buy' and o.round_id=:round_id", checkMaxBuyRate);
+    prepareSql("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id "
+               " where o.status= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
 
-    prepareSql("select sum(start_amount-amount) from orders o where round_id=:round_id and type='sell' and status > " ORDER_STATUS_DONE, currentRoundPayback);
+    prepareSql("select sum(start_amount-amount) from orders o "
+               " where o.round_id=:round_id and o.type='sell' and o.status > " ORDER_STATUS_DONE, currentRoundPayback);
 
-    prepareSql("SELECT order_id from orders o where status=" ORDER_STATUS_CHECKING " and round_id=:round_id order by type desc", selectOrdersWithChangedStatus);
+    prepareSql("SELECT order_id from orders o "
+               " where o.status=" ORDER_STATUS_CHECKING " and o.round_id=:round_id order by o.type desc", selectOrdersWithChangedStatus);
 
-    prepareSql("SELECT order_id from orders o where round_id=:round_id and status<" ORDER_STATUS_DONE, selectOrdersFromPrevRound);
+    prepareSql("SELECT order_id from orders o "
+               " where o.round_id=:round_id and o.status < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
-    prepareSql("select count(id) from transactions where secret_id=:secret_id", selectMaxTransHistoryId);
+    prepareSql("select count(id) from transactions t "
+               " where t.secret_id=:secret_id", selectMaxTransHistoryId);
 
     prepareSql("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)", insertTransaction);
 
     prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, " SQL_NOW ", 0)", insertRound);
 
-    prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out where round_id=:round_id", updateRound);
-    prepareSql("update rounds set end_time=" SQL_NOW ", reason='sell' where round_id=:round_id", closeRound);
+    prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out "
+               " where round_id=:round_id", updateRound);
 
-    prepareSql("select round_id from rounds where settings_id=:settings_id and end_time is null", getRoundId);
+    prepareSql("update rounds set end_time=" SQL_NOW ", reason='sell' "
+               " where round_id=:round_id", closeRound);
 
-    prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where type='buy' and r.round_id=:round_id", roundBuyStat);
+    prepareSql("select round_id from rounds r "
+               " where r.settings_id=:settings_id and r.end_time is null", getRoundId);
 
-    prepareSql("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where type='sell' and r.round_id=:round_id", roundSellStat);
+    prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
+               " where o.type='buy' and o.round_id=:round_id", roundBuyStat);
 
-    prepareSql("update settings set dep = dep+:dep_inc where id=:settings_id", depositIncrease);
+    prepareSql("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
+               " where o.type='sell' and o.round_id=:round_id", roundSellStat);
 
-    prepareSql("update orders set round_id=:round_id where order_id=:order_id", orderTransition);
+    prepareSql("update settings set dep = dep+:dep_inc "
+               " where id=:settings_id", depositIncrease);
 
-    prepareSql("update rounds set dep_usage=:usage where round_id=:round_id", setRoundsDepUsage);
+    prepareSql("update orders set round_id=:round_id "
+               " where order_id=:order_id", orderTransition);
+
+    prepareSql("update rounds set dep_usage=:usage "
+               " where round_id=:round_id", setRoundsDepUsage);
 
     prepareSql("insert into rates values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
@@ -272,7 +293,7 @@ bool SqlVault::create_tables()
 {
     QMap<QString, QStringList> createSqls;
     createSqls["settings"]
-             << TableField("id", TableField::BigInt).primaryKey()
+             << TableField("id", TableField::BigInt).primaryKey(true)
              << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
              << TableField("comission", TableField::Decimal, 6, 4).notNull().defaultValue(0.0020)
              << TableField("first_step", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
@@ -297,10 +318,10 @@ bool SqlVault::create_tables()
              ;
 
     createSqls["secrets"]
-            << "apikey char(255) not null"
-            << "secret char(255) not null"
-            << "id integer primary key"
-            << "is_crypted BOOLEAN not null default " SQL_FALSE
+            << TableField("apikey", TableField::Char, 255).notNull()
+            << TableField("secret", TableField::Char, 255).notNull()
+            << TableField("id", TableField::Integer).primaryKey(true)
+            << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(SQL_FALSE)
             ;
 
     createSqls["transactions"]
@@ -316,9 +337,9 @@ bool SqlVault::create_tables()
             ;
 
     createSqls["rounds"]
-            << "round_id integer primary key " SQL_AUTOINCREMENT
-            << "settings_id INTEGER NOT NULL references settings(id)"
-            << "start_time DATETIME NOT NULL"
+            << TableField("round_id", TableField::BigInt).primaryKey(true)
+            << TableField("settings_id", TableField::BigInt).notNull().references("settings", {"id"})
+            << TableField("start_time", TableField::Datetime).notNull()
             << "end_time DATETIME"
             << "income DECIMAL(14,6)"
             << "reason char(16) not null default 'active'"
@@ -713,7 +734,7 @@ int main(int argc, char *argv[])
                         QVariantMap ins_params;
                         BtcObjects::Order::Id order_id = 0;
                         if (order_rx.indexIn(transaction.desc) > -1)
-                            order_id = order_rx.cap(1).toLongLong();
+                            order_id = order_rx.cap(1).toULongLong();
                         ins_params[":id"] = transaction.id;
                         ins_params[":type"] = transaction.type;
                         ins_params[":amount"] = transaction.amount;
@@ -725,10 +746,6 @@ int main(int argc, char *argv[])
                         ins_params[":order_id"] = order_id;
                         performSql("insert transaction info", *vault.insertTransaction, ins_params);
                     }
-                }
-                catch (const std::exception& e)
-                {
-
                 }
                 catch (std::runtime_error& e)
                 {
@@ -889,7 +906,6 @@ int main(int argc, char *argv[])
                 performSql("Get current round amoumt gain", *vault.selectCurrentRoundGain, param);
                 if(vault.selectCurrentRoundGain->next())
                 {
-                    //int settings_id = selectCurrentRoundGain.value(0).toInt();
                     amount_gain = vault.selectCurrentRoundGain->value(1).toDouble();
                     double payment = vault.selectCurrentRoundGain->value(2).toDouble();
                     sell_rate = vault.selectCurrentRoundGain->value(3).toDouble();
@@ -977,7 +993,7 @@ int main(int argc, char *argv[])
                         int auto_executed_counter = 0;
                         if (amount < pair.min_amount)
                         {
-                            std::clog << "proposed trade amount too low -- skip order" << std::endl;
+                            std::clog << "proposed trade amount " << amount << " too low (min: " << pair.min_amount << ") -- skip order" << std::endl;
                         }
                         else
                         {
@@ -990,7 +1006,6 @@ int main(int argc, char *argv[])
                                 insertOrderParam[":amount"] = trade.remains;
                                 insertOrderParam[":start_amount"] = trade.received + trade.remains;
                                 insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
-                                insertOrderParam[":settings_id"] = settings_id;
                                 insertOrderParam[":round_id"] = round_id;
 
                                 performSql("insert buy order record", *vault.insertOrder, insertOrderParam);
@@ -1028,7 +1043,7 @@ int main(int argc, char *argv[])
                 {
                     if (pair.min_amount > amount_gain)
                     {
-                        std::clog << "An amount we have is less then minimal trade amount. skip creating sell order" << std::endl;
+                        std::clog << "An amount we have ("<< amount_gain <<") is less then minimal trade amount ("<< pair.min_amount <<"). skip creating sell order" << std::endl;
                         continue;
                     }
 

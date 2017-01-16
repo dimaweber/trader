@@ -2,6 +2,7 @@
 #include <QSqlDriver>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QElapsedTimer>
 
 std::ostream& operator << (std::ostream& stream, const QString& str)
 {
@@ -51,6 +52,17 @@ qint64 read_long(const QVariantMap& map, const QString& name)
     return ret;
 }
 
+quint64 read_ulong(const QVariantMap& map, const QString& name)
+{
+    bool ok;
+    quint64 ret = read_string(map, name).toULongLong(&ok);
+
+    if (!ok)
+        throw BrokenJson(name);
+
+    return ret;
+}
+
 QVariantMap read_map(const QVariantMap& map, const QString& name)
 {
     if (!map.contains(name))
@@ -83,19 +95,23 @@ QDateTime read_timestamp(const QVariantMap &map, const QString &name)
 
 bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent)
 {
+    QElapsedTimer executeTimer;
+    quint64 elapsed = 0;
     bool ok;
     if (!silent)
         std::clog << QString("[sql] %1:").arg(message) << std::endl;
+    executeTimer.start();
     if (sql.isEmpty())
         ok = query.exec();
     else
         ok = query.exec(sql);
+    elapsed = executeTimer.elapsed();
     if (!silent)
         std::clog << query.lastQuery() << std::endl;
     if (ok)
     {
         if(!silent)
-            std::clog << "ok";
+            std::clog << "ok ";
         if (query.isSelect())
         {
             int count = 0;
@@ -112,11 +128,11 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bo
                 count = -1;
 
             if (!silent)
-                std::clog << QString("(return %1 records)").arg(count);
+                std::clog << QString("(return %1 records). ").arg(count);
         }
         else
             if (!silent)
-                std::clog << QString("(affected %1 records)").arg(query.numRowsAffected());
+                std::clog << QString("(affected %1 records). ").arg(query.numRowsAffected());
     }
     else
     {
@@ -126,7 +142,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bo
                   << "Reason: " << query.lastError().text();
     }
     if(!silent)
-        std::clog << std::endl;
+        std::clog << "Done in " << elapsed << "ms" << std::endl;
     if (!ok)
         throw query;
     return ok;

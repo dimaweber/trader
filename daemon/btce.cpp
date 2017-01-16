@@ -528,7 +528,7 @@ QString CancelOrder::methodName() const
 
 bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
 {
-    if (read_long(returnMap, "order_id") != order_id)
+    if (read_ulong(returnMap, "order_id") != order_id)
         throw BrokenJson("order_id");
 
     funds.parse(read_map(returnMap, "funds"));

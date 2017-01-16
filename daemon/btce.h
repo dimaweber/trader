@@ -91,7 +91,7 @@ struct Order  : public ExchangeObject
 {
     enum OrderType {Buy, Sell};
     enum OrderStatus {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3};
-    typedef qint64 Id;
+    typedef quint64 Id;
 
     QString pair;
     OrderType type;
