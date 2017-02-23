@@ -38,7 +38,7 @@ bool HttpQuery::performQuery()
             break;
         if (curlResult == CURLE_OPERATION_TIMEDOUT)
         {
-            std::cerr << "http operation timed out. Retry";
+            std::cerr << "http operation timed out. Retry" << std::endl;
             retry_count--;
         }
     } while (retry_count);
