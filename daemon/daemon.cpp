@@ -519,31 +519,6 @@ int main(int argc, char *argv[])
                 BtcTradeApi::Info info(storage, allFunds[id]);
                 performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
 
-                BtcObjects::Funds& funds = allFunds[id];
-                QVariantMap params;
-                params[":secret"] = id;
-                try
-                {
-                    db.transaction();
-                    for (const QString& name: funds.keys())
-                    {
-                        if (name == key_field)
-                            continue;
-
-                        double value = funds[name];
-                        params[":name"] = name;
-                        params[":dep"] = value;
-                        params[":time"] = ratesUpdateTime;
-                        params[":orders"] = onOrders[name];
-                        performSql("Add dep", *vault.insertDep, params);
-                    }
-                    db.commit();
-                }
-                catch(const QSqlQuery& e)
-                {
-                    db.rollback();
-                }
-
                 BtcTradeApi::ActiveOrders activeOrders(storage);
                 try
                 {
@@ -574,6 +549,31 @@ int main(int argc, char *argv[])
                     }
                     else
                         throw e;
+                }
+
+                BtcObjects::Funds& funds = allFunds[id];
+                QVariantMap params;
+                params[":secret"] = id;
+                try
+                {
+                    db.transaction();
+                    for (const QString& name: funds.keys())
+                    {
+                        if (name == key_field)
+                            continue;
+
+                        double value = funds[name];
+                        params[":name"] = name;
+                        params[":dep"] = value;
+                        params[":time"] = ratesUpdateTime;
+                        params[":orders"] = onOrders[name];
+                        performSql("Add dep", *vault.insertDep, params);
+                    }
+                    db.commit();
+                }
+                catch(const QSqlQuery& e)
+                {
+                    db.rollback();
                 }
 
                 QString pname;

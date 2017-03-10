@@ -1,8 +1,8 @@
 TEMPLATE=subdirs
 
-SUBDIRS += daemon \
-#           infobot \
-           common
+SUBDIRS += common \
+		   daemon \
+#           infobot
 
 daemon.depends = common
 #infobot.depends = common
