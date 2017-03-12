@@ -86,6 +86,7 @@ struct SqlVault
     std::unique_ptr<QSqlQuery> checkMaxBuyRate;
     std::unique_ptr<QSqlQuery> selectOrdersWithChangedStatus;
     std::unique_ptr<QSqlQuery> selectOrdersFromPrevRound;
+    std::unique_ptr<QSqlQuery> selectPrevRoundSellRate;
     std::unique_ptr<QSqlQuery> selectMaxTransHistoryId;
     std::unique_ptr<QSqlQuery> insertTransaction;
     std::unique_ptr<QSqlQuery> currentRoundPayback;
@@ -148,6 +149,10 @@ bool SqlVault::prepare()
 
     prepareSql("SELECT order_id from orders o "
                " where o.round_id=:round_id and o.status < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
+
+    prepareSql("select min(o.rate) from rounds r  left join orders o on r.round_id=o.round_id "
+               " where r.settings_id=:settings_id and o.type='sell' and o.status=1 "
+               " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
                " where t.secret_id=:secret_id", selectMaxTransHistoryId);
@@ -973,6 +978,13 @@ int main(int argc, char *argv[])
                         sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
 
                     double execute_rate = pair.ticker.last;
+                    if (performSql("get prev round sell price", *vault.selectPrevRoundSellRate, param))
+                    {
+                        if (vault.selectPrevRoundSellRate->next())
+                        {
+                            execute_rate = qMin(vault.selectPrevRoundSellRate->value(0).toDouble(), execute_rate);
+                        }
+                    }
                     double u = dep / execute_rate / sum;
                     //u = qMax(qMin(funds[currency], dep) / execute_rate / sum, pair.min_amount / (1-comission));
                     double total_currency_spent = 0;
