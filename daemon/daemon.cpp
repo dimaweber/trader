@@ -150,9 +150,8 @@ bool SqlVault::prepare()
     prepareSql("SELECT order_id from orders o "
                " where o.round_id=:round_id and o.status < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
-    prepareSql("select min(o.rate) from rounds r  left join orders o on r.round_id=o.round_id "
-               " where r.settings_id=:settings_id and o.type='sell' and o.status=1 "
-               " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
+    prepareSql("select least(:last_price, o.rate + (:last_price - o.rate) / 100 * least(timestampdiff(MINUTE, r.end_time, now()), 100)) from rounds r left join orders o on r.round_id=o.round_id "
+               " where r.settings_id=:settings_id and o.type='sell' and o.status=" ORDER_STATUS_DONE " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
                " where t.secret_id=:secret_id", selectMaxTransHistoryId);
@@ -978,11 +977,12 @@ int main(int argc, char *argv[])
                         sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
 
                     double execute_rate = pair.ticker.last;
+                    param[":last_price"] = execute_rate;
                     if (performSql("get prev round sell price", *vault.selectPrevRoundSellRate, param))
                     {
                         if (vault.selectPrevRoundSellRate->next())
                         {
-                            execute_rate = qMin(vault.selectPrevRoundSellRate->value(0).toDouble(), execute_rate);
+                            execute_rate = vault.selectPrevRoundSellRate->value(0).toDouble();
                         }
                     }
                     double u = dep / execute_rate / sum;
