@@ -34,17 +34,21 @@ void sig_handler(int signum)
 }
 
 #ifdef USE_SQLITE
-#   define SQL_NOW "date('now')"
+#   define SQL_NOW "datetime('now')"
 #   define SQL_TRUE "1"
 #   define SQL_FALSE "0"
 #   define SQL_AUTOINCREMENT ""
 #   define SQL_UTF8SUPPORT ""
+#   define LEAST "min"
+#   define MINUTES_DIFF(y) "round((julianday( 'now' ) - julianday( " #y " )) * 86400/ 60)"
 #else
 #   define SQL_NOW "now()"
 #   define SQL_TRUE "TRUE"
 #   define SQL_FALSE "FALSE"
 #   define SQL_AUTOINCREMENT "auto_increment"
 #   define SQL_UTF8SUPPORT "character set utf8 COLLATE utf8_general_ci"
+#   define LEAST "least"
+#   define MINUTES_DIFF(y) "timestampdiff(MINUTE, now(), " #y ")"
 #endif
 
 #define ORDER_STATUS_CHECKING "-1"
@@ -138,7 +142,8 @@ bool SqlVault::prepare()
     prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id "
                " where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
 
-    prepareSql("select max(o.rate) * (1+s.first_step) / (1-s.first_step) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id "
+    //  / (1-s.first_step)
+    prepareSql("select max(o.rate) * (1+s.first_step * 2) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id "
                " where o.status= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
 
     prepareSql("select sum(start_amount-amount) from orders o "
@@ -150,7 +155,7 @@ bool SqlVault::prepare()
     prepareSql("SELECT order_id from orders o "
                " where o.round_id=:round_id and o.status < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
-    prepareSql("select least(:last_price, o.rate + (:last_price - o.rate) / 100 * least(timestampdiff(MINUTE, r.end_time, now()), 100)) from rounds r left join orders o on r.round_id=o.round_id "
+    prepareSql("select " LEAST "(:last_price, o.rate + (:last_price - o.rate) / 10 * " LEAST "(" MINUTES_DIFF(r.end_time) ", 10)) from rounds r left join orders o on r.round_id=o.round_id "
                " where r.settings_id=:settings_id and o.type='sell' and o.status=" ORDER_STATUS_DONE " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
@@ -262,6 +267,10 @@ public:
             else
                 ret += QString(" (%1, %2)").arg(_size).arg(_prec);
         }
+        if (_primaryKey)
+            ret +=  " PRIMARY KEY ";
+        if (_autoIncrement)
+            ret += " " SQL_AUTOINCREMENT " ";
         if (_notNull)
             ret += " NOT NULL";
         if (!_default.isEmpty())
@@ -307,9 +316,10 @@ bool SqlVault::create_tables()
              << TableField("count", TableField::Integer, 11).notNull().defaultValue(10)
              << TableField("currency", TableField::Char, 3).notNull().defaultValue("usd")
              << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
-             << TableField("secret_id").notNull().references("secrets", {"id"})
              << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
              << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
+             << TableField("secret_id").notNull().references("secrets", {"id"})
+             << " FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
              ;
     createSqls["orders"]
              <<  TableField("order_id", TableField::BigInt).primaryKey(false)
@@ -318,13 +328,14 @@ bool SqlVault::create_tables()
              <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("round_id").notNull().references("rounds", {"round_id"})
+             <<  TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
+             << " FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
              ;
 
     createSqls["secrets"]
+            << TableField("id", TableField::Integer).primaryKey(true)
             << TableField("apikey", TableField::Char, 255).notNull()
             << TableField("secret", TableField::Char, 255).notNull()
-            << TableField("id", TableField::Integer).primaryKey(true)
             << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(SQL_FALSE)
             ;
 
@@ -335,23 +346,26 @@ bool SqlVault::create_tables()
             << TableField("currency", TableField::Char, 3).notNull()
             << TableField("description", TableField::Varchar, 255)
             << TableField("status").check("status>0 and status<5")
-            << TableField("secret_id").references("secrets", {"id"})
             << TableField("timestamp", TableField::Datetime).notNull()
+            << TableField("secret_id").references("secrets", {"id"})
             << TableField("order_id", TableField::BigInt).notNull().defaultValue(0).references("orders", {"order_id"})
+            << " FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            << " FOREIGN KEY(order_id) REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
 
     createSqls["rounds"]
-            << TableField("round_id", TableField::BigInt).primaryKey(true)
-            << TableField("settings_id", TableField::BigInt).notNull().references("settings", {"id"})
+            << TableField("round_id", TableField::Integer).primaryKey(true)
             << TableField("start_time", TableField::Datetime).notNull()
             << "end_time DATETIME"
-            << "income DECIMAL(14,6)"
+            << "income DECIMAL(14,6) default 0"
             << "reason char(16) not null default 'active'"
             << "g_in decimal(14,6) not null default 0"
             << "g_out decimal(14,6) not null default 0"
             << "c_in decimal(14,6) not null default 0"
             << "c_out decimal(14,6) not null default 0"
             << "dep_usage decimal(14,6) not null default 0"
+            << TableField("settings_id", TableField::BigInt).notNull().references("settings", {"id"})
+            << " FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
 
     createSqls["rates"]
@@ -369,11 +383,22 @@ bool SqlVault::create_tables()
     createSqls["dep"]
             << "time DATETIME not null"
             << "name char(3) not null"
-            << "secret_id integer not null references secrets(id)"
             << "value decimal(14,6) not null"
             << "on_orders decimal(14,6) not null default 0"
+            << "secret_id integer not null references secrets(id)"
+            << " FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
             << "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
-               ;
+            ;
+
+    createSqls["order_status"]
+            << TableField("status_id", TableField::Integer).primaryKey(false)
+            << TableField("status", TableField::Char, 16)
+            ;
+
+    createSqls["order_type"]
+            << TableField("type_id", TableField::Integer).primaryKey(false)
+            << TableField("type", TableField::Char, 8)
+            ;
 
     QSqlQuery sql(db);
     for (const QString& tableName : createSqls.keys())
@@ -579,148 +604,6 @@ int main(int argc, char *argv[])
                 {
                     db.rollback();
                 }
-
-                QString pname;
-                pname = "btc_usd";
-
-                auto seller = [](const QString& pname, double& goods, double& currency) -> bool
-                {
-                    BtcObjects::Pair& p = BtcObjects::Pairs::ref(pname);
-
-                    double gain = 0;
-                    double sold = 0;
-                    bool no_overflow = false;
-                    for(auto d: p.depth.bids)
-                    {
-                        if (goods < p.min_amount)
-                        {
-                            no_overflow = true;
-                            break;
-                        }
-                        double amount = d.amount;
-                        double rate = d.rate;
-                        double trade_amount = qMin(goods, amount);
-                        gain += rate * trade_amount * (1-p.fee/100);
-                        goods -= trade_amount;
-                        sold += trade_amount;
-                    }
-
-                    currency += gain;
-
-                    return no_overflow;
-                };
-
-                auto buyer = [](const QString& pname, double& goods, double& currency) -> bool
-                {
-                    BtcObjects::Pair& p = BtcObjects::Pairs::ref(pname);
-                    double bought = 0;
-                    double spent = 0;
-                    bool no_overflow = false;
-                    for(auto d: p.depth.asks)
-                    {
-                        if (currency < 0.000001)
-                        {
-                            no_overflow = true;
-                            break;
-                        }
-                        double amount = d.amount;
-                        double rate = d.rate;
-                        double price = qMin(currency, amount*rate);
-                        bought += ((price / rate) * (1-p.fee/100));
-                        currency -= price;
-                        spent += price;
-                    }
-
-                    goods += bought;
-
-                    return no_overflow;
-                };
-
-                double btc = funds["btc"] / 10;
-                double start_btc = btc;
-                double usd = 0;
-                double eur = 0;
-                double ltc = 0;
-
-                seller("btc_usd", btc, usd);
-                buyer("eur_usd", eur, usd);
-                buyer("btc_eur", btc, eur);
-
-                if (btc - start_btc > 0)
-                    std::cout << QString("btc -> usd -> eur -> btc : %1").arg(btc - start_btc) << std::endl;
-
-                btc = start_btc;
-                usd = 0;
-                eur = 0;
-
-                seller("btc_eur", btc, eur);
-                seller("eur_usd", eur, usd);
-                buyer("btc_usd", btc, usd);
-
-                if (btc - start_btc > 0)
-                    std::cout << QString("btc -> eur -> usd -> btc : %1").arg(btc - start_btc) << std::endl;
-
-                btc = start_btc;
-                usd = 0;
-                ltc = 0;
-
-                buyer("ltc_btc", ltc, btc);
-                seller("ltc_usd", ltc, usd);
-                buyer("btc_usd", btc, usd);
-                if (btc - start_btc > 0)
-                    std::cout << QString("btc -> ltc -> usd -> btc : %1").arg(btc - start_btc) << std::endl;
-
-                btc = start_btc;
-                usd = 0;
-                ltc = 0;
-
-                seller("btc_usd", btc, usd);
-                buyer("ltc_usd", ltc, usd);
-                seller("ltc_btc", ltc, btc);
-                if (btc - start_btc > 0)
-                    std::cout << QString("btc -> usd -> ltc -> btc : %1").arg(btc - start_btc) << std::endl;
-
-                auto equCalc = [buyer, seller](const BtcObjects::Funds& f, const QString& curr, bool& no_overflow) -> double
-                {
-                    double equ = 0;
-                    no_overflow = true;
-                    for(QString key : f.keys())
-                    {
-                        double v = f[key];
-                        double s = 0;
-                        QString pname = QString("%1_%2").arg(curr).arg(key);
-                        QString rname = QString("%1_%2").arg(key).arg(curr);
-                        if (v==0)
-                            continue;
-                        else if (key == curr)
-                            equ += v;
-                        else if (key == key_field)
-                            continue;
-                        else if (BtcObjects::Pairs::ref().contains(pname))
-                        {
-                            no_overflow &= buyer(pname, s, v);
-                            equ += s;
-                        }
-                        else if (BtcObjects::Pairs::ref().contains(rname))
-                        {
-                            no_overflow &= seller(rname, v, s);
-                            equ += s;
-                        }
-                    }
-                    return equ;
-                };
-
-                auto displayEqu = [equCalc, &funds, &onOrders](const QString& name)
-                {
-                    bool funds_overflowControl, orders_overflowControl;
-                    double equ = equCalc(funds, name.toLower(), funds_overflowControl)
-                               + equCalc(onOrders, name.toLower(), orders_overflowControl);
-                    std::clog << QString("%1 equ: %2 %3").arg(name.toUpper()).arg(equ).arg((funds_overflowControl && orders_overflowControl)?"":" +") << std::endl;
-                };
-
-                QStringList equList = {"btc", "usd", "eur"};
-                for(const QString& n: equList)
-                    displayEqu(n);
 
                 db.transaction();
                 BtcTradeApi::TransHistory hist(storage);
