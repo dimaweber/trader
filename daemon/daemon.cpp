@@ -83,6 +83,7 @@ struct SqlVault
     std::unique_ptr<QSqlQuery> insertOrder;
     std::unique_ptr<QSqlQuery> updateActiveOrder;
     std::unique_ptr<QSqlQuery> updateSetCanceled;
+    std::unique_ptr<QSqlQuery> cancelPrevRoundActiveOrders;
     std::unique_ptr<QSqlQuery> selectSellOrder;
     std::unique_ptr<QSqlQuery> selectSettings;
     std::unique_ptr<QSqlQuery> selectCurrentRoundActiveOrdersCount;
@@ -129,6 +130,8 @@ bool SqlVault::prepare()
 
     prepareSql("UPDATE orders set status=:status, amount=:amount, start_amount=:start_amount, rate=:rate "
                " where order_id=:order_id", updateSetCanceled);
+
+    prepareSql("UPDATE orders set status=" ORDER_STATUS_CANCEL " where round_id=:round_id and status=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
 
     prepareSql("SELECT order_id, start_amount, rate from orders o "
                " where o.status < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
@@ -513,7 +516,7 @@ int main(int argc, char *argv[])
                     db.transaction();
                     for (const BtcObjects::Pair& pair: BtcObjects::Pairs::ref().values())
                     {
-                        params[":time"] = pair.ticker.updated;
+                        params[":time"] = ratesUpdateTime; //pair.ticker.updated;
                         params[":currency"] = pair.currency();
                         params[":goods"] = pair.goods();
                         params[":buy"] = pair.ticker.buy;
@@ -774,6 +777,7 @@ int main(int argc, char *argv[])
                             performSql("increase deposit", *vault.depositIncrease, dep_upd);
 
                             round_id = 0;
+                            round_in_progress = false;
                         }
                         else
                         {
@@ -844,7 +848,9 @@ int main(int argc, char *argv[])
                         BtcObjects::Order::Id order_id = vault.selectOrdersFromPrevRound->value(0).toInt();
                         BtcTradeApi::CancelOrder cancel(storage, funds, order_id);
                         performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
+
                     }
+                    performSql("cancel active orders left from previous round", *vault.cancelPrevRoundActiveOrders, param);
 
                     std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
 

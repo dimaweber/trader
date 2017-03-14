@@ -9,3 +9,6 @@ SUBDIRS += common \
 daemon.depends = common
 infobot.depends = common tgbot-cpp
 db_check.depends = common
+
+
+#TODO!!!!!!!!: ini file with db settings, common for all executables!!!!!
