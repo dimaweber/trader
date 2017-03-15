@@ -26,6 +26,7 @@
 *.exe
 *.out
 *.app
+data/
 daemon/trader
 infobot/infobot
 common/libcommon.a
