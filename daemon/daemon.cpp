@@ -42,7 +42,7 @@ void sig_handler(int signum)
 #   define SQL_AUTOINCREMENT "auto_increment"
 #   define SQL_UTF8SUPPORT "character set utf8 COLLATE utf8_general_ci"
 #   define LEAST "least"
-#   define MINUTES_DIFF(y) "timestampdiff(MINUTE, now(), " #y ")"
+#   define MINUTES_DIFF(y) "timestampdiff(MINUTE, " #y ", now())"
 
 #define ORDER_STATUS_CHECKING "-1"
 #define ORDER_STATUS_ACTIVE "0"
