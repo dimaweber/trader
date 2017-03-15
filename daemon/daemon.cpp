@@ -166,11 +166,11 @@ bool SqlVault::prepare()
     prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out "
                " where round_id=:round_id", updateRound);
 
-    prepareSql("update rounds set end_time=" SQL_NOW ", reason='sell' "
+    prepareSql("update rounds set end_time=" SQL_NOW ", reason='done' "
                " where round_id=:round_id", closeRound);
 
     prepareSql("select round_id from rounds r "
-               " where r.settings_id=:settings_id and r.end_time is null", getRoundId);
+               " where r.settings_id=:settings_id and reason='active'", getRoundId);
 
     prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
                " where o.type='buy' and o.round_id=:round_id", roundBuyStat);
@@ -337,7 +337,7 @@ bool SqlVault::create_tables()
             << TableField("start_time", TableField::Datetime).notNull()
             << "end_time DATETIME"
             << "income DECIMAL(14,6) default 0"
-            << "reason char(16) not null default 'active'"
+            << "reason ENUM TYPE('active', 'sell') not null default 'active'"
             << "g_in decimal(14,6) not null default 0"
             << "g_out decimal(14,6) not null default 0"
             << "c_in decimal(14,6) not null default 0"
