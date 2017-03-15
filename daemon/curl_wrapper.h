@@ -21,7 +21,12 @@ protected:
 public:
     CurlHandleWrapper()
     {
-        curlHandle = curl_easy_init();
+        do
+        {
+            curlHandle = curl_easy_init();
+            if (!curlHandle)
+                std::cerr << "*** FAIL! Unable to create curl handle.";
+        } while (!curlHandle);
     }
 
     ~CurlHandleWrapper()
