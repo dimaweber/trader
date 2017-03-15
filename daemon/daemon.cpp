@@ -2,6 +2,7 @@
 #include "utils.h"
 #include "key_storage.h"
 
+#include <QCoreApplication>
 #include <QString>
 #include <QDateTime>
 #include <QtMath>
@@ -15,13 +16,15 @@
 #include <QSqlDriver>
 #include <QSqlError>
 
+#include <QSettings>
+
 #include <iostream>
+#include <memory>
+#include <unordered_map>
 
 #include <unistd.h>
 #include <signal.h>
-#include <memory>
 
-#define USE_SQLITE
 
 static CurlWrapper w;
 
@@ -33,15 +36,6 @@ void sig_handler(int signum)
         exit_asked = true;
 }
 
-#ifdef USE_SQLITE
-#   define SQL_NOW "datetime('now')"
-#   define SQL_TRUE "1"
-#   define SQL_FALSE "0"
-#   define SQL_AUTOINCREMENT ""
-#   define SQL_UTF8SUPPORT ""
-#   define LEAST "min"
-#   define MINUTES_DIFF(y) "round((julianday( 'now' ) - julianday( " #y " )) * 86400/ 60)"
-#else
 #   define SQL_NOW "now()"
 #   define SQL_TRUE "TRUE"
 #   define SQL_FALSE "FALSE"
@@ -49,7 +43,6 @@ void sig_handler(int signum)
 #   define SQL_UTF8SUPPORT "character set utf8 COLLATE utf8_general_ci"
 #   define LEAST "least"
 #   define MINUTES_DIFF(y) "timestampdiff(MINUTE, now(), " #y ")"
-#endif
 
 #define ORDER_STATUS_CHECKING "-1"
 #define ORDER_STATUS_ACTIVE "0"
@@ -63,7 +56,7 @@ void sig_handler(int signum)
 struct SqlVault
 {
     SqlVault(QSqlDatabase& db)
-        :db(db)
+        :db(db), sql(db)
     {
         try
         {
@@ -108,6 +101,8 @@ struct SqlVault
     std::unique_ptr<QSqlQuery> insertDep;
     std::unique_ptr<QSqlQuery> updateOrdersCheckToActive;
     QSqlDatabase& db;
+private:
+    QSqlQuery sql;
 };
 
 bool SqlVault::prepare()
@@ -164,7 +159,7 @@ bool SqlVault::prepare()
     prepareSql("select count(id) from transactions t "
                " where t.secret_id=:secret_id", selectMaxTransHistoryId);
 
-    prepareSql("insert into transactions values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)", insertTransaction);
+    prepareSql("insert into transactions (id, type, amount, currency, description, status, secret_id, timestamp, order_id) values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)", insertTransaction);
 
     prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, " SQL_NOW ", 0)", insertRound);
 
@@ -192,9 +187,9 @@ bool SqlVault::prepare()
     prepareSql("update rounds set dep_usage=:usage "
                " where round_id=:round_id", setRoundsDepUsage);
 
-    prepareSql("insert into rates values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
+    prepareSql("insert into rates (time, currency, goods, buy_rate, sell_rate, last_rate, currency_volume, goods_volume) values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
-    prepareSql("insert into dep values (:time, :name, :secret, :dep, :orders)", insertDep);
+    prepareSql("insert into dep (time, name, secret_id, value, on_orders) values (:time, :name, :secret, :dep, :orders)", insertDep);
 
     return true;
 }
@@ -277,7 +272,12 @@ public:
         if (_notNull)
             ret += " NOT NULL";
         if (!_default.isEmpty())
-            ret += QString(" DEFAULT '%1'").arg(_default);
+        {
+            if (t == "VARCHAR" || t == "CHAR")
+                ret += QString(" DEFAULT '%1'").arg(_default);
+            else
+                ret += QString(" DEFAULT %1").arg(_default);
+        }
         if (!_check.isEmpty())
         {
             ret += " CHECK (" + _check + ")";
@@ -308,6 +308,13 @@ private:
 bool SqlVault::create_tables()
 {
     QMap<QString, QStringList> createSqls;
+    createSqls["secrets"]
+            << TableField("id", TableField::Integer).primaryKey(true)
+            << TableField("apikey", TableField::Char, 255).notNull()
+            << TableField("secret", TableField::Char, 255).notNull()
+            << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(SQL_FALSE)
+            ;
+
     createSqls["settings"]
              << TableField("id", TableField::BigInt).primaryKey(true)
              << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
@@ -322,39 +329,8 @@ bool SqlVault::create_tables()
              << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
              << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
              << TableField("secret_id").notNull().references("secrets", {"id"})
-             << " FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+             << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
              ;
-    createSqls["orders"]
-             <<  TableField("order_id", TableField::BigInt).primaryKey(false)
-             <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
-             <<  TableField("type", TableField::Char, 4).notNull().defaultValue("buy")
-             <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
-             << " FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
-             ;
-
-    createSqls["secrets"]
-            << TableField("id", TableField::Integer).primaryKey(true)
-            << TableField("apikey", TableField::Char, 255).notNull()
-            << TableField("secret", TableField::Char, 255).notNull()
-            << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(SQL_FALSE)
-            ;
-
-    createSqls["transactions"]
-            << TableField("id", TableField::BigInt).primaryKey(false)
-            << TableField("type").notNull().check("type < 6 and type > 0")
-            << TableField("amount", TableField::Double).notNull().check("amount>=0")
-            << TableField("currency", TableField::Char, 3).notNull()
-            << TableField("description", TableField::Varchar, 255)
-            << TableField("status").check("status>0 and status<5")
-            << TableField("timestamp", TableField::Datetime).notNull()
-            << TableField("secret_id").references("secrets", {"id"})
-            << TableField("order_id", TableField::BigInt).notNull().defaultValue(0).references("orders", {"order_id"})
-            << " FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
-            << " FOREIGN KEY(order_id) REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT"
-            ;
 
     createSqls["rounds"]
             << TableField("round_id", TableField::Integer).primaryKey(true)
@@ -368,7 +344,32 @@ bool SqlVault::create_tables()
             << "c_out decimal(14,6) not null default 0"
             << "dep_usage decimal(14,6) not null default 0"
             << TableField("settings_id", TableField::BigInt).notNull().references("settings", {"id"})
-            << " FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            << "FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            ;
+
+    createSqls["orders"]
+             <<  TableField("order_id", TableField::BigInt).primaryKey(false)
+             <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
+             <<  TableField("type", TableField::Char, 4).notNull().defaultValue("buy")
+             <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
+             << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+             ;
+
+    createSqls["transactions"]
+            << TableField("id", TableField::BigInt).primaryKey(false)
+            << TableField("type").notNull().check("type < 6 and type > 0")
+            << TableField("amount", TableField::Double).notNull().check("amount>=0")
+            << TableField("currency", TableField::Char, 3).notNull()
+            << TableField("description", TableField::Varchar, 255)
+            << TableField("status").check("status>0 and status<5")
+            << TableField("timestamp", TableField::Datetime).notNull()
+            << TableField("secret_id").references("secrets", {"id"})
+            << TableField("order_id", TableField::BigInt).notNull().defaultValue(0).references("orders", {"order_id"})
+            << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+         //   << "FOREIGN KEY(order_id) REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
 
     createSqls["rates"]
@@ -389,7 +390,7 @@ bool SqlVault::create_tables()
             << "value decimal(14,6) not null"
             << "on_orders decimal(14,6) not null default 0"
             << "secret_id integer not null references secrets(id)"
-            << " FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
             << "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
             ;
 
@@ -403,7 +404,8 @@ bool SqlVault::create_tables()
             << TableField("type", TableField::Char, 8)
             ;
 
-    QSqlQuery sql(db);
+
+    sql.exec("SET FOREIGN_KEY_CHECKS = 0");
     for (const QString& tableName : createSqls.keys())
     {
         QStringList& fields = createSqls[tableName];
@@ -415,34 +417,36 @@ bool SqlVault::create_tables()
 
         performSql(caption, sql, createSql);
     }
+    sql.exec("SET FOREIGN_KEY_CHECKS = 1");
 
     return true;
 }
 
+
 int main(int argc, char *argv[])
 {
-
     signal(SIGINT, sig_handler);
 
-    (void) argc;
-    (void) argv;
+    QCoreApplication app(argc, argv);
+
+    QString iniFilePath = QCoreApplication::applicationDirPath() + "/../data/trader.ini";
+    QSettings settings(iniFilePath, QSettings::IniFormat);
+    settings.beginGroup("database");
 
     QSqlDatabase db;
     while (!db.isOpen())
     {
-#ifdef USE_SQLITE
-        std::clog << "use sqlite database" << std::endl;
-        db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
-        db.setDatabaseName("../data/trader.db");
-#else
         std::clog << "use mysql database" << std::endl;
         db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
-        db.setHostName("localhost");
-        db.setUserName("trader");
-        db.setPassword("traderpassword");
-        db.setDatabaseName("trade");
+        if (settings.value("type", "unknown").toString() != "mysql")
+            throw std::runtime_error("unsupported database type");
+
+        db.setHostName(settings.value("host", "localhost").toString());
+        db.setUserName(settings.value("user", "user").toString());
+        db.setPassword(settings.value("password", "password").toString());
+        db.setDatabaseName(settings.value("database", "db").toString());
+        db.setPort(settings.value("port", 3306).toInt());
         db.setConnectOptions("MYSQL_OPT_RECONNECT=true");
-#endif
 
         std::clog << "connecting to database ... ";
         if (!db.open())
@@ -453,18 +457,15 @@ int main(int argc, char *argv[])
         else
         {
             std::clog << " ok" << std::endl;
-#ifndef USE_SQLITE
-            QSqlQuery sql(db);
-            performSql("set utf8", sql, "SET NAMES utf8");
-#endif
         }
     }
+    settings.endGroup();
 
     SqlVault vault(db);
 
     std::clog << "Initialize key storage ... ";
     SqlKeyStorage storage(db, "secrets");
-    storage.setPassword("g00dd1e#wer4");
+    storage.setPassword(settings.value("secrets/password", "password").toByteArray());
     std::clog << "ok" << std::endl;
 
     QMap<int, BtcObjects::Funds> allFunds;
