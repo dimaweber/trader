@@ -316,7 +316,7 @@ bool SqlVault::create_tables()
             ;
 
     createSqls["settings"]
-             << TableField("id", TableField::BigInt).primaryKey(true)
+             << TableField("id", TableField::Integer).primaryKey(true)
              << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
              << TableField("comission", TableField::Decimal, 6, 4).notNull().defaultValue(0.0020)
              << TableField("first_step", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
@@ -328,7 +328,7 @@ bool SqlVault::create_tables()
              << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
              << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
              << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
-             << TableField("secret_id").notNull().references("secrets", {"id"})
+             << TableField("secret_id", TableField::Integer).notNull().references("secrets", {"id"})
              << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
              ;
 
@@ -337,20 +337,20 @@ bool SqlVault::create_tables()
             << TableField("start_time", TableField::Datetime).notNull()
             << "end_time DATETIME"
             << "income DECIMAL(14,6) default 0"
-            << "reason ENUM TYPE('active', 'sell') not null default 'active'"
+            << "reason ENUM ('active', 'sell') not null default 'active'"
             << "g_in decimal(14,6) not null default 0"
             << "g_out decimal(14,6) not null default 0"
             << "c_in decimal(14,6) not null default 0"
             << "c_out decimal(14,6) not null default 0"
             << "dep_usage decimal(14,6) not null default 0"
-            << TableField("settings_id", TableField::BigInt).notNull().references("settings", {"id"})
+            << TableField("settings_id", TableField::Integer).notNull().references("settings", {"id"})
             << "FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
 
     createSqls["orders"]
-             <<  TableField("order_id", TableField::BigInt).primaryKey(false)
+             <<  TableField("order_id", TableField::Integer).primaryKey(false)
              <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
-             <<  TableField("type", TableField::Char, 4).notNull().defaultValue("buy")
+             <<  "type ENUM ('buy', 'sell') not null default 'buy'"
              <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
@@ -366,8 +366,8 @@ bool SqlVault::create_tables()
             << TableField("description", TableField::Varchar, 255)
             << TableField("status").check("status>0 and status<5")
             << TableField("timestamp", TableField::Datetime).notNull()
-            << TableField("secret_id").references("secrets", {"id"})
-            << TableField("order_id", TableField::BigInt).notNull().defaultValue(0).references("orders", {"order_id"})
+            << TableField("secret_id", TableField::Integer).references("secrets", {"id"})
+            << TableField("order_id", TableField::Integer).notNull().defaultValue(0).references("orders", {"order_id"})
             << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
          //   << "FOREIGN KEY(order_id) REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
@@ -398,12 +398,6 @@ bool SqlVault::create_tables()
             << TableField("status_id", TableField::Integer).primaryKey(false)
             << TableField("status", TableField::Char, 16)
             ;
-
-    createSqls["order_type"]
-            << TableField("type_id", TableField::Integer).primaryKey(false)
-            << TableField("type", TableField::Char, 8)
-            ;
-
 
     sql.exec("SET FOREIGN_KEY_CHECKS = 0");
     for (const QString& tableName : createSqls.keys())
