@@ -1,8 +1,11 @@
 #ifndef SQLVAULT_H
 #define SQLVAULT_H
 
+#include "key_storage.h"
+
 #include <QSqlQuery>
 #include <QSqlDatabase>
+#include <QSettings>
 #include <memory>
 
 #define DB_VERSION_MAJOR 2
@@ -25,10 +28,12 @@
 #define CLOSED_ORDER "1"
 #define ACTIVE_ORDER "0"
 
-struct SqlVault
+class Database
 {
-    SqlVault(QSqlDatabase& db);
+public:
+    Database(QSettings& settings);
 
+    bool connect();
     bool prepare();
     bool create_tables();
     bool execute_upgrade_sql(int& major, int& minor);
@@ -60,9 +65,22 @@ struct SqlVault
     std::unique_ptr<QSqlQuery> insertRate;
     std::unique_ptr<QSqlQuery> insertDep;
     std::unique_ptr<QSqlQuery> updateOrdersCheckToActive;
-    QSqlDatabase& db;
+
+    bool init();
+
+    bool transaction() { return db.transaction(); }
+    bool commit() {return db.commit(); }
+    bool rollback() {return db.rollback();}
+
+    QList<int>  allKeys() { return keyStorage->allKeys(); }
+    void setCurrent(int key) { keyStorage->setCurrent(key); }
+    KeyStorage& storage() { return *keyStorage;}
 private:
-    QSqlQuery sql;
+    QSettings& settings;
+    QSqlDatabase db;
+    std::unique_ptr<QSqlQuery> sql;
+    std::unique_ptr<KeyStorage> keyStorage;
+
 };
 
 

@@ -1,4 +1,4 @@
-#include "sqlvault.h"
+#include "sql_database.h"
 #include "utils.h"
 #include "tablefield.h"
 
@@ -8,11 +8,20 @@
 #include <QTextStream>
 #include <QCoreApplication>
 
-SqlVault::SqlVault(QSqlDatabase &db)
-    :db(db), sql(db)
+#include <unistd.h>
+
+
+Database::Database(QSettings& settings)
+    :settings(settings)
+{
+}
+
+bool Database::init()
 {
     try
     {
+        connect();
+
         // orders table is a core table for whole trader, so if it does not exists, we can
         // say that this is new database, so we don't need to upgrade it but simply can
         // create tables and put current version into versions table
@@ -23,11 +32,11 @@ SqlVault::SqlVault(QSqlDatabase &db)
         {
             int major = 0;
             int minor = 0;
-            performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
-            if (sql.next())
+            performSql("get database version", *sql, "select major, minor from version order by id desc limit 1");
+            if (sql->next())
             {
-                major = sql.value(0).toInt();
-                minor = sql.value(1).toInt();
+                major = sql->value(0).toInt();
+                minor = sql->value(1).toInt();
             }
             else
             {
@@ -43,7 +52,7 @@ SqlVault::SqlVault(QSqlDatabase &db)
         }
         else
         {
-            performSql("set database version", sql, QString("insert into version (major, minor) values (%1, %2)").arg(DB_VERSION_MAJOR).arg(DB_VERSION_MINOR));
+            performSql("set database version", *sql, QString("insert into version (major, minor) values (%1, %2)").arg(DB_VERSION_MAJOR).arg(DB_VERSION_MINOR));
         }
 
         prepare();
@@ -53,9 +62,53 @@ SqlVault::SqlVault(QSqlDatabase &db)
         std::cerr << "Fail to perform " << e.lastQuery() << " : " << e.lastError().text() << std::endl;
         throw e;
     }
+
+    return true;
 }
 
-bool SqlVault::prepare()
+bool Database::connect()
+{
+    settings.sync();
+    settings.beginGroup("database");
+
+    while (!db.isOpen())
+    {
+        std::clog << "use mysql database" << std::endl;
+        db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
+        if (settings.value("type", "unknown").toString() != "mysql")
+            throw std::runtime_error("unsupported database type");
+
+        db.setHostName(settings.value("host", "localhost").toString());
+        db.setUserName(settings.value("user", "user").toString());
+        db.setPassword(settings.value("password", "password").toString());
+        db.setDatabaseName(settings.value("database", "db").toString());
+        db.setPort(settings.value("port", 3306).toInt());
+        QString optionsString = QString("MYSQL_OPT_RECONNECT=%1").arg(settings.value("options.reconnect", true).toBool()?"TRUE":"FALSE");
+        db.setConnectOptions(optionsString);
+
+        std::clog << "connecting to database ... ";
+        if (!db.open())
+        {
+            std::clog << " FAIL. " << db.lastError().text() << std::endl;
+            usleep(1000 * 1000 * 5);
+        }
+        else
+        {
+            std::clog << " ok" << std::endl;
+        }
+    }
+    settings.endGroup();
+    sql.reset(new QSqlQuery(db));
+
+    std::clog << "Initialize key storage ... ";
+    keyStorage.reset(new SqlKeyStorage(db, "secrets"));
+    keyStorage->setPassword(settings.value("secrets/password", "password").toByteArray());
+    std::clog << "ok" << std::endl;
+
+    return true;
+}
+
+bool Database::prepare()
 {
     auto prepareSql = [this](const QString& str, std::unique_ptr<QSqlQuery>& sql)
     {
@@ -68,7 +121,7 @@ bool SqlVault::prepare()
                " where status_id=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
     prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id) "
-                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id)", insertOrder);
+                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id, :created)", insertOrder);
 
     prepareSql("UPDATE orders set status_id=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
                " where order_id=:order_id", updateActiveOrder);
@@ -144,7 +197,7 @@ bool SqlVault::prepare()
     return true;
 }
 
-bool SqlVault::create_tables()
+bool Database::create_tables()
 {
     QMap<QString, QStringList> createSqls;
     createSqls["version"]
@@ -195,13 +248,15 @@ bool SqlVault::create_tables()
             ;
 
     createSqls["orders"]
-             <<  TableField("order_id", TableField::Integer).primaryKey(false)
-             <<  TableField("status_id", TableField::Integer, 11).notNull().defaultValue(0).references("order_status", {"status_id"})
-             <<  "type ENUM ('buy', 'sell') not null default 'buy'"
-             <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             <<  TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
+             << TableField("order_id", TableField::Integer).primaryKey(false)
+             << TableField("status_id", TableField::Integer, 11).notNull().defaultValue(0).references("order_status", {"status_id"})
+             << "type ENUM ('buy', 'sell') not null default 'buy'"
+             << TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             << TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             << TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             << TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
+             << "created TIMESTAMP NOT NULL"
+             << "modified TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP"
              << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
              << "FOREIGN KEY(status_id) REFERENCES order_status(status_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
              ;
@@ -254,7 +309,7 @@ bool SqlVault::create_tables()
             << "CONSTRAINT uniq_name UNIQUE (name)"
             ;
 
-    sql.exec("SET FOREIGN_KEY_CHECKS = 0");
+    sql->exec("SET FOREIGN_KEY_CHECKS = 0");
     for (const QString& tableName : createSqls.keys())
     {
         QStringList& fields = createSqls[tableName];
@@ -264,14 +319,14 @@ bool SqlVault::create_tables()
                             ;
         QString caption = QString("create %1 table").arg(tableName);
 
-        performSql(caption, sql, createSql);
+        performSql(caption, *sql, createSql);
     }
-    sql.exec("SET FOREIGN_KEY_CHECKS = 1");
+    sql->exec("SET FOREIGN_KEY_CHECKS = 1");
 
     return true;
 }
 
-bool SqlVault::execute_upgrade_sql(int& major, int& minor)
+bool Database::execute_upgrade_sql(int& major, int& minor)
 {
     db.transaction();
     try
@@ -303,7 +358,7 @@ bool SqlVault::execute_upgrade_sql(int& major, int& minor)
             else
                 comment = "upgrade database";
             if (!line.isEmpty())
-                performSql(comment, sql, line);
+                performSql(comment, *sql, line);
         }
         // last line in upgrade script should be next:
         if (!line.startsWith("insert into version(major, minor)"))
@@ -320,14 +375,15 @@ bool SqlVault::execute_upgrade_sql(int& major, int& minor)
     }
     db.commit();
 
-    performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
-    if (sql.next())
+    performSql("get database version", *sql, "select major, minor from version order by id desc limit 1");
+    if (sql->next())
     {
-        major = sql.value(0).toInt();
-        minor = sql.value(1).toInt();
+        major = sql->value(0).toInt();
+        minor = sql->value(1).toInt();
     }
     else
         throw std::runtime_error("unable to upgrade database");
 
     return true;
 }
+
