@@ -33,8 +33,3 @@ select o.order_id from orders o where o.order_id <= 0;
 
 -- rounds that start buying higher then previous round sold: NEED FIX -- different settings mess!!!!
 -- select CURR.round_id, PREV.round_id, CURR.buy, PREV.sell from (select o.round_id as round_id, max(o.rate) as buy from orders o where status=1 and type='buy' group by o.round_id) CURR left join (select o.round_id as round_id, max(o.rate) as sell from orders o where status=1 and type='sell' group by o.round_id) PREV on PREV.round_id+1=CURR.round_id where CURR.round_id is not null and CURR.buy >= PREV.sell;
-
----
-insert into order_status (status_id, status) values (-1, 'check'), (0, 'active'), (1, 'done'), (2, 'cancel'), (3, 'partially done');
-create table currencies (currency_id integer primary key auto_increment, name char(3));
-insert into currencies (name) select distinct name from dep;

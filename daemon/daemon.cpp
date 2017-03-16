@@ -16,6 +16,10 @@
 #include <QSqlDriver>
 #include <QSqlError>
 
+#include <QFile>
+#include <QFileInfo>
+#include <QTextStream>
+
 #include <QSettings>
 
 #include <iostream>
@@ -35,6 +39,10 @@ void sig_handler(int signum)
     if (signum == SIGINT)
         exit_asked = true;
 }
+
+
+#define DB_VERSION_MAJOR 2
+#define DB_VERSION_MINOR 0
 
 #   define SQL_NOW "now()"
 #   define SQL_TRUE "TRUE"
@@ -61,6 +69,27 @@ struct SqlVault
         try
         {
             create_tables();
+
+            int major = 0;
+            int minor = 0;
+            performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
+            if (sql.next())
+            {
+                major = sql.value(0).toInt();
+                minor = sql.value(1).toInt();
+            }
+            else
+            {
+                // database v1 -- no table present then so no value -- upgrade 1.0 -> 2.0
+                major = 1;
+                minor = 0;
+            }
+
+            while (!(major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR))
+            {
+                execute_upgrade_sql(major, minor);
+            }
+
             prepare();
         }
         catch (const QSqlQuery& e)
@@ -72,6 +101,7 @@ struct SqlVault
 
     bool prepare();
     bool create_tables();
+    bool execute_upgrade_sql(int& major, int& minor);
 
     std::unique_ptr<QSqlQuery> insertOrder;
     std::unique_ptr<QSqlQuery> updateActiveOrder;
@@ -114,47 +144,47 @@ bool SqlVault::prepare()
             throw *sql;
     };
 
-    prepareSql("UPDATE orders set status=" ORDER_STATUS_CHECKING
-               " where status=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CHECKING
+               " where status_id=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
-    prepareSql("INSERT INTO orders (order_id, status, type, amount, start_amount, rate, round_id) "
+    prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id) "
                           " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id)", insertOrder);
 
-    prepareSql("UPDATE orders set status=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
                " where order_id=:order_id", updateActiveOrder);
 
-    prepareSql("UPDATE orders set status=:status, amount=:amount, start_amount=:start_amount, rate=:rate "
+    prepareSql("UPDATE orders set status_id=:status, amount=:amount, start_amount=:start_amount, rate=:rate "
                " where order_id=:order_id", updateSetCanceled);
 
-    prepareSql("UPDATE orders set status=" ORDER_STATUS_CANCEL " where round_id=:round_id and status=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CANCEL " where round_id=:round_id and status_id=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
 
     prepareSql("SELECT order_id, start_amount, rate from orders o "
-               " where o.status < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
+               " where o.status_id < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
 
     prepareSql("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings"
                " where enabled=" SQL_TRUE, selectSettings);
 
     prepareSql("SELECT count(*) from orders o "
-               " where o.status= " ORDER_STATUS_ACTIVE" and o.round_id=:round_id", selectCurrentRoundActiveOrdersCount);
+               " where o.status_id= " ORDER_STATUS_ACTIVE" and o.round_id=:round_id", selectCurrentRoundActiveOrdersCount);
 
     prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id "
                " where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
 
     //  / (1-s.first_step)
     prepareSql("select max(o.rate) * (1+s.first_step * 2) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id "
-               " where o.status= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
+               " where o.status_id= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
 
     prepareSql("select sum(start_amount-amount) from orders o "
-               " where o.round_id=:round_id and o.type='sell' and o.status > " ORDER_STATUS_DONE, currentRoundPayback);
+               " where o.round_id=:round_id and o.type='sell' and o.status_id > " ORDER_STATUS_DONE, currentRoundPayback);
 
     prepareSql("SELECT order_id from orders o "
-               " where o.status=" ORDER_STATUS_CHECKING " and o.round_id=:round_id order by o.type desc", selectOrdersWithChangedStatus);
+               " where o.status_id=" ORDER_STATUS_CHECKING " and o.round_id=:round_id order by o.type desc", selectOrdersWithChangedStatus);
 
     prepareSql("SELECT order_id from orders o "
-               " where o.round_id=:round_id and o.status < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
+               " where o.round_id=:round_id and o.status_id < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
     prepareSql("select " LEAST "(:last_price, o.rate + (:last_price - o.rate) / 10 * " LEAST "(" MINUTES_DIFF(r.end_time) ", 10)) from rounds r left join orders o on r.round_id=o.round_id "
-               " where r.settings_id=:settings_id and o.type='sell' and o.status=" ORDER_STATUS_DONE " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
+               " where r.settings_id=:settings_id and o.type='sell' and o.status_id=" ORDER_STATUS_DONE " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
                " where t.secret_id=:secret_id", selectMaxTransHistoryId);
@@ -308,6 +338,14 @@ private:
 bool SqlVault::create_tables()
 {
     QMap<QString, QStringList> createSqls;
+    createSqls["version"]
+            << "id integer primary key auto_increment"
+            << "major int not null default 0"
+            << "minor int not null default 0"
+            << "unique (major, minor)"
+            << "upgrade_date timestamp not null default CURRENT_TIMESTAMP"
+               ;
+
     createSqls["secrets"]
             << TableField("id", TableField::Integer).primaryKey(true)
             << TableField("apikey", TableField::Char, 255).notNull()
@@ -349,13 +387,14 @@ bool SqlVault::create_tables()
 
     createSqls["orders"]
              <<  TableField("order_id", TableField::Integer).primaryKey(false)
-             <<  TableField("status", TableField::Integer, 11).notNull().defaultValue(0)
+             <<  TableField("status_id", TableField::Integer, 11).notNull().defaultValue(0).references("order_status", {"status_id"})
              <<  "type ENUM ('buy', 'sell') not null default 'buy'"
              <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              <<  TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
              << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+             << "FOREIGN KEY(status_id) REFERENCES order_status(status_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
              ;
 
     createSqls["transactions"]
@@ -412,6 +451,66 @@ bool SqlVault::create_tables()
         performSql(caption, sql, createSql);
     }
     sql.exec("SET FOREIGN_KEY_CHECKS = 1");
+
+    return true;
+}
+
+bool SqlVault::execute_upgrade_sql(int& major, int& minor)
+{
+    db.transaction();
+    try
+    {
+        QFile file;
+        QString sqlFilePath = QString("%1/../sql/db_upgrade_v%2.%3.sql").arg(QCoreApplication::applicationDirPath()).arg(major).arg(minor);
+        file.setFileName(sqlFilePath);
+        if (!file.exists())
+        {
+            std::cerr << "no sql for upgrading database version " << major << "." << minor << std::endl;
+            throw std::runtime_error("unable to upgrade database");
+        }
+        if (!file.open(QFile::ReadOnly))
+        {
+            std::cerr << "cannot open database upgrafe file " << sqlFilePath << std::endl;
+            throw std::runtime_error("unable to upgrade database");
+        }
+        QTextStream stream(&file);
+        QString line;
+        QString comment;
+        while (!stream.atEnd())
+        {
+            line = stream.readLine();
+            if (line.startsWith("--"))
+            {
+                comment = line;
+                line = stream.readLine();
+            }
+            else
+                comment = "upgrade database";
+            performSql(comment, sql, line);
+        }
+        // last line in upgrade script should be next:
+        if (!line.startsWith("insert into version(major, minor)"))
+        {
+            std::cerr << "broken sql upgrade script -- no version update in last line!";
+            throw std::runtime_error("unable to upgrade database");
+        }
+
+    }
+    catch (std::runtime_error& e)
+    {
+        db.rollback();
+        throw e;
+    }
+    db.commit();
+
+    performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
+    if (sql.next())
+    {
+        major = sql.value(0).toInt();
+        minor = sql.value(1).toInt();
+    }
+    else
+        throw std::runtime_error("unable to upgrade database");
 
     return true;
 }
