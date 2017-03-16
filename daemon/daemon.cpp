@@ -42,7 +42,7 @@ void sig_handler(int signum)
 
 
 #define DB_VERSION_MAJOR 2
-#define DB_VERSION_MINOR 0
+#define DB_VERSION_MINOR 1
 
 #   define SQL_NOW "now()"
 #   define SQL_TRUE "TRUE"
@@ -68,26 +68,37 @@ struct SqlVault
     {
         try
         {
+            // orders table is a core table for whole trader, so if it does not exists, we can
+            // say that this is new database, so we don't need to upgrade it but simply can
+            // create tables and put current version into versions table
+            bool empty_db = !db.tables().contains("orders");
             create_tables();
 
-            int major = 0;
-            int minor = 0;
-            performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
-            if (sql.next())
+            if (!empty_db)
             {
-                major = sql.value(0).toInt();
-                minor = sql.value(1).toInt();
+                int major = 0;
+                int minor = 0;
+                performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
+                if (sql.next())
+                {
+                    major = sql.value(0).toInt();
+                    minor = sql.value(1).toInt();
+                }
+                else
+                {
+                    // database v1 -- no table present then so no value -- upgrade 1.0 -> 2.0
+                    major = 1;
+                    minor = 0;
+                }
+
+                while (!(major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR))
+                {
+                    execute_upgrade_sql(major, minor);
+                }
             }
             else
             {
-                // database v1 -- no table present then so no value -- upgrade 1.0 -> 2.0
-                major = 1;
-                minor = 0;
-            }
-
-            while (!(major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR))
-            {
-                execute_upgrade_sql(major, minor);
+                performSql("set database version", sql, QString("insert into version (major, minor) values (%1, %2)").arg(DB_VERSION_MAJOR).arg(DB_VERSION_MINOR));
             }
 
             prepare();
@@ -436,6 +447,13 @@ bool SqlVault::create_tables()
     createSqls["order_status"]
             << TableField("status_id", TableField::Integer).primaryKey(false)
             << TableField("status", TableField::Char, 16)
+            << "CONSTRAINT uniq_status UNIQUE (status)"
+            ;
+
+    createSqls["currencies"]
+            << TableField("currency_id").primaryKey(true)
+            << TableField("name", TableField::Char, 3)
+            << "CONSTRAINT uniq_name UNIQUE (name)"
             ;
 
     sql.exec("SET FOREIGN_KEY_CHECKS = 0");
@@ -486,7 +504,8 @@ bool SqlVault::execute_upgrade_sql(int& major, int& minor)
             }
             else
                 comment = "upgrade database";
-            performSql(comment, sql, line);
+            if (!line.isEmpty())
+                performSql(comment, sql, line);
         }
         // last line in upgrade script should be next:
         if (!line.startsWith("insert into version(major, minor)"))
