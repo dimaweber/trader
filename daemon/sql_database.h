@@ -28,7 +28,7 @@
 #define CLOSED_ORDER "1"
 #define ACTIVE_ORDER "0"
 
-class Database
+class Database : public IKeyStorage
 {
 public:
     Database(QSettings& settings);
@@ -72,9 +72,13 @@ public:
     bool commit() {return db.commit(); }
     bool rollback() {return db.rollback();}
 
-    QList<int>  allKeys() { return keyStorage->allKeys(); }
-    void setCurrent(int key) { keyStorage->setCurrent(key); }
-    KeyStorage& storage() { return *keyStorage;}
+    virtual void setPassword(const QByteArray& pwd) override final { keyStorage->setPassword(pwd); }
+    virtual bool setCurrent(int id) override final { return keyStorage->setCurrent(id); }
+    virtual const QByteArray& apiKey() override final { return keyStorage->apiKey(); }
+    virtual const QByteArray& secret() override final { return keyStorage->secret(); }
+    virtual void changePassword() override final { keyStorage->changePassword(); }
+    virtual QList<int> allKeys() override final { return keyStorage->allKeys(); }
+
 private:
     QSettings& settings;
     QSqlDatabase db;

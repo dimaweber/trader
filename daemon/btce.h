@@ -167,7 +167,7 @@ namespace BtcTradeApi
 {
 class Api : public HttpQuery
 {
-    KeyStorage& storage;
+    IKeyStorage& storage;
     static quint32 _nonce;
     static QString nonce() { return QString::number(++_nonce);}
     QByteArray postParams;
@@ -183,7 +183,7 @@ protected:
     virtual void showSuccess() const = 0;
 
 public:
-    Api(KeyStorage& storage)
+    Api(IKeyStorage& storage)
         : HttpQuery(), storage(storage),
           success(false), errorMsg("Not executed")
     {}
@@ -206,7 +206,7 @@ class Info : public Api
     virtual bool parseSuccess(const QVariantMap& returnMap) override;
     virtual QString methodName() const  override {return "getInfo";}
 public:
-    Info(KeyStorage& storage, BtcObjects::Funds& funds):Api(storage),funds(funds){}
+    Info(IKeyStorage& storage, BtcObjects::Funds& funds):Api(storage),funds(funds){}
     void showSuccess() const override;
 };
 
@@ -227,7 +227,7 @@ class TransHistory : public Api
 public:
     QMap<BtcObjects::Transaction::Id, BtcObjects::Transaction> trans;
 
-    TransHistory(KeyStorage& storage)
+    TransHistory(IKeyStorage& storage)
         :Api(storage), _from(-1), _count(-1), _from_id(-1), _end_id(-1),
           _order(true), _since(-1), _end(-1)
     {}
@@ -260,7 +260,7 @@ public:
     BtcObjects::Order::Id order_id;
     BtcObjects::Funds& funds;
 
-    Trade(KeyStorage& storage, BtcObjects::Funds& funds,
+    Trade(IKeyStorage& storage, BtcObjects::Funds& funds,
           const QString& pair, BtcObjects::Order::OrderType type, double rate, double amount)
         :Api(storage), pair(pair), type(type), rate(rate), amount(amount),
           funds(funds)
@@ -272,7 +272,7 @@ class CancelOrder : public Api
     BtcObjects::Order::Id order_id;
 
 public:
-    CancelOrder(KeyStorage& storage, BtcObjects::Funds& funds, BtcObjects::Order::Id order_id)
+    CancelOrder(IKeyStorage& storage, BtcObjects::Funds& funds, BtcObjects::Order::Id order_id)
         :Api(storage), order_id(order_id), funds(funds)
     {}
 
@@ -289,7 +289,7 @@ class ActiveOrders : public Api
     virtual bool parseSuccess(const QVariantMap& returnMap) override;
     virtual QString methodName() const  override {return "ActiveOrders";}
 public:
-    ActiveOrders(KeyStorage& storage):Api(storage){}
+    ActiveOrders(IKeyStorage& storage):Api(storage){}
     QMap<BtcObjects::Order::Id, BtcObjects::Order> orders;
 
     void showSuccess() const override;
@@ -304,7 +304,7 @@ class OrderInfo : public Api
 public:
     BtcObjects::Order order;
 
-    OrderInfo(KeyStorage& storage, BtcObjects::Order::Id id)
+    OrderInfo(IKeyStorage& storage, BtcObjects::Order::Id id)
         :Api(storage), order_id(id) {}
     void showSuccess() const override;
 };

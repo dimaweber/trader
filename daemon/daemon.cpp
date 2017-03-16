@@ -45,8 +45,6 @@ int main(int argc, char *argv[])
     }
     QSettings settings(iniFilePath, QSettings::IniFormat);
 
-    /// TODO: make connect / reconnect function in database
-
     Database database(settings);
     database.init();
 
@@ -134,10 +132,10 @@ int main(int argc, char *argv[])
                 std::clog << "for keypair "  << id << " mark active orders status: " ORDER_STATUS_CHECKING " --> " ORDER_STATUS_ACTIVE  << std::endl;
                 database.setCurrent(id);
 
-                BtcTradeApi::Info info(database.storage(), allFunds[id]);
+                BtcTradeApi::Info info(database, allFunds[id]);
                 performTradeRequest(QString("get funds info for keypair %1").arg(id), info, silent_http);
 
-                BtcTradeApi::ActiveOrders activeOrders(database.storage());
+                BtcTradeApi::ActiveOrders activeOrders(database);
                 try
                 {
                     if (performTradeRequest(QString("get active orders for keypair %1").arg(id), activeOrders, silent_http))
@@ -195,7 +193,7 @@ int main(int argc, char *argv[])
                 }
 
                 database.transaction();
-                BtcTradeApi::TransHistory hist(database.storage());
+                BtcTradeApi::TransHistory hist(database);
                 QVariantMap hist_param;
                 hist_param[":secret_id"] = id;
                 performSql("get max transaction id", *database.selectMaxTransHistoryId, hist_param, silent_sql);
@@ -304,7 +302,7 @@ int main(int argc, char *argv[])
                     while (database.selectOrdersWithChangedStatus->next())
                     {
                         BtcObjects::Order::Id order_id = database.selectOrdersWithChangedStatus->value(0).toInt();
-                        BtcTradeApi::OrderInfo info(database.storage(), order_id);
+                        BtcTradeApi::OrderInfo info(database, order_id);
                         performTradeRequest(QString("get info for order %1").arg(order_id), info, silent_http);
 
                         std::clog << QString("order %1 changed status to %2").arg(order_id).arg(info.order.status) << std::endl;
@@ -432,7 +430,7 @@ int main(int argc, char *argv[])
                     while(database.selectOrdersFromPrevRound->next())
                     {
                         BtcObjects::Order::Id order_id = database.selectOrdersFromPrevRound->value(0).toInt();
-                        BtcTradeApi::CancelOrder cancel(database.storage(), funds, order_id);
+                        BtcTradeApi::CancelOrder cancel(database, funds, order_id);
                         performTradeRequest(QString("cancel order %1").arg(order_id), cancel, silent_http);
 
                     }
@@ -484,7 +482,7 @@ int main(int argc, char *argv[])
                         }
                         else
                         {
-                            BtcTradeApi::Trade trade(database.storage(), funds, pair.name, BtcObjects::Order::Buy, rate, amount);
+                            BtcTradeApi::Trade trade(database, funds, pair.name, BtcObjects::Order::Buy, rate, amount);
                             if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade, silent_http))
                             {
                                 insertOrderParam[":order_id"] = (trade.order_id==0)?(round_id * 1000 + auto_executed_counter++):trade.order_id;
@@ -564,9 +562,9 @@ int main(int argc, char *argv[])
                     {
                         if (sell_order_id > 0)
                         {
-                            BtcTradeApi::CancelOrder cancel(database.storage(), funds, sell_order_id);
+                            BtcTradeApi::CancelOrder cancel(database, funds, sell_order_id);
                             performTradeRequest("cancel order", cancel, silent_http);
-                            BtcTradeApi::OrderInfo info(database.storage(), sell_order_id);
+                            BtcTradeApi::OrderInfo info(database, sell_order_id);
                             performTradeRequest("get canceled sell order info", info, silent_http);
 
                             QVariantMap upd_param;
@@ -591,7 +589,7 @@ int main(int argc, char *argv[])
 
                         if (amount_gain > pair.min_amount)
                         {
-                            BtcTradeApi::Trade sell(database.storage(), funds, pair.name, BtcObjects::Order::Sell, sell_rate, amount_gain);
+                            BtcTradeApi::Trade sell(database, funds, pair.name, BtcObjects::Order::Sell, sell_rate, amount_gain);
                             if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell, silent_http))
                             {
                                 insertOrderParam[":order_id"] = (sell.order_id==0)?-(round_id*100+99):sell.order_id;
