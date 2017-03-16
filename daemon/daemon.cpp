@@ -48,6 +48,8 @@ int main(int argc, char *argv[])
     Database database(settings);
     database.init();
 
+    BtcTradeApi::enableTradeLog(QCoreApplication::applicationDirPath() + "/../data/trade.log");
+
     QMap<int, BtcObjects::Funds> allFunds;
     BtcPublicApi::Info pinfo;
     BtcPublicApi::Ticker pticker;

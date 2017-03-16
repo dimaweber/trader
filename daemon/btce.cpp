@@ -225,6 +225,7 @@ bool Transaction::parse(const QVariantMap& map)
 
     return true;
 }
+
 }
 
 namespace BtcPublicApi
@@ -303,6 +304,25 @@ bool Api::parse(const QByteArray& serverAnswer)
 
 namespace BtcTradeApi
 {
+
+bool enableTradeLog(const QString &tradeLogFileName)
+{
+    QFile* file = new QFile(tradeLogFileName);
+    if (!file->open(QFile::Append | QFile::WriteOnly))
+        return false;
+
+    tradeLogFile.reset(file);
+    tradeLogStream.reset(new QTextStream(file));
+
+    return true;
+}
+
+void disableTradeLog()
+{
+    tradeLogStream.reset();
+    tradeLogFile.reset();
+}
+
 quint32 Api::_nonce = QDateTime::currentDateTime().toTime_t();
 
 bool TransHistory::parseSuccess(const QVariantMap& returnMap)
@@ -501,6 +521,20 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
     remains = read_double(returnMap, "remains");
     order_id = read_long(returnMap, "order_id");
     funds.parse(read_map(returnMap, "funds"));
+
+    if (tradeLogStream)
+    {
+        *tradeLogStream << QString("[%1] %2 %3 amount: %4 rate: %5. REPLY: id: %6 recieved: %7 remain: %8")
+                           .arg(QDateTime::currentDateTime().toString())
+                           .arg((type==BtcObjects::Order::Sell)?"SELL":" BUY")
+                           .arg(pair)
+                           .arg(QString::number(amount, 'f', 8))
+                           .arg(QString::number(rate, 'f', BtcObjects::Pairs::ref(pair).decimal_places))
+                           .arg(order_id)
+                           .arg(received)
+                           .arg(remains)
+                         << endl;
+    }
 
     return true;
 }

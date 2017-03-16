@@ -34,5 +34,8 @@ select r.round_id from rounds r where (r.end_time is not null and r.reason <> 'd
 -- orders with negative order_id
 select o.order_id from orders o where o.order_id <= 0;
 
+-- orders with create/modify time different from rounds start/end time
+select o.order_id from orders o left join rounds r on r.round_id=o.round_id where ((o.created NOT BETWEEN r.start_time and r.end_time ) or (o.modified NOT BETWEEN r.start_time and r.end_time)) and r.reason = 'done';
+
 -- rounds that start buying higher then previous round sold: NEED FIX -- different settings mess!!!!
 -- select CURR.round_id, PREV.round_id, CURR.buy, PREV.sell from (select o.round_id as round_id, max(o.rate) as buy from orders o where status_id=1 and type='buy' group by o.round_id) CURR left join (select o.round_id as round_id, max(o.rate) as sell from orders o where status_id=1 and type='sell' group by o.round_id) PREV on PREV.round_id+1=CURR.round_id where CURR.round_id is not null and CURR.buy >= PREV.sell;

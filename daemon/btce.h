@@ -4,6 +4,10 @@
 #include <QMap>
 #include <QUrlQuery>
 #include <QJsonDocument>
+#include <QFile>
+#include <QTextStream>
+
+#include <memory>
 
 #include "utils.h"
 #include "http_query.h"
@@ -11,6 +15,7 @@
 #include "curl_wrapper.h"
 
 namespace BtcObjects {
+
 struct ExchangeObject
 {
 public:
@@ -165,6 +170,12 @@ protected:
 
 namespace BtcTradeApi
 {
+static std::unique_ptr<QFile> tradeLogFile;
+static std::unique_ptr<QTextStream> tradeLogStream;
+
+bool enableTradeLog(const QString& tradeLogFileName);
+void disableTradeLog();
+
 class Api : public HttpQuery
 {
     IKeyStorage& storage;
