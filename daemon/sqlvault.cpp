@@ -1,0 +1,333 @@
+#include "sqlvault.h"
+#include "utils.h"
+#include "tablefield.h"
+
+#include <QStringList>
+#include <QSqlError>
+#include <QFile>
+#include <QTextStream>
+#include <QCoreApplication>
+
+SqlVault::SqlVault(QSqlDatabase &db)
+    :db(db), sql(db)
+{
+    try
+    {
+        // orders table is a core table for whole trader, so if it does not exists, we can
+        // say that this is new database, so we don't need to upgrade it but simply can
+        // create tables and put current version into versions table
+        bool empty_db = !db.tables().contains("orders");
+        create_tables();
+
+        if (!empty_db)
+        {
+            int major = 0;
+            int minor = 0;
+            performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
+            if (sql.next())
+            {
+                major = sql.value(0).toInt();
+                minor = sql.value(1).toInt();
+            }
+            else
+            {
+                // database v1 -- no table present then so no value -- upgrade 1.0 -> 2.0
+                major = 1;
+                minor = 0;
+            }
+
+            while (!(major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR))
+            {
+                execute_upgrade_sql(major, minor);
+            }
+        }
+        else
+        {
+            performSql("set database version", sql, QString("insert into version (major, minor) values (%1, %2)").arg(DB_VERSION_MAJOR).arg(DB_VERSION_MINOR));
+        }
+
+        prepare();
+    }
+    catch (const QSqlQuery& e)
+    {
+        std::cerr << "Fail to perform " << e.lastQuery() << " : " << e.lastError().text() << std::endl;
+        throw e;
+    }
+}
+
+bool SqlVault::prepare()
+{
+    auto prepareSql = [this](const QString& str, std::unique_ptr<QSqlQuery>& sql)
+    {
+        sql.reset(new QSqlQuery(db));
+        if (!sql->prepare(str))
+            throw *sql;
+    };
+
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CHECKING
+               " where status_id=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
+
+    prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id) "
+                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id)", insertOrder);
+
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
+               " where order_id=:order_id", updateActiveOrder);
+
+    prepareSql("UPDATE orders set status_id=:status, amount=:amount, start_amount=:start_amount, rate=:rate "
+               " where order_id=:order_id", updateSetCanceled);
+
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CANCEL " where round_id=:round_id and status_id=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
+
+    prepareSql("SELECT order_id, start_amount, rate from orders o "
+               " where o.status_id < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
+
+    prepareSql("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings"
+               " where enabled=" SQL_TRUE, selectSettings);
+
+    prepareSql("SELECT count(*) from orders o "
+               " where o.status_id= " ORDER_STATUS_ACTIVE" and o.round_id=:round_id", selectCurrentRoundActiveOrdersCount);
+
+    prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id "
+               " where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
+
+    //  / (1-s.first_step)
+    prepareSql("select max(o.rate) * (1+s.first_step * 2) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id "
+               " where o.status_id= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
+
+    prepareSql("select sum(start_amount-amount) from orders o "
+               " where o.round_id=:round_id and o.type='sell' and o.status_id > " ORDER_STATUS_DONE, currentRoundPayback);
+
+    prepareSql("SELECT order_id from orders o "
+               " where o.status_id=" ORDER_STATUS_CHECKING " and o.round_id=:round_id order by o.type desc", selectOrdersWithChangedStatus);
+
+    prepareSql("SELECT order_id from orders o "
+               " where o.round_id=:round_id and o.status_id < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
+
+    prepareSql("select " LEAST "(:last_price, o.rate + (:last_price - o.rate) / 10 * " LEAST "(" MINUTES_DIFF(r.end_time) ", 10)) from rounds r left join orders o on r.round_id=o.round_id "
+               " where r.settings_id=:settings_id and o.type='sell' and o.status_id=" ORDER_STATUS_DONE " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
+
+    prepareSql("select count(id) from transactions t "
+               " where t.secret_id=:secret_id", selectMaxTransHistoryId);
+
+    prepareSql("insert into transactions (id, type, amount, currency, description, status, secret_id, timestamp, order_id) values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)", insertTransaction);
+
+    prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, " SQL_NOW ", 0)", insertRound);
+
+    prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out "
+               " where round_id=:round_id", updateRound);
+
+    prepareSql("update rounds set end_time=" SQL_NOW ", reason='done' "
+               " where round_id=:round_id", closeRound);
+
+    prepareSql("select round_id from rounds r "
+               " where r.settings_id=:settings_id and reason='active'", getRoundId);
+
+    prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
+               " where o.type='buy' and o.round_id=:round_id", roundBuyStat);
+
+    prepareSql("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
+               " where o.type='sell' and o.round_id=:round_id", roundSellStat);
+
+    prepareSql("update settings set dep = dep+:dep_inc "
+               " where id=:settings_id", depositIncrease);
+
+    prepareSql("update orders set round_id=:round_id "
+               " where order_id=:order_id", orderTransition);
+
+    prepareSql("update rounds set dep_usage=:usage "
+               " where round_id=:round_id", setRoundsDepUsage);
+
+    prepareSql("insert into rates (time, currency, goods, buy_rate, sell_rate, last_rate, currency_volume, goods_volume) values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
+
+    prepareSql("insert into dep (time, name, secret_id, value, on_orders) values (:time, :name, :secret, :dep, :orders)", insertDep);
+
+    return true;
+}
+
+bool SqlVault::create_tables()
+{
+    QMap<QString, QStringList> createSqls;
+    createSqls["version"]
+            << "id integer primary key auto_increment"
+            << "major int not null default 0"
+            << "minor int not null default 0"
+            << "unique (major, minor)"
+            << "upgrade_date timestamp not null default CURRENT_TIMESTAMP"
+               ;
+
+    createSqls["secrets"]
+            << TableField("id", TableField::Integer).primaryKey(true)
+            << TableField("apikey", TableField::Char, 255).notNull()
+            << TableField("secret", TableField::Char, 255).notNull()
+            << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(SQL_FALSE)
+            ;
+
+    createSqls["settings"]
+             << TableField("id", TableField::Integer).primaryKey(true)
+             << TableField("profit", TableField::Decimal, 6, 4).notNull().defaultValue(0.0100)
+             << TableField("comission", TableField::Decimal, 6, 4).notNull().defaultValue(0.0020)
+             << TableField("first_step", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
+             << TableField("martingale", TableField::Decimal, 6,4).notNull().defaultValue(0.0500)
+             << TableField("dep", TableField::Decimal, 10,4).notNull().defaultValue(100.0)
+             << TableField("coverage", TableField::Decimal, 6,4).notNull().defaultValue(0.1500)
+             << TableField("count", TableField::Integer, 11).notNull().defaultValue(10)
+             << TableField("currency", TableField::Char, 3).notNull().defaultValue("usd")
+             << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
+             << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
+             << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
+             << TableField("secret_id", TableField::Integer).notNull().references("secrets", {"id"})
+             << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+             ;
+
+    createSqls["rounds"]
+            << TableField("round_id", TableField::Integer).primaryKey(true)
+            << TableField("start_time", TableField::Datetime).notNull()
+            << "end_time DATETIME"
+            << "income DECIMAL(14,6) default 0"
+            << "reason ENUM ('active', 'sell') not null default 'active'"
+            << "g_in decimal(14,6) not null default 0"
+            << "g_out decimal(14,6) not null default 0"
+            << "c_in decimal(14,6) not null default 0"
+            << "c_out decimal(14,6) not null default 0"
+            << "dep_usage decimal(14,6) not null default 0"
+            << TableField("settings_id", TableField::Integer).notNull().references("settings", {"id"})
+            << "FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            ;
+
+    createSqls["orders"]
+             <<  TableField("order_id", TableField::Integer).primaryKey(false)
+             <<  TableField("status_id", TableField::Integer, 11).notNull().defaultValue(0).references("order_status", {"status_id"})
+             <<  "type ENUM ('buy', 'sell') not null default 'buy'"
+             <<  TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
+             <<  TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
+             << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+             << "FOREIGN KEY(status_id) REFERENCES order_status(status_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+             ;
+
+    createSqls["transactions"]
+            << TableField("id", TableField::BigInt).primaryKey(false)
+            << TableField("type").notNull().check("type < 6 and type > 0")
+            << TableField("amount", TableField::Double).notNull().check("amount>=0")
+            << TableField("currency", TableField::Char, 3).notNull()
+            << TableField("description", TableField::Varchar, 255)
+            << TableField("status").check("status>0 and status<5")
+            << TableField("timestamp", TableField::Datetime).notNull()
+            << TableField("secret_id", TableField::Integer).references("secrets", {"id"})
+            << TableField("order_id", TableField::Integer).notNull().defaultValue(0).references("orders", {"order_id"})
+            << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+         //   << "FOREIGN KEY(order_id) REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            ;
+
+    createSqls["rates"]
+            << "time DATETIME not null"
+            << "currency char(3) not null"
+            << "goods char(3) not null"
+            << "buy_rate decimal(14,6) not null"
+            << "sell_rate decimal(14,6) not null"
+            << "last_rate decimal(14,6) not null"
+            << "currency_volume decimal(14,6) not null"
+            << "goods_volume decimal(14,6) not null"
+            << "CONSTRAINT uniq_rate UNIQUE (time, currency, goods)"
+            ;
+
+    createSqls["dep"]
+            << "time DATETIME not null"
+            << "name char(3) not null"
+            << "value decimal(14,6) not null"
+            << "on_orders decimal(14,6) not null default 0"
+            << "secret_id integer not null references secrets(id)"
+            << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+            << "CONSTRAINT uniq_rate UNIQUE (time, name, secret_id)"
+            ;
+
+    createSqls["order_status"]
+            << TableField("status_id", TableField::Integer).primaryKey(false)
+            << TableField("status", TableField::Char, 16)
+            << "CONSTRAINT uniq_status UNIQUE (status)"
+            ;
+
+    createSqls["currencies"]
+            << TableField("currency_id").primaryKey(true)
+            << TableField("name", TableField::Char, 3)
+            << "CONSTRAINT uniq_name UNIQUE (name)"
+            ;
+
+    sql.exec("SET FOREIGN_KEY_CHECKS = 0");
+    for (const QString& tableName : createSqls.keys())
+    {
+        QStringList& fields = createSqls[tableName];
+        QString createSql = QString("CREATE TABLE IF NOT EXISTS %1 (%2) " SQL_UTF8SUPPORT)
+                            .arg(tableName)
+                            .arg(fields.join(','))
+                            ;
+        QString caption = QString("create %1 table").arg(tableName);
+
+        performSql(caption, sql, createSql);
+    }
+    sql.exec("SET FOREIGN_KEY_CHECKS = 1");
+
+    return true;
+}
+
+bool SqlVault::execute_upgrade_sql(int& major, int& minor)
+{
+    db.transaction();
+    try
+    {
+        QFile file;
+        QString sqlFilePath = QString("%1/../sql/db_upgrade_v%2.%3.sql").arg(QCoreApplication::applicationDirPath()).arg(major).arg(minor);
+        file.setFileName(sqlFilePath);
+        if (!file.exists())
+        {
+            std::cerr << "no sql for upgrading database version " << major << "." << minor << std::endl;
+            throw std::runtime_error("unable to upgrade database");
+        }
+        if (!file.open(QFile::ReadOnly))
+        {
+            std::cerr << "cannot open database upgrafe file " << sqlFilePath << std::endl;
+            throw std::runtime_error("unable to upgrade database");
+        }
+        QTextStream stream(&file);
+        QString line;
+        QString comment;
+        while (!stream.atEnd())
+        {
+            line = stream.readLine();
+            if (line.startsWith("--"))
+            {
+                comment = line;
+                line = stream.readLine();
+            }
+            else
+                comment = "upgrade database";
+            if (!line.isEmpty())
+                performSql(comment, sql, line);
+        }
+        // last line in upgrade script should be next:
+        if (!line.startsWith("insert into version(major, minor)"))
+        {
+            std::cerr << "broken sql upgrade script -- no version update in last line!";
+            throw std::runtime_error("unable to upgrade database");
+        }
+
+    }
+    catch (std::runtime_error& e)
+    {
+        db.rollback();
+        throw e;
+    }
+    db.commit();
+
+    performSql("get database version", sql, "select major, minor from version order by id desc limit 1");
+    if (sql.next())
+    {
+        major = sql.value(0).toInt();
+        minor = sql.value(1).toInt();
+    }
+    else
+        throw std::runtime_error("unable to upgrade database");
+
+    return true;
+}

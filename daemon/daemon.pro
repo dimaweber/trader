@@ -17,13 +17,17 @@ LIBS += -L../lib -lcommon
 SOURCES += daemon.cpp \
     key_storage.cpp \
     http_query.cpp \
-    btce.cpp
+    btce.cpp \
+    sqlvault.cpp \
+    tablefield.cpp
 
 HEADERS += \
     btce.h \
     http_query.h \
     curl_wrapper.h \
-    key_storage.h
+    key_storage.h \
+    sqlvault.h \
+    tablefield.h
 
 OBJECTS_DIR = .obj
 UI_DIR = .ui
