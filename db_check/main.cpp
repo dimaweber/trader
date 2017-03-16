@@ -5,6 +5,9 @@
 #include <QSqlQuery>
 #include <QSqlDriver>
 #include <QSqlError>
+#include <QFileInfo>
+#include <QSettings>
+#include <QTextStream>
 
 #include <iostream>
 
@@ -12,26 +15,36 @@
 
 #include "utils.h"
 
-#define USE_SQLITE
+#define DB_VERSION_MAJOR 2
+#define DB_VERSION_MINOR 1
 
 int main(int argc, char *argv[])
 {
+    QCoreApplication app(argc, argv);
+
+    QString iniFilePath = QCoreApplication::applicationDirPath() + "/../data/trader.ini";
+    if (!QFileInfo(iniFilePath).exists())
+    {
+        throw std::runtime_error("*** No INI file!");
+    }
+    QSettings settings(iniFilePath, QSettings::IniFormat);
+    settings.beginGroup("database");
+
     QSqlDatabase db;
     while (!db.isOpen())
     {
-#ifdef USE_SQLITE
-        std::clog << "use sqlite database" << std::endl;
-        db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
-        db.setDatabaseName("../data/trader.db");
-#else
         std::clog << "use mysql database" << std::endl;
         db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
-        db.setHostName("localhost");
-        db.setUserName("trader");
-        db.setPassword("traderpassword");
-        db.setDatabaseName("trade");
-        db.setConnectOptions("MYSQL_OPT_RECONNECT=true");
-#endif
+        if (settings.value("type", "unknown").toString() != "mysql")
+            throw std::runtime_error("unsupported database type");
+
+        db.setHostName(settings.value("host", "localhost").toString());
+        db.setUserName(settings.value("user", "user").toString());
+        db.setPassword(settings.value("password", "password").toString());
+        db.setDatabaseName(settings.value("database", "db").toString());
+        db.setPort(settings.value("port", 3306).toInt());
+        QString optionsString = QString("MYSQL_OPT_RECONNECT=%1").arg(settings.value("options.reconnect", true).toBool()?"TRUE":"FALSE");
+        db.setConnectOptions(optionsString);
 
         std::clog << "connecting to database ... ";
         if (!db.open())
@@ -42,12 +55,9 @@ int main(int argc, char *argv[])
         else
         {
             std::clog << " ok" << std::endl;
-#ifndef USE_SQLITE
-            QSqlQuery sql(db);
-            performSql("set utf8", sql, "SET NAMES utf8");
-#endif
         }
     }
+    settings.endGroup();
 
     QSqlQuery sql(db);
 
@@ -61,17 +71,43 @@ int main(int argc, char *argv[])
         std::clog << std::endl;
     }
 
-    std::clog << "check each setting_id has onlu one ective round: " << std::endl;
-    performSql("check each setting_id has only one ective round", sql, "select settings_id, count(*) from rounds where reason ='active' group by settings_id", true);
-    while (sql.next())
+    QFile file;
+    QString sqlFilePath = QString("%1/../sql/sanity_check_v%2.%3.sql").arg(QCoreApplication::applicationDirPath()).arg(DB_VERSION_MAJOR).arg(DB_VERSION_MINOR);
+    file.setFileName(sqlFilePath);
+    if (!file.exists())
     {
-        uint settings_id = sql.value(0).toUInt();
-        uint active_rounds_count = sql.value(1).toUInt();
-        if (active_rounds_count > 1)
-            std::clog << "settings_id " << settings_id << " has more then 1 active round!" << std::endl;
+        std::cerr << "no sql for sanity check database version " << DB_VERSION_MAJOR << "." << DB_VERSION_MINOR << std::endl;
+        throw std::runtime_error("unable to upgrade database");
     }
-
-    std::clog << "check orphan orders: "  << std::endl;
+    if (!file.open(QFile::ReadOnly))
+    {
+        std::cerr << "cannot open database sanity check file " << sqlFilePath << std::endl;
+        throw std::runtime_error("unable to upgrade database");
+    }
+    QTextStream stream(&file);
+    QString line;
+    QString comment;
+    while (!stream.atEnd())
+    {
+        line = stream.readLine();
+        if (line.startsWith("--"))
+        {
+            comment = line;
+            line = stream.readLine();
+        }
+        else
+            comment = "check database";
+        if (!line.isEmpty())
+        {
+            std::clog << comment << std::endl;
+            if (!sql.exec(line))
+                std::cerr << "Fail to execute query " << sql.lastQuery() << ": " << sql.lastError().text();
+            while (sql.next())
+            {
+                std::clog << sql.value(0).toString() << std::endl;
+            }
+        }
+    }
 
     return 0;
 }

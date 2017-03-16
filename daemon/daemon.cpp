@@ -40,7 +40,6 @@ void sig_handler(int signum)
         exit_asked = true;
 }
 
-
 #define DB_VERSION_MAJOR 2
 #define DB_VERSION_MINOR 1
 
@@ -542,6 +541,10 @@ int main(int argc, char *argv[])
     QCoreApplication app(argc, argv);
 
     QString iniFilePath = QCoreApplication::applicationDirPath() + "/../data/trader.ini";
+    if (!QFileInfo(iniFilePath).exists())
+    {
+        throw std::runtime_error("*** No INI file!");
+    }
     QSettings settings(iniFilePath, QSettings::IniFormat);
     settings.beginGroup("database");
 
@@ -558,7 +561,8 @@ int main(int argc, char *argv[])
         db.setPassword(settings.value("password", "password").toString());
         db.setDatabaseName(settings.value("database", "db").toString());
         db.setPort(settings.value("port", 3306).toInt());
-        db.setConnectOptions("MYSQL_OPT_RECONNECT=true");
+        QString optionsString = QString("MYSQL_OPT_RECONNECT=%1").arg(settings.value("options.reconnect", true).toBool()?"TRUE":"FALSE");
+        db.setConnectOptions(optionsString);
 
         std::clog << "connecting to database ... ";
         if (!db.open())
@@ -610,6 +614,9 @@ int main(int argc, char *argv[])
     std::clog << "start main cycle" << std::endl;
     while (!exit_asked)
     {
+        settings.sync();
+        bool silent_sql = settings.value("debug/silent_sql", true).toBool();
+        bool silent_http = settings.value("debug/silent_http", true).toBool();
         QDateTime ratesUpdateTime = QDateTime::currentDateTime();
         try
         {
@@ -637,7 +644,7 @@ int main(int argc, char *argv[])
                         params[":last"] = pair.ticker.last;
                         params[":goods_volume"] = pair.ticker.vol;
                         params[":currency_volume"] = pair.ticker.vol_cur;
-                        performSql("Add rate", *vault.insertRate, params);
+                        performSql("Add rate", *vault.insertRate, params, silent_sql);
                     }
                     db.commit();
                 }
@@ -653,7 +660,7 @@ int main(int argc, char *argv[])
             else
                 std::clog << "ok" << std::endl;
 
-            performSql("Mark all active orders as unknown status", *vault.updateOrdersCheckToActive);
+            performSql("Mark all active orders as unknown status", *vault.updateOrdersCheckToActive, QVariantMap(), silent_sql);
 
             BtcObjects::Funds onOrders;
             for(int id: storage.allKeys())
@@ -662,12 +669,12 @@ int main(int argc, char *argv[])
                 storage.setCurrent(id);
 
                 BtcTradeApi::Info info(storage, allFunds[id]);
-                performTradeRequest(QString("get funds info for keypair %1").arg(id), info);
+                performTradeRequest(QString("get funds info for keypair %1").arg(id), info, silent_http);
 
                 BtcTradeApi::ActiveOrders activeOrders(storage);
                 try
                 {
-                    if (performTradeRequest(QString("get active orders for keypair %1").arg(id), activeOrders))
+                    if (performTradeRequest(QString("get active orders for keypair %1").arg(id), activeOrders, silent_http))
                     {
                         db.transaction();
                         for (BtcObjects::Order& order: activeOrders.orders)
@@ -676,7 +683,7 @@ int main(int argc, char *argv[])
                             params[":order_id"] = order.order_id;
                             params[":amount"]  = order.amount;
                             params[":rate"] = order.rate;
-                            performSql(QString("Order %1 still active, mark it").arg(order.order_id), *vault.updateActiveOrder, params);
+                            performSql(QString("Order %1 still active, mark it").arg(order.order_id), *vault.updateActiveOrder, params, silent_sql);
 
                             if (order.type == BtcObjects::Order::Buy)
                                 onOrders[order.currency()] += order.amount * order.rate;
@@ -712,7 +719,7 @@ int main(int argc, char *argv[])
                         params[":dep"] = value;
                         params[":time"] = ratesUpdateTime;
                         params[":orders"] = onOrders[name];
-                        performSql("Add dep", *vault.insertDep, params);
+                        performSql("Add dep", *vault.insertDep, params, silent_sql);
                     }
                     db.commit();
                 }
@@ -725,12 +732,12 @@ int main(int argc, char *argv[])
                 BtcTradeApi::TransHistory hist(storage);
                 QVariantMap hist_param;
                 hist_param[":secret_id"] = id;
-                performSql("get max transaction id", *vault.selectMaxTransHistoryId, hist_param);
+                performSql("get max transaction id", *vault.selectMaxTransHistoryId, hist_param, silent_sql);
                 if (vault.selectMaxTransHistoryId->next())
                     hist.setFrom(vault.selectMaxTransHistoryId->value(0).toInt());
                 hist.setCount(100).setOrder(false);
                 try {
-                    performTradeRequest("get history", hist);
+                    performTradeRequest("get history", hist, silent_http);
                     QRegExp order_rx (":order:([0-9]*):");
                     for(BtcObjects::Transaction transaction: hist.trans)
                     {
@@ -747,7 +754,7 @@ int main(int argc, char *argv[])
                         ins_params[":timestamp"] = transaction.timestamp;
                         ins_params[":secret_id"] = id;
                         ins_params[":order_id"] = order_id;
-                        performSql("insert transaction info", *vault.insertTransaction, ins_params);
+                        performSql("insert transaction info", *vault.insertTransaction, ins_params, silent_sql);
                     }
                 }
                 catch (std::runtime_error& e)
@@ -758,7 +765,7 @@ int main(int argc, char *argv[])
                 db.commit();
             }
 
-            if (!performSql("get settings list", *vault.selectSettings))
+            if (!performSql("get settings list", *vault.selectSettings, QVariantMap(), silent_sql))
             {
                 std::clog << "Sleep for 10 seconds" << std::endl;
                 usleep(1000 * 1000 * 10);
@@ -798,7 +805,7 @@ int main(int argc, char *argv[])
 
                 param[":settings_id"] = settings_id;
 
-                performSql("get current round id", *vault.getRoundId, param);
+                performSql("get current round id", *vault.getRoundId, param, silent_sql);
                 if (vault.getRoundId->next())
                     round_id = vault.getRoundId->value(0).toInt();
                 else
@@ -814,7 +821,7 @@ int main(int argc, char *argv[])
 
                 std::clog << QString("last buy rate: %1. last sell rate: %2").arg(pair.ticker.buy).arg(pair.ticker.sell) << std::endl;
 
-                if (performSql("get active orders count", *vault.selectCurrentRoundActiveOrdersCount, param))
+                if (performSql("get active orders count", *vault.selectCurrentRoundActiveOrdersCount, param, silent_sql))
                     if (vault.selectCurrentRoundActiveOrdersCount->next())
                     {
                         int count = vault.selectCurrentRoundActiveOrdersCount->value(0).toInt();
@@ -826,13 +833,13 @@ int main(int argc, char *argv[])
 
                 bool sell_order_executed = false;
                 db.transaction();
-                if (performSql("check if any orders have status changed", *vault.selectOrdersWithChangedStatus, param))
+                if (performSql("check if any orders have status changed", *vault.selectOrdersWithChangedStatus, param, silent_sql))
                 {
                     while (vault.selectOrdersWithChangedStatus->next())
                     {
                         BtcObjects::Order::Id order_id = vault.selectOrdersWithChangedStatus->value(0).toInt();
                         BtcTradeApi::OrderInfo info(storage, order_id);
-                        performTradeRequest(QString("get info for order %1").arg(order_id), info);
+                        performTradeRequest(QString("get info for order %1").arg(order_id), info, silent_http);
 
                         std::clog << QString("order %1 changed status to %2").arg(order_id).arg(info.order.status) << std::endl;
                         QVariantMap upd_param;
@@ -842,7 +849,7 @@ int main(int argc, char *argv[])
                         upd_param[":start_amount"] = info.order.start_amount;
                         upd_param[":rate"] = info.order.rate;
 
-                        performSql(QString("update order %1").arg(order_id), *vault.updateSetCanceled, upd_param);
+                        performSql(QString("update order %1").arg(order_id), *vault.updateSetCanceled, upd_param, silent_sql);
 
                         // orders are sorted by type field, so sell orders come first
                         // if  buy order is changed and sell orders have changed also -- we translate buy order to next round
@@ -858,13 +865,13 @@ int main(int argc, char *argv[])
                             QVariantMap round_upd;
                             round_upd[":round_id"] = round_id;
 
-                            performSql("get round buy stats", *vault.roundBuyStat, round_upd);
+                            performSql("get round buy stats", *vault.roundBuyStat, round_upd, silent_sql);
                             if (vault.roundBuyStat->next())
                             {
                                 goods_in = vault.roundBuyStat->value(0).toDouble();
                                 currency_out = vault.roundBuyStat->value(1).toDouble();
                             }
-                            performSql("get round sell stats", *vault.roundSellStat, round_upd);
+                            performSql("get round sell stats", *vault.roundSellStat, round_upd, silent_sql);
                             if (vault.roundSellStat->next())
                             {
                                 goods_out = vault.roundSellStat->value(0).toDouble();
@@ -877,17 +884,17 @@ int main(int argc, char *argv[])
                             round_upd[":c_out"] = currency_out;
                             round_upd[":g_in"] = goods_in;
                             round_upd[":g_out"] = goods_out;
-                            performSql("update round", *vault.updateRound, round_upd);
+                            performSql("update round", *vault.updateRound, round_upd, silent_sql);
 
                             QVariantMap round_close;
                             round_close[":round_id"] = round_id;
-                            performSql("close round", *vault.closeRound, round_close);
+                            performSql("close round", *vault.closeRound, round_close, silent_sql);
 
                             QVariantMap dep_upd = param;
                             dep += income * dep_inc;
                             dep_upd[":settings_id"] = settings_id;
                             dep_upd[":dep_inc"] = income * dep_inc;
-                            performSql("increase deposit", *vault.depositIncrease, dep_upd);
+                            performSql("increase deposit", *vault.depositIncrease, dep_upd, silent_sql);
 
                             round_id = 0;
                             round_in_progress = false;
@@ -907,7 +914,7 @@ int main(int argc, char *argv[])
 
                 double amount_gain = 0;
                 double sell_rate = 0;
-                performSql("Get current round amoumt gain", *vault.selectCurrentRoundGain, param);
+                performSql("Get current round amoumt gain", *vault.selectCurrentRoundGain, param, silent_sql);
                 if(vault.selectCurrentRoundGain->next())
                 {
                     amount_gain = vault.selectCurrentRoundGain->value(1).toDouble();
@@ -940,7 +947,7 @@ int main(int argc, char *argv[])
                 if (qFuzzyIsNull(amount_gain))
                 {
                     std::clog << "nothing bought yet in this round. check -- may be we should increase buy rates" << std::endl;
-                    performSql("Get maximum buy rate", *vault.checkMaxBuyRate, param);
+                    performSql("Get maximum buy rate", *vault.checkMaxBuyRate, param, silent_sql);
                     if (vault.checkMaxBuyRate->next())
                     {
                         double rate = vault.checkMaxBuyRate->value(0).toDouble();
@@ -955,21 +962,21 @@ int main(int argc, char *argv[])
 
                 if (!round_in_progress)
                 {
-                    performSql("check for orders left from previous round", *vault.selectOrdersFromPrevRound, param);
+                    performSql("check for orders left from previous round", *vault.selectOrdersFromPrevRound, param, silent_sql);
                     while(vault.selectOrdersFromPrevRound->next())
                     {
                         BtcObjects::Order::Id order_id = vault.selectOrdersFromPrevRound->value(0).toInt();
                         BtcTradeApi::CancelOrder cancel(storage, funds, order_id);
-                        performTradeRequest(QString("cancel order %1").arg(order_id), cancel);
+                        performTradeRequest(QString("cancel order %1").arg(order_id), cancel, silent_http);
 
                     }
-                    performSql("cancel active orders left from previous round", *vault.cancelPrevRoundActiveOrders, param);
+                    performSql("cancel active orders left from previous round", *vault.cancelPrevRoundActiveOrders, param, silent_sql);
 
                     std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
 
                     if (round_id == 0)
                     {
-                        performSql("create new round record", *vault.insertRound, param, false);
+                        performSql("create new round record", *vault.insertRound, param, silent_sql);
                         round_id = vault.insertRound->lastInsertId().toInt();
                     }
 
@@ -980,7 +987,7 @@ int main(int argc, char *argv[])
 
                     double execute_rate = pair.ticker.last;
                     param[":last_price"] = execute_rate;
-                    if (performSql("get prev round sell price", *vault.selectPrevRoundSellRate, param))
+                    if (performSql("get prev round sell price", *vault.selectPrevRoundSellRate, param, silent_sql))
                     {
                         if (vault.selectPrevRoundSellRate->next())
                         {
@@ -1012,7 +1019,7 @@ int main(int argc, char *argv[])
                         else
                         {
                             BtcTradeApi::Trade trade(storage, funds, pair.name, BtcObjects::Order::Buy, rate, amount);
-                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade))
+                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade, silent_http))
                             {
                                 insertOrderParam[":order_id"] = (trade.order_id==0)?-(round_id * 100 + auto_executed_counter++):trade.order_id;
                                 insertOrderParam[":status"] = (trade.order_id==0)?1:0;
@@ -1022,7 +1029,7 @@ int main(int argc, char *argv[])
                                 insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
                                 insertOrderParam[":round_id"] = round_id;
 
-                                performSql("insert buy order record", *vault.insertOrder, insertOrderParam);
+                                performSql("insert buy order record", *vault.insertOrder, insertOrderParam, silent_sql);
 
                                 total_currency_spent += amount * rate;
                                 std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
@@ -1030,7 +1037,7 @@ int main(int argc, char *argv[])
                         }
                     }
                     usage_params[":usage"] = total_currency_spent;
-                    performSql("set dep_usage", *vault.setRoundsDepUsage, usage_params);
+                    performSql("set dep_usage", *vault.setRoundsDepUsage, usage_params, silent_sql);
 
                     round_in_progress = true;
                     std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())
@@ -1044,7 +1051,7 @@ int main(int argc, char *argv[])
                         for(BtcObjects::Order::Id order_id: orders_for_round_transition)
                         {
                             trans_param[":order_id"] = order_id;
-                            performSql("transit order", *vault.orderTransition, trans_param);
+                            performSql("transit order", *vault.orderTransition, trans_param, silent_sql);
                         }
                     }
                 }
@@ -1063,14 +1070,14 @@ int main(int argc, char *argv[])
 
                     bool need_recreate_sell = !sell_order_executed;
                     BtcObjects::Order::Id sell_order_id = 0;
-                    performSql("get sell order id and amount", *vault.selectSellOrder, param);
+                    performSql("get sell order id and amount", *vault.selectSellOrder, param, silent_sql);
                     if (vault.selectSellOrder->next())
                     {
                         sell_order_id = vault.selectSellOrder->value(0).toInt();
                         double sell_order_amount = vault.selectSellOrder->value(1).toDouble();
                         double sell_order_rate = vault.selectSellOrder->value(2).toDouble();
                         double closed_sells_sold_amount = 0;
-                        performSql("get canelled sell orders sold amount ", *vault.currentRoundPayback, param);
+                        performSql("get canelled sell orders sold amount ", *vault.currentRoundPayback, param, silent_sql);
                         if (vault.currentRoundPayback->next())
                         {
                             closed_sells_sold_amount = vault.currentRoundPayback->value(0).toDouble();
@@ -1091,9 +1098,9 @@ int main(int argc, char *argv[])
                         if (sell_order_id > 0)
                         {
                             BtcTradeApi::CancelOrder cancel(storage, funds, sell_order_id);
-                            performTradeRequest("cancel order", cancel);
+                            performTradeRequest("cancel order", cancel, silent_http);
                             BtcTradeApi::OrderInfo info(storage, sell_order_id);
-                            performTradeRequest("get canceled sell order info", info);
+                            performTradeRequest("get canceled sell order info", info, silent_http);
 
                             QVariantMap upd_param;
                             upd_param[":order_id"] = sell_order_id;
@@ -1102,7 +1109,7 @@ int main(int argc, char *argv[])
                             upd_param[":start_amount"] = info.order.start_amount;
                             upd_param[":rate"] = info.order.rate;
 
-                            performSql(QString("update order %1").arg(sell_order_id), *vault.updateSetCanceled, upd_param);
+                            performSql(QString("update order %1").arg(sell_order_id), *vault.updateSetCanceled, upd_param, silent_sql);
 
                             if (!qFuzzyCompare(info.order.amount, info.order.start_amount))
                                 amount_gain -= (info.order.start_amount - info.order.amount);
@@ -1118,7 +1125,7 @@ int main(int argc, char *argv[])
                         if (amount_gain > pair.min_amount)
                         {
                             BtcTradeApi::Trade sell(storage, funds, pair.name, BtcObjects::Order::Sell, sell_rate, amount_gain);
-                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell))
+                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell, silent_http))
                             {
                                 insertOrderParam[":order_id"] = (sell.order_id==0)?-(round_id*100+99):sell.order_id;
                                 insertOrderParam[":status"] = (sell.order_id==0)?1:0;
@@ -1129,7 +1136,7 @@ int main(int argc, char *argv[])
                                 insertOrderParam[":settings_id"] = settings_id;
                                 insertOrderParam[":round_id"] = round_id;
 
-                                performSql("insert sell order record", *vault.insertOrder, insertOrderParam);
+                                performSql("insert sell order record", *vault.insertOrder, insertOrderParam, silent_sql);
                             }
                         }
                     }
@@ -1144,7 +1151,9 @@ int main(int argc, char *argv[])
         }
         catch(const QSqlQuery& e)
         {
-            std::cerr << "Fail sql query:" << e.executedQuery() << e.lastError().text() << std::endl;
+            std::cerr << "Fail sql query: " << e.executedQuery() << " [" << e.lastError().number() << "] " << e.lastError().text() << std::endl;
+            db.open();
+            vault.prepare();
             usleep(1000 * 1000 * 30);
         }
         catch (const BtcTradeApi::Api& e)
