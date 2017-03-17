@@ -370,6 +370,7 @@ int main(int argc, char *argv[])
                             // this is buy order
                             if (sell_order_executed)
                             {
+                                /// TODO: get rid of orders_for_round_transition -- use DB instead (temporary table or direct table select)
                                 // and round has finished (thus -- sell order exists)
                                 orders_for_round_transition << order_id;
                             }
@@ -436,6 +437,8 @@ int main(int argc, char *argv[])
                         performTradeRequest(QString("cancel order %1").arg(order_id), cancel, silent_http);
 
                     }
+                    ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
+                    /// BUG! order might be partially done, but we mark it as cancelled!!
                     performSql("cancel active orders left from previous round", *database.cancelPrevRoundActiveOrders, param, silent_sql);
 
                     std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
@@ -494,8 +497,8 @@ int main(int argc, char *argv[])
                                 insertOrderParam[":start_amount"] = trade.received + trade.remains;
                                 insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
                                 insertOrderParam[":round_id"] = round_id;
-                                insertOrderParam[":created"] = QDateTime::currentDateTime();
 
+                                ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
                                 performSql("insert buy order record", *database.insertOrder, insertOrderParam, silent_sql);
 
                                 total_currency_spent += amount * rate;
@@ -503,6 +506,7 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
+                    ////// BUG: if STOP here -- db inconsistent with exchanger!!!!! Update dep usage when creating buy order insted -- in transaction!
                     usage_params[":usage"] = total_currency_spent;
                     performSql("set dep_usage", *database.setRoundsDepUsage, usage_params, silent_sql);
 
@@ -576,6 +580,7 @@ int main(int argc, char *argv[])
                             upd_param[":start_amount"] = info.order.start_amount;
                             upd_param[":rate"] = info.order.rate;
 
+                            ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
                             performSql(QString("update order %1").arg(sell_order_id), *database.updateSetCanceled, upd_param, silent_sql);
 
                             if (!qFuzzyCompare(info.order.amount, info.order.start_amount))
@@ -602,14 +607,15 @@ int main(int argc, char *argv[])
                                 insertOrderParam[":rate"] = sell_rate;
                                 insertOrderParam[":settings_id"] = settings_id;
                                 insertOrderParam[":round_id"] = round_id;
-                                insertOrderParam[":created"] = QDateTime::currentDateTime();
 
+                                ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
                                 performSql("insert sell order record", *database.insertOrder, insertOrderParam, silent_sql);
                             }
                         }
                     }
                 }
             }
+            database.pack_db();
 
             quint64 t = timer.elapsed();
             std::clog << QString("iteration done in %1 ms").arg(t) << std::endl << std::endl << std::endl;

@@ -79,6 +79,7 @@ public:
     virtual void changePassword() override final { keyStorage->changePassword(); }
     virtual QList<int> allKeys() override final { return keyStorage->allKeys(); }
 
+    void pack_db();
 private:
     QSettings& settings;
     QSqlDatabase db;

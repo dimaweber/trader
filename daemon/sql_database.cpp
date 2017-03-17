@@ -66,10 +66,19 @@ bool Database::init()
     return true;
 }
 
+void Database::pack_db()
+{
+    if (settings.value("debug/pack_db", "false").toBool())
+        performSql("remove cancelled orders", *sql, "delete from orders where status_id=2");
+}
+
 bool Database::connect()
 {
     settings.sync();
     settings.beginGroup("database");
+
+    if (db.isOpen())
+        db.close();
 
     while (!db.isOpen())
     {
@@ -120,16 +129,16 @@ bool Database::prepare()
     prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CHECKING
                " where status_id=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
-    prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id) "
-                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id, :created)", insertOrder);
+    prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id, created) "
+                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id, now())", insertOrder);
 
     prepareSql("UPDATE orders set status_id=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
                " where order_id=:order_id", updateActiveOrder);
 
-    prepareSql("UPDATE orders set status_id=:status, amount=:amount, start_amount=:start_amount, rate=:rate "
+    prepareSql("UPDATE orders set status_id=:status, amount=:amount, start_amount=:start_amount, rate=:rate, modified=now() "
                " where order_id=:order_id", updateSetCanceled);
 
-    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CANCEL " where round_id=:round_id and status_id=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
+    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CANCEL ", modified=now() where round_id=:round_id and status_id=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
 
     prepareSql("SELECT order_id, start_amount, rate from orders o "
                " where o.status_id < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
@@ -184,7 +193,7 @@ bool Database::prepare()
     prepareSql("update settings set dep = dep+:dep_inc "
                " where id=:settings_id", depositIncrease);
 
-    prepareSql("update orders set round_id=:round_id "
+    prepareSql("update orders set round_id=:round_id, modified=now() "
                " where order_id=:order_id", orderTransition);
 
     prepareSql("update rounds set dep_usage=:usage "
@@ -237,7 +246,7 @@ bool Database::create_tables()
             << TableField("start_time", TableField::Datetime).notNull()
             << "end_time DATETIME"
             << "income DECIMAL(14,6) default 0"
-            << "reason ENUM ('active', 'sell') not null default 'active'"
+            << "reason ENUM ('active', 'done') not null default 'active'"
             << "g_in decimal(14,6) not null default 0"
             << "g_out decimal(14,6) not null default 0"
             << "c_in decimal(14,6) not null default 0"
@@ -256,7 +265,7 @@ bool Database::create_tables()
              << TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
              << "created TIMESTAMP NOT NULL"
-             << "modified TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP"
+             << "modified TIMESTAMP NOT NULL"
              << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
              << "FOREIGN KEY(status_id) REFERENCES order_status(status_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
              ;
