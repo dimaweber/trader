@@ -92,6 +92,7 @@ void Order::display() const
         case Done: sStatus = "done"; break;
         case Canceled: sStatus = "canceled"; break;
         case CanceledPartiallyDone: sStatus = "canceled, patrially done"; break;
+        case Invalid: sStatus = "invalid"; break;
     }
 
     std::cout << order_id
@@ -125,7 +126,7 @@ bool Order::parse(const QVariantMap& map)
 
     if (map.contains("status"))
     {
-        int s = read_long(map, "status");
+        long s = read_long(map, "status");
         switch (s)
         {
             case 0: status = Order::Active; break;
@@ -138,9 +139,9 @@ bool Order::parse(const QVariantMap& map)
         status = Order::Active;
 
     if (map.contains("order_id"))
-        order_id = read_long(map, "order_id");
+        order_id = read_ulong(map, "order_id");
     else if (map.contains(key_field))
-        order_id = read_long(map, key_field);
+        order_id = read_ulong(map, key_field);
 
     return true;
 }
@@ -211,11 +212,11 @@ QString Order::currency() const {return pair.right(3);}
 
 bool Transaction::parse(const QVariantMap& map)
 {
-    type = read_long(map, "type");
+    type = static_cast<int>(read_long(map, "type"));
     amount = read_double(map, "amount");
     currency = read_string(map, "currency");
     desc = read_string(map, "desc");
-    status = read_long(map, "status");
+    status = static_cast<int>(read_long(map, "status"));
     timestamp = read_timestamp(map, "timestamp");
 
     if (map.contains("transaction_id"))
@@ -366,8 +367,8 @@ QVariantMap TransHistory::extraQueryParams()
 bool Info::parseSuccess(const QVariantMap& returnMap)
 {
     funds.parse(read_map(returnMap, "funds"));
-    transaction_count = read_long(returnMap, "transaction_count");
-    open_orders_count = read_long(returnMap, "open_orders");
+    transaction_count = read_ulong(returnMap, "transaction_count");
+    open_orders_count = read_ulong(returnMap, "open_orders");
     server_time = read_timestamp(returnMap, "server_time");
     return true;
 }
@@ -535,7 +536,7 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
 {
     received = read_double(returnMap, "received");
     remains = read_double(returnMap, "remains");
-    order_id = read_long(returnMap, "order_id");
+    order_id = read_ulong(returnMap, "order_id");
     funds.parse(read_map(returnMap, "funds"));
 
     if (tradeLogStream)
@@ -586,7 +587,7 @@ bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
 
     if (tradeLogStream)
     {
-        *tradeLogStream << QString("[%1] [CANCEL]  id: %2")
+        *tradeLogStream << QString("[%1] [CANCEL]   id: %2")
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
                            .arg(order_id)
                          << endl;
