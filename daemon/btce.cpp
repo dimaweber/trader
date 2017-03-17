@@ -509,9 +509,8 @@ bool OrderInfo::parseSuccess(const QVariantMap& returnMap)
         }
 
         *tradeLogStream << QString("[%1] ").arg(QDateTime::currentDateTime().toString(Qt::ISODate))
-                        << QString("[%2]   id: %3   type: %4   pair: %5   status: %6   rate: %7   amount: %8   start_amount: %9 (diff: %1)")
+                        << QString("[?]   id: %3   type: %4   pair: %5   status: %6   rate: %7   amount: %8   start_amount: %9 (diff: %1)")
                            .arg(order.start_amount - order.amount)
-                           .arg((order.status != BtcObjects::Order::Canceled)?"STATUS":"CANCEL")
                            .arg(QString::number(order_id).leftJustified(10))
                            .arg(QString((order.type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(order.pair.toUpper())
@@ -551,9 +550,9 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
 
     if (tradeLogStream)
     {
-        *tradeLogStream << QString("[%1] [%2]   id: %3   type: %4   pair: %5   status: CREATE   rate: %6   amount: %7   recieved: %8   remain: %9")
+        *tradeLogStream << QString("[%1] [+]   id: %3   type: %4   pair: %5   status: %2   rate: %6   amount: %7   recieved: %8   remain: %9")
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
-                           .arg(QString(order_id?"CREATE":"STATUS").leftJustified(6))
+                           .arg(QString(order_id?"CREATE":"INSTNT").leftJustified(6))
                            .arg(QString::number(order_id).leftJustified(10))
                            .arg(QString((type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(pair.toUpper())
@@ -597,7 +596,7 @@ bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
 
     if (tradeLogStream)
     {
-        *tradeLogStream << QString("[%1] [CANL-R]   id: %2")
+        *tradeLogStream << QString("[%1] [-]   id: %2")
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
                            .arg(QString::number(order_id).leftJustified(10))
                         << endl;

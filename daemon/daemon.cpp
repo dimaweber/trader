@@ -61,7 +61,7 @@ bool create_order (Database& database, quint32 round_id, const BtcObjects::Pair&
     if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount).arg(rate), order, silent_http))
     {
         insertOrderParam[":order_id"] = (order.order_id==0)?(round_id*1000+auto_executed_counter++):order.order_id;
-        insertOrderParam[":status"] = (order.order_id==0)?ORDER_STATUS_DONE:ORDER_STATUS_ACTIVE;
+        insertOrderParam[":status"] = (order.order_id==0)?ORDER_STATUS_INSTANT:ORDER_STATUS_ACTIVE;
         insertOrderParam[":type"] = (type==BtcObjects::Order::Buy)?"buy":"sell";
         insertOrderParam[":amount"] = order.remains;
         insertOrderParam[":start_amount"] = order.received + order.remains;

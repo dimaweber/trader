@@ -3,17 +3,19 @@ select * from (select major,minor from version order by id desc limit 1) A where
 -- orders with negative order_id
 select o.order_id from orders o where o.order_id <= 0;
 -- orders from complete rounds with improper status
-select o.order_id from orders o left join rounds r on r.round_id=o.round_id where r.reason='done' and ( o.status_id < 1 or o.status_id > 3);
+select o.order_id from orders o left join rounds r on r.round_id=o.round_id where r.reason='done' and ( o.status_id < 1 or o.status_id > 4);
 -- canceled orders with amount and start_amount mismatch
 select o.order_id from orders o where o.status_id=2 and o.amount <> o.start_amount;
 -- complete orders with non-zero amount
-select o.order_id from orders o where o.status_id=1 and o.amount <> 0;
+select o.order_id from orders o where o.status_id in (1, 4) and o.amount <> 0;
 -- orders with create/modify time different from rounds start/end time
 select o.order_id from orders o left join rounds r on r.round_id=o.round_id where ((o.created NOT BETWEEN r.start_time and r.end_time ) or (o.modified NOT BETWEEN r.start_time and r.end_time)) and r.reason = 'done';
 -- orders with created timestamp > modified
 select order_id from orders where created > modified;
 -- orders with zero start_amount / rate
 select order_id from orders where start_amount = 0 or rate = 0;
+-- non instant orders not in transactions log
+select o.order_id from transactions t right join orders o on o.order_id=t.order_id where t.id is null and o.status_id <> 4;
 -- partially done orders with start_amount == amount or zero amount
 select order_id from orders where status_id=3 and (start_amount = amount or amount=0);
 -- rounds with goods income mismatch orders goods income
@@ -45,6 +47,6 @@ select B.round_id, B.g_in * (1-B.comission), S.g_out from (select o1.round_id, s
 -- active rounds with non zero g/c in/out
 select r.round_id from rounds r where r.c_in + r.c_out + r.g_in + r.g_out <> 0 and r.reason = 'active';
 -- done orders with more then 1 executed sell
-select count(*) as cnt from orders where type='sell' and status_id=1 group by round_id having cnt > 1;
+select count(*) as cnt from orders where type='sell' and status_id in (1,4) group by round_id having cnt > 1;
 -- rounds with sell order and zero done or partially done buy orders
-select * from (select round_id, count(*) as cnt from orders where type='sell' group by round_id) S left join (select round_id, count(*) as cnt from orders where type='buy' and (status_id=1 or status_id=3) group by round_id) B on B.round_id=S.round_id where B.cnt=0 and S.cnt>0;
+select * from (select round_id, count(*) as cnt from orders where type='sell' group by round_id) S left join (select round_id, count(*) as cnt from orders where type='buy' and status_id in (1, 3, 4) group by round_id) B on B.round_id=S.round_id where B.cnt=0 and S.cnt>0;

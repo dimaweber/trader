@@ -160,7 +160,7 @@ bool Database::prepare()
                " where o.status_id= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
 
     prepareSql("select sum(start_amount-amount) from orders o "
-               " where o.round_id=:round_id and o.type='sell' and o.status_id > " ORDER_STATUS_DONE, currentRoundPayback);
+               " where o.round_id=:round_id and o.type='sell' and o.status_id = " ORDER_STATUS_PARTIAL, currentRoundPayback);
 
     prepareSql("SELECT order_id from orders o "
                " where o.status_id=" ORDER_STATUS_CHECKING " and o.round_id=:round_id order by o.type desc", selectOrdersWithChangedStatus);
@@ -169,7 +169,7 @@ bool Database::prepare()
                " where o.round_id=:round_id and o.status_id < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
     prepareSql("select " LEAST "(:last_price, o.rate + (:last_price - o.rate) / 10 * " LEAST "(" MINUTES_DIFF(r.end_time) ", 10)) from rounds r left join orders o on r.round_id=o.round_id "
-               " where r.settings_id=:settings_id and o.type='sell' and o.status_id=" ORDER_STATUS_DONE " group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
+               " where r.settings_id=:settings_id and o.type='sell' and o.status_id in (" ORDER_STATUS_DONE ", " ORDER_STATUS_INSTANT ", " ORDER_STATUS_PARTIAL ") group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
                " where t.secret_id=:secret_id", selectMaxTransHistoryId);

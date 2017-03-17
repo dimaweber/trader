@@ -19,12 +19,13 @@
 #   define LEAST "least"
 #   define MINUTES_DIFF(y) "timestampdiff(MINUTE, " #y ", now())"
 
+#define ORDER_STATUS_TRANSITION "-2"
 #define ORDER_STATUS_CHECKING "-1"
 #define ORDER_STATUS_ACTIVE "0"
 #define ORDER_STATUS_DONE "1"
 #define ORDER_STATUS_CANCEL "2"
 #define ORDER_STATUS_PARTIAL "3"
-#define ORDER_STATUS_TRANSITION "-2"
+#define ORDER_STATUS_INSTANT "3"
 
 #define CLOSED_ORDER "1"
 #define ACTIVE_ORDER "0"
