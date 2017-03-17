@@ -26,10 +26,11 @@
 *.exe
 *.out
 *.app
-data/
 daemon/trader
 infobot/infobot
 common/libcommon.a
+bin/
+.qmake.stash
 
 Makefile*
 *.pro.user
