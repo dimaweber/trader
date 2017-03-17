@@ -41,7 +41,6 @@ public:
     std::unique_ptr<QSqlQuery> insertOrder;
     std::unique_ptr<QSqlQuery> updateActiveOrder;
     std::unique_ptr<QSqlQuery> updateSetCanceled;
-    std::unique_ptr<QSqlQuery> cancelPrevRoundActiveOrders;
     std::unique_ptr<QSqlQuery> selectSellOrder;
     std::unique_ptr<QSqlQuery> selectSettings;
     std::unique_ptr<QSqlQuery> selectCurrentRoundActiveOrdersCount;

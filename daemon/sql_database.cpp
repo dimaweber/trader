@@ -138,8 +138,6 @@ bool Database::prepare()
     prepareSql("UPDATE orders set status_id=:status, amount=:amount, start_amount=:start_amount, rate=:rate, modified=now() "
                " where order_id=:order_id", updateSetCanceled);
 
-    prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CANCEL ", modified=now() where round_id=:round_id and status_id=" ORDER_STATUS_ACTIVE, cancelPrevRoundActiveOrders);
-
     prepareSql("SELECT order_id, start_amount, rate from orders o "
                " where o.status_id < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
 

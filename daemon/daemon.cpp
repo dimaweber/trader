@@ -32,6 +32,47 @@ void sig_handler(int signum)
         exit_asked = true;
 }
 
+BtcTradeApi::OrderInfo cancel_order(Database& database, BtcObjects::Order::Id order_id, BtcObjects::Funds& funds, bool silent_http, bool silent_sql)
+{
+    BtcTradeApi::CancelOrder cancel(database, funds, order_id);
+    performTradeRequest(QString("cancel order %1").arg(order_id), cancel, silent_http);
+    BtcTradeApi::OrderInfo info(database, order_id);
+    performTradeRequest("get canceled order info", info, silent_http);
+
+    QVariantMap upd_param;
+    upd_param[":order_id"] = order_id;
+    upd_param[":status"] = info.order.status;
+    upd_param[":amount"] = info.order.amount;
+    upd_param[":start_amount"] = info.order.start_amount;
+    upd_param[":rate"] = info.order.rate;
+
+    ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
+    performSql(QString("update order %1").arg(order_id), *database.updateSetCanceled, upd_param, silent_sql);
+
+    return info;
+}
+
+bool create_order (Database& database, quint32 round_id, const BtcObjects::Pair& pair, BtcObjects::Order::OrderType type, double rate, double amount, BtcObjects::Funds& funds, bool silent_http, bool silent_sql)
+{
+    static quint32 auto_executed_counter = 1;
+    QVariantMap insertOrderParam;
+    BtcTradeApi::Trade order(database, funds, pair.name, type, rate, amount);
+    if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount).arg(rate), order, silent_http))
+    {
+        insertOrderParam[":order_id"] = (order.order_id==0)?(round_id*1000+auto_executed_counter++):order.order_id;
+        insertOrderParam[":status"] = (order.order_id==0)?ORDER_STATUS_DONE:ORDER_STATUS_ACTIVE;
+        insertOrderParam[":type"] = "sell";
+        insertOrderParam[":amount"] = order.remains;
+        insertOrderParam[":start_amount"] = order.received + order.remains;
+        insertOrderParam[":rate"] = rate;
+        insertOrderParam[":round_id"] = round_id;
+
+        ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
+        return performSql("insert sell order record", *database.insertOrder, insertOrderParam, silent_sql);
+    }
+    return false;
+}
+
 int main(int argc, char *argv[])
 {
     signal(SIGINT, sig_handler);
@@ -62,13 +103,13 @@ int main(int argc, char *argv[])
         std::clog << "ok" << std::endl;
 
     int settings_id = 1;
-    int round_id = 0;
+    quint32 round_id = 0;
 
     double dep = 3.00;
     double first_step = 0.01;
     double martingale = 0.05;
     double coverage = 0.15;
-    int n = 8;
+    int count = 8;
     int secret_id = 0;
     QString currency = "usd";
     QString goods = "ppc";
@@ -246,7 +287,7 @@ int main(int argc, char *argv[])
                 martingale = database.selectSettings->value(3).toDouble();
                 dep = database.selectSettings->value(4).toDouble();
                 coverage = database.selectSettings->value(5).toDouble();
-                n = database.selectSettings->value(6).toInt();
+                count = database.selectSettings->value(6).toInt();
                 currency = database.selectSettings->value(7).toString();
                 goods = database.selectSettings->value(8).toString();
                 secret_id = database.selectSettings->value(9).toInt();
@@ -267,13 +308,12 @@ int main(int argc, char *argv[])
                 bool round_in_progress = false;
 
                 QVariantMap param;
-                QVariantMap insertOrderParam;
 
                 param[":settings_id"] = settings_id;
 
                 performSql("get current round id", *database.getRoundId, param, silent_sql);
                 if (database.getRoundId->next())
-                    round_id = database.getRoundId->value(0).toInt();
+                    round_id = database.getRoundId->value(0).toUInt();
                 else
                     round_id = 0;
                 param[":round_id"] = round_id;
@@ -303,7 +343,7 @@ int main(int argc, char *argv[])
                 {
                     while (database.selectOrdersWithChangedStatus->next())
                     {
-                        BtcObjects::Order::Id order_id = database.selectOrdersWithChangedStatus->value(0).toInt();
+                        BtcObjects::Order::Id order_id = database.selectOrdersWithChangedStatus->value(0).toUInt();
                         BtcTradeApi::OrderInfo info(database, order_id);
                         performTradeRequest(QString("get info for order %1").arg(order_id), info, silent_http);
 
@@ -432,27 +472,24 @@ int main(int argc, char *argv[])
                     performSql("check for orders left from previous round", *database.selectOrdersFromPrevRound, param, silent_sql);
                     while(database.selectOrdersFromPrevRound->next())
                     {
-                        BtcObjects::Order::Id order_id = database.selectOrdersFromPrevRound->value(0).toInt();
-                        BtcTradeApi::CancelOrder cancel(database, funds, order_id);
-                        performTradeRequest(QString("cancel order %1").arg(order_id), cancel, silent_http);
+                        BtcObjects::Order::Id order_id = database.selectOrdersFromPrevRound->value(0).toUInt();
+
+                        cancel_order(database, order_id, funds, silent_http, silent_sql);
 
                     }
-                    ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
-                    /// BUG! order might be partially done, but we mark it as cancelled!!
-                    performSql("cancel active orders left from previous round", *database.cancelPrevRoundActiveOrders, param, silent_sql);
 
                     std::clog << "New round start. Calculate new buy orders parameters" << std::endl;
 
                     if (round_id == 0)
                     {
                         performSql("create new round record", *database.insertRound, param, silent_sql);
-                        round_id = database.insertRound->lastInsertId().toInt();
+                        round_id = database.insertRound->lastInsertId().toUInt();
                     }
 
                     double sum =0;
 
-                    for (int j=0; j<n; j++)
-                        sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(n-1));
+                    for (int j=0; j<count; j++)
+                        sum += qPow(1+martingale, j) * ( 1 - first_step - (coverage - first_step) * j/(count-1));
 
                     double execute_rate = pair.ticker.last;
                     param[":last_price"] = execute_rate;
@@ -468,10 +505,10 @@ int main(int argc, char *argv[])
                     double total_currency_spent = 0;
                     QVariantMap usage_params;
                     usage_params[":round_id"] = round_id;
-                    for(int j=0; j<n; j++)
+                    for(int j=0; j<count; j++)
                     {
                         double amount = u * qPow(1+martingale, j);
-                        double rate = execute_rate * ( 1 - first_step - (coverage - first_step) * j/(n-1));
+                        double rate = execute_rate * ( 1 - first_step - (coverage - first_step) * j/(count-1));
 
                         if (amount * rate > funds[currency] ||
                             total_currency_spent + amount*rate > dep+0.00001)
@@ -480,27 +517,14 @@ int main(int argc, char *argv[])
                             break;
                         }
 
-                        int auto_executed_counter = 0;
                         if (amount < pair.min_amount)
                         {
                             std::clog << "proposed trade amount " << amount << " too low (min: " << pair.min_amount << ") -- skip order" << std::endl;
                         }
                         else
                         {
-                            BtcTradeApi::Trade trade(database, funds, pair.name, BtcObjects::Order::Buy, rate, amount);
-                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("buy").arg(amount).arg(rate), trade, silent_http))
+                            if (create_order(database, round_id, pair, BtcObjects::Order::Buy, rate, amount, funds, silent_http, silent_sql))
                             {
-                                insertOrderParam[":order_id"] = (trade.order_id==0)?(round_id * 1000 + auto_executed_counter++):trade.order_id;
-                                insertOrderParam[":status"] = (trade.order_id==0)?1:0;
-                                insertOrderParam[":type"] = "buy";
-                                insertOrderParam[":amount"] = trade.remains;
-                                insertOrderParam[":start_amount"] = trade.received + trade.remains;
-                                insertOrderParam[":rate"] = QString::number(rate, 'f', pair.decimal_places);
-                                insertOrderParam[":round_id"] = round_id;
-
-                                ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
-                                performSql("insert buy order record", *database.insertOrder, insertOrderParam, silent_sql);
-
                                 total_currency_spent += amount * rate;
                                 std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
                             }
@@ -568,21 +592,7 @@ int main(int argc, char *argv[])
                     {
                         if (sell_order_id > 0)
                         {
-                            BtcTradeApi::CancelOrder cancel(database, funds, sell_order_id);
-                            performTradeRequest("cancel order", cancel, silent_http);
-                            BtcTradeApi::OrderInfo info(database, sell_order_id);
-                            performTradeRequest("get canceled sell order info", info, silent_http);
-
-                            QVariantMap upd_param;
-                            upd_param[":order_id"] = sell_order_id;
-                            upd_param[":status"] = info.order.status;
-                            upd_param[":amount"] = info.order.amount;
-                            upd_param[":start_amount"] = info.order.start_amount;
-                            upd_param[":rate"] = info.order.rate;
-
-                            ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
-                            performSql(QString("update order %1").arg(sell_order_id), *database.updateSetCanceled, upd_param, silent_sql);
-
+                            BtcTradeApi::OrderInfo info = cancel_order(database, sell_order_id, funds, silent_http, silent_sql);
                             if (!qFuzzyCompare(info.order.amount, info.order.start_amount))
                                 amount_gain -= (info.order.start_amount - info.order.amount);
                         }
@@ -596,30 +606,16 @@ int main(int argc, char *argv[])
 
                         if (amount_gain > pair.min_amount)
                         {
-                            BtcTradeApi::Trade sell(database, funds, pair.name, BtcObjects::Order::Sell, sell_rate, amount_gain);
-                            if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount_gain).arg(sell_rate), sell, silent_http))
-                            {
-                                insertOrderParam[":order_id"] = (sell.order_id==0)?-(round_id*100+99):sell.order_id;
-                                insertOrderParam[":status"] = (sell.order_id==0)?1:0;
-                                insertOrderParam[":type"] = "sell";
-                                insertOrderParam[":amount"] = sell.remains;
-                                insertOrderParam[":start_amount"] = sell.received + sell.remains;
-                                insertOrderParam[":rate"] = sell_rate;
-                                insertOrderParam[":settings_id"] = settings_id;
-                                insertOrderParam[":round_id"] = round_id;
-
-                                ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
-                                performSql("insert sell order record", *database.insertOrder, insertOrderParam, silent_sql);
-                            }
+                            create_order(database, round_id, pair, BtcObjects::Order::Sell, sell_rate, amount_gain, funds, silent_http, silent_sql);
                         }
                     }
                 }
             }
             database.pack_db();
 
-            quint64 t = timer.elapsed();
+            qint64 t = timer.elapsed();
             std::clog << QString("iteration done in %1 ms").arg(t) << std::endl << std::endl << std::endl;
-            quint64 ms_sleep = 10 * 1000;
+            qint64 ms_sleep = 10 * 1000;
             if (t < ms_sleep)
                 usleep(1000 * (ms_sleep-t));
         }
