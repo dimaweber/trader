@@ -27,7 +27,7 @@ FROM
 	LEFT JOIN rates ON dep.name = rates.goods
 		AND dep.time = rates.time
 	WHERE
-		rates.time IS NOT NULL
+		date(rates.time) = date(now())
 			AND rates.currency = 'usd'
 	GROUP BY dep.time) AS A
 		LEFT JOIN
@@ -36,6 +36,7 @@ FROM
 	FROM
 		dep
 	WHERE
-		name = 'usd') AS B ON A.time = B.time
+		name = 'usd'
+			AND date(dep.time) = date(now())) AS B ON A.time = B.time
 ORDER BY A.time DESC
 LIMIT 1;
