@@ -17,5 +17,6 @@ OTHER_FILES += \
                sql/create_db_v1.0.sql
 
 DISTFILES += \
-    sql/sanity_check_v2.1.sql
+    sql/sanity_check_v2.1.sql \
+    sql/db_upgrade_v2_1.sql
 

@@ -411,9 +411,10 @@ int main(int argc, char *argv[])
                             // this is buy order
                             if (sell_order_executed)
                             {
-                                /// TODO: get rid of orders_for_round_transition -- use DB instead (temporary table or direct table select)
                                 // and round has finished (thus -- sell order exists)
-                                orders_for_round_transition << order_id;
+                                QVariantMap transitParams;
+                                transitParams[":order_id"] = order_id;
+                                performSql("mark order for transition", *database.markForTransition, transitParams, silent_sql);
                             }
                         }
                     }
@@ -539,15 +540,16 @@ int main(int argc, char *argv[])
                     std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())
                               << std::endl;
 
-                    if (!orders_for_round_transition.isEmpty())
+                    QVariantMap transParams;
+                    transParams[":settings_id"] = settings_id;
+                    transParams[":round_id_to"] = round_id;
+                    if (performSql("get previous round id", *database.getPrevRoundId, transParams, silent_sql))
                     {
-                        std::clog << "some orders from previous round got transition to this round";
-                        QVariantMap trans_param;
-                        trans_param[":round_id"] = round_id;
-                        for(BtcObjects::Order::Id order_id: orders_for_round_transition)
+                        if (database.getPrevRoundId->next())
                         {
-                            trans_param[":order_id"] = order_id;
-                            performSql("transit order", *database.orderTransition, trans_param, silent_sql);
+                            quint32 prev_round_id = database.getPrevRoundId->value(0).toUInt();
+                            transParams[":prev_round_from"] = prev_round_id;
+                            performSql("transit orders from previous round", *database.transitOrders, transParams, silent_sql);
                         }
                     }
                 }

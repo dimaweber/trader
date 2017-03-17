@@ -16,6 +16,11 @@ Database::Database(QSettings& settings)
 {
 }
 
+Database::~Database()
+{
+    db.close();
+}
+
 bool Database::init()
 {
     try
@@ -23,7 +28,7 @@ bool Database::init()
         connect();
 
         // orders table is a core table for whole trader, so if it does not exists, we can
-        // say that this is new database, so we don't need to upgrade it but simply can
+        // say that this is new database and we don't need to upgrade it but simply can
         // create tables and put current version into versions table
         bool empty_db = !db.tables().contains("orders");
         create_tables();
@@ -200,6 +205,12 @@ bool Database::prepare()
     prepareSql("insert into rates (time, currency, goods, buy_rate, sell_rate, last_rate, currency_volume, goods_volume) values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
     prepareSql("insert into dep (time, name, secret_id, value, on_orders) values (:time, :name, :secret, :dep, :orders)", insertDep);
+
+    prepareSql("select round_id from rounds where settings_id=:settings_id order by round_id desc limit 1", getPrevRoundId);
+
+    prepareSql("update orders set status=" ORDER_STATUS_TRANSITION ", modified=now() where order_id=:order_id", markForTransition);
+
+    prepareSql("update orders set status=-1, modified=now(), round_id=:round_id_to where round_id=:round_id_from and status=" ORDER_STATUS_TRANSITION, transitOrders);
 
     return true;
 }

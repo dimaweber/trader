@@ -9,7 +9,7 @@
 #include <memory>
 
 #define DB_VERSION_MAJOR 2
-#define DB_VERSION_MINOR 1
+#define DB_VERSION_MINOR 2
 
 #   define SQL_NOW "now()"
 #   define SQL_TRUE "TRUE"
@@ -24,6 +24,7 @@
 #define ORDER_STATUS_DONE "1"
 #define ORDER_STATUS_CANCEL "2"
 #define ORDER_STATUS_PARTIAL "3"
+#define ORDER_STATUS_TRANSITION "-2"
 
 #define CLOSED_ORDER "1"
 #define ACTIVE_ORDER "0"
@@ -32,6 +33,7 @@ class Database : public IKeyStorage
 {
 public:
     Database(QSettings& settings);
+    virtual ~Database();
 
     bool connect();
     bool prepare();
@@ -64,6 +66,9 @@ public:
     std::unique_ptr<QSqlQuery> insertRate;
     std::unique_ptr<QSqlQuery> insertDep;
     std::unique_ptr<QSqlQuery> updateOrdersCheckToActive;
+    std::unique_ptr<QSqlQuery> getPrevRoundId;
+    std::unique_ptr<QSqlQuery> markForTransition;
+    std::unique_ptr<QSqlQuery> transitOrders;
 
     bool init();
 
