@@ -20,6 +20,7 @@ protected:
     virtual bool parse(const QByteArray& serverAnswer) =0;
 public:
     HttpQuery():valid(false){}
+    virtual ~HttpQuery() {}
     bool isValid() const { return valid;}
     bool performQuery();
 };

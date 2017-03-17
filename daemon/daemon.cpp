@@ -37,17 +37,18 @@ BtcTradeApi::OrderInfo cancel_order(Database& database, BtcObjects::Order::Id or
     BtcTradeApi::CancelOrder cancel(database, funds, order_id);
     performTradeRequest(QString("cancel order %1").arg(order_id), cancel, silent_http);
     BtcTradeApi::OrderInfo info(database, order_id);
-    performTradeRequest("get canceled order info", info, silent_http);
+    if (performTradeRequest("get canceled order info", info, silent_http))
+    {
+        QVariantMap upd_param;
+        upd_param[":order_id"] = order_id;
+        upd_param[":status"] = info.order.status;
+        upd_param[":amount"] = info.order.amount;
+        upd_param[":start_amount"] = info.order.start_amount;
+        upd_param[":rate"] = info.order.rate;
 
-    QVariantMap upd_param;
-    upd_param[":order_id"] = order_id;
-    upd_param[":status"] = info.order.status;
-    upd_param[":amount"] = info.order.amount;
-    upd_param[":start_amount"] = info.order.start_amount;
-    upd_param[":rate"] = info.order.rate;
-
-    ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
-    performSql(QString("update order %1").arg(order_id), *database.updateSetCanceled, upd_param, silent_sql);
+        /// BUG: if STOP here -- db inconsistent with exchanger!!!!!
+        performSql(QString("update order %1").arg(order_id), *database.updateSetCanceled, upd_param, silent_sql);
+    }
 
     return info;
 }
@@ -67,7 +68,7 @@ bool create_order (Database& database, quint32 round_id, const BtcObjects::Pair&
         insertOrderParam[":rate"] = rate;
         insertOrderParam[":round_id"] = round_id;
 
-        ////// BUG: if STOP here -- db inconsistent with exchanger!!!!!
+        /// BUG: if STOP here -- db inconsistent with exchanger!!!!!
         return performSql("insert sell order record", *database.insertOrder, insertOrderParam, silent_sql);
     }
     return false;
@@ -155,7 +156,7 @@ int main(int argc, char *argv[])
                     }
                     database.commit();
                 }
-                catch(const QSqlQuery& e)
+                catch(const QSqlQuery& )
                 {
                     database.rollback();
                 }
@@ -230,7 +231,7 @@ int main(int argc, char *argv[])
                     }
                     database.commit();
                 }
-                catch(const QSqlQuery& e)
+                catch(const QSqlQuery& )
                 {
                     database.rollback();
                 }
@@ -264,7 +265,7 @@ int main(int argc, char *argv[])
                         performSql("insert transaction info", *database.insertTransaction, ins_params, silent_sql);
                     }
                 }
-                catch (std::runtime_error& e)
+                catch (std::runtime_error& )
                 {
 
                 }
@@ -530,7 +531,7 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
-                    ////// BUG: if STOP here -- db inconsistent with exchanger!!!!! Update dep usage when creating buy order insted -- in transaction!
+                    /// BUG: if STOP here -- db inconsistent with exchanger!!!!! Update dep usage when creating buy order insted -- in transaction!
                     usage_params[":usage"] = total_currency_spent;
                     performSql("set dep_usage", *database.setRoundsDepUsage, usage_params, silent_sql);
 
@@ -568,7 +569,7 @@ int main(int argc, char *argv[])
                     performSql("get sell order id and amount", *database.selectSellOrder, param, silent_sql);
                     if (database.selectSellOrder->next())
                     {
-                        sell_order_id = database.selectSellOrder->value(0).toInt();
+                        sell_order_id = database.selectSellOrder->value(0).toUInt();
                         double sell_order_amount = database.selectSellOrder->value(1).toDouble();
                         double sell_order_rate = database.selectSellOrder->value(2).toDouble();
                         double closed_sells_sold_amount = 0;
