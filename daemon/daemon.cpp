@@ -62,7 +62,7 @@ bool create_order (Database& database, quint32 round_id, const BtcObjects::Pair&
     {
         insertOrderParam[":order_id"] = (order.order_id==0)?(round_id*1000+auto_executed_counter++):order.order_id;
         insertOrderParam[":status"] = (order.order_id==0)?ORDER_STATUS_DONE:ORDER_STATUS_ACTIVE;
-        insertOrderParam[":type"] = "sell";
+        insertOrderParam[":type"] = (type==BtcObjects::Order::Buy)?"buy":"sell";
         insertOrderParam[":amount"] = order.remains;
         insertOrderParam[":start_amount"] = order.received + order.remains;
         insertOrderParam[":rate"] = rate;
@@ -416,6 +416,8 @@ int main(int argc, char *argv[])
                                 transitParams[":order_id"] = order_id;
                                 performSql("mark order for transition", *database.markForTransition, transitParams, silent_sql);
                             }
+                            else
+                                round_in_progress = true;
                         }
                     }
                 }

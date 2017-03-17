@@ -16,7 +16,7 @@
 #include "utils.h"
 
 #define DB_VERSION_MAJOR 2
-#define DB_VERSION_MINOR 1
+#define DB_VERSION_MINOR 2
 
 int main(int argc, char *argv[])
 {
@@ -87,24 +87,35 @@ int main(int argc, char *argv[])
     QTextStream stream(&file);
     QString line;
     QString comment;
+    quint32 cnt = 0;
     while (!stream.atEnd())
     {
         line = stream.readLine();
         if (line.startsWith("--"))
         {
             comment = line;
+            comment.remove(0, 3);
             line = stream.readLine();
         }
         else
             comment = "check database";
         if (!line.isEmpty())
         {
-            std::clog << comment << std::endl;
+            std::clog << QString::number(++cnt).rightJustified(3) << ". " << comment << "  ... ";
             if (!sql.exec(line))
-                std::cerr << "Fail to execute query " << sql.lastQuery() << ": " << sql.lastError().text();
-            while (sql.next())
+                std::clog << "Fail to execute query " << sql.lastQuery() << ": " << sql.lastError().text() << std::endl;
+            else
             {
-                std::clog << sql.value(0).toString() << std::endl;
+                if (sql.next())
+                {
+                    std::clog << " FAIL" << std::endl;
+                    do
+                    {
+                        std::clog << "\t" << sql.value(0).toString() << std::endl;
+                    } while (sql.next());
+                }
+                else
+                    std::clog << " ok" << std::endl;
             }
         }
     }

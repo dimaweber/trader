@@ -94,12 +94,12 @@ struct Pairs: public QMap<QString, Pair>, ExchangeObject
 
 struct Order  : public ExchangeObject
 {
-    enum OrderType {Buy, Sell, Invaid};
-    enum OrderStatus {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3, Invalid};
+    enum OrderType {Buy, Sell, Invalid};
+    enum OrderStatus {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3, Unknonwn};
     typedef quint64 Id;
 
     Order()
-        :type(OrderType::Invaid), amount(0), start_amount(0), rate(0), status(OrderStatus::Invalid)
+        :type(OrderType::Invalid), amount(0), start_amount(0), rate(0), status(OrderStatus::Unknonwn)
     {}
     virtual ~Order()
     {}

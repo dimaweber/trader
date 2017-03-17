@@ -92,7 +92,7 @@ void Order::display() const
         case Done: sStatus = "done"; break;
         case Canceled: sStatus = "canceled"; break;
         case CanceledPartiallyDone: sStatus = "canceled, patrially done"; break;
-        case Invalid: sStatus = "invalid"; break;
+        case Unknonwn: sStatus = "invalid"; break;
     }
 
     std::cout << order_id
@@ -499,13 +499,23 @@ bool OrderInfo::parseSuccess(const QVariantMap& returnMap)
     if (tradeLogStream && order.status != BtcObjects::Order::Active )
     {
         QString status="done";
-        *tradeLogStream << QString("[%1] [%2]   type: %3   id: %4   pair: %5   status: %6   rate: %7   amount: %8   start_amount: %9")
-                           .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
+        switch (order.status)
+        {
+            case BtcObjects::Order::Active: status = "ACTIVE"; break;
+            case BtcObjects::Order::Done:   status = "DONE"; break;
+            case BtcObjects::Order::Canceled: status="CANCEL"; break;
+            case BtcObjects::Order::CanceledPartiallyDone: status="P-DONE"; break;
+            case BtcObjects::Order::Unknonwn: status="UNKNWN"; break;
+        }
+
+        *tradeLogStream << QString("[%1] ").arg(QDateTime::currentDateTime().toString(Qt::ISODate))
+                        << QString("[%2]   id: %3   type: %4   pair: %5   status: %6   rate: %7   amount: %8   start_amount: %9 (diff: %1)")
+                           .arg(order.start_amount - order.amount)
                            .arg((order.status != BtcObjects::Order::Canceled)?"STATUS":"CANCEL")
+                           .arg(QString::number(order_id).leftJustified(10))
                            .arg(QString((order.type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(order.pair.toUpper())
-                           .arg(QString::number(order_id).leftJustified(10))
-                           .arg(QString((order.status==BtcObjects::Order::Done)?"DONE":"P-DONE").leftJustified(6))
+                           .arg(status.leftJustified(6))
                            .arg(QString::number(order.rate, 'f', BtcObjects::Pairs::ref(order.pair).decimal_places).leftJustified(10))
                            .arg(QString::number(order.amount, 'f', 8).leftJustified(10))
                            .arg(QString::number(order.start_amount, 'f', 8).leftJustified(10))
@@ -541,12 +551,12 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
 
     if (tradeLogStream)
     {
-        *tradeLogStream << QString("[%1] [%2]   type: %3   id: %4   pair: %5   status: CREATE   rate: %6   amount: %7   recieved: %8   remain: %9")
+        *tradeLogStream << QString("[%1] [%2]   id: %3   type: %4   pair: %5   status: CREATE   rate: %6   amount: %7   recieved: %8   remain: %9")
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
                            .arg(QString(order_id?"CREATE":"STATUS").leftJustified(6))
+                           .arg(QString::number(order_id).leftJustified(10))
                            .arg(QString((type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(pair.toUpper())
-                           .arg(QString::number(order_id).leftJustified(10))
                            .arg(QString::number(rate, 'f', BtcObjects::Pairs::ref(pair).decimal_places).leftJustified(10))
                            .arg(QString::number(amount, 'f', 8).leftJustified(10))
                            .arg(QString::number(received, 'f', 8).leftJustified(10))

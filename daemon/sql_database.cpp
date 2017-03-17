@@ -208,9 +208,9 @@ bool Database::prepare()
 
     prepareSql("select round_id from rounds where settings_id=:settings_id order by round_id desc limit 1", getPrevRoundId);
 
-    prepareSql("update orders set status=" ORDER_STATUS_TRANSITION ", modified=now() where order_id=:order_id", markForTransition);
+    prepareSql("update orders set status_id=" ORDER_STATUS_TRANSITION ", modified=now() where order_id=:order_id", markForTransition);
 
-    prepareSql("update orders set status=-1, modified=now(), round_id=:round_id_to where round_id=:round_id_from and status=" ORDER_STATUS_TRANSITION, transitOrders);
+    prepareSql("update orders set status_id=-1, modified=now(), round_id=:round_id_to where round_id=:round_id_from and status_id=" ORDER_STATUS_TRANSITION, transitOrders);
 
     return true;
 }
