@@ -88,6 +88,11 @@ int main(int argc, char *argv[])
     QString line;
     QString comment;
     quint32 cnt = 0;
+    const char* colorRed = "\033[0;31m";
+    const char* colorGreen = "\033[0;32m";
+    const char* colorDefault = "\033[0m";
+    const char* boldText = "\033[1m";
+
     while (!stream.atEnd())
     {
         line = stream.readLine();
@@ -101,21 +106,21 @@ int main(int argc, char *argv[])
             comment = "check database";
         if (!line.isEmpty())
         {
-            std::clog << QString::number(++cnt).rightJustified(3) << ". " << comment << "  ... ";
+            std::clog << boldText << QString::number(++cnt).rightJustified(3) << ". " << colorDefault << comment.leftJustified(80, ' ', true) << "  ... ";
             if (!sql.exec(line))
                 std::clog << "Fail to execute query " << sql.lastQuery() << ": " << sql.lastError().text() << std::endl;
             else
             {
                 if (sql.next())
                 {
-                    std::clog << " FAIL" << std::endl;
+                    std::clog << colorRed << " FAIL" << colorDefault << std::endl;
                     do
                     {
                         std::clog << "\t" << sql.value(0).toString() << std::endl;
                     } while (sql.next());
                 }
                 else
-                    std::clog << " ok" << std::endl;
+                    std::clog << colorGreen << " ok" << colorDefault << std::endl;
             }
         }
     }

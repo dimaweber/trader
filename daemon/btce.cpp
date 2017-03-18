@@ -552,7 +552,7 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
     {
         *tradeLogStream << QString("[%1] [+]   id: %3   type: %4   pair: %5   status: %2   rate: %6   amount: %7   recieved: %8   remain: %9")
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
-                           .arg(QString(order_id?"CREATE":"INSTNT").leftJustified(6))
+                           .arg(QString(order_id?"CREATE":"I-DONE").leftJustified(6))
                            .arg(QString::number(order_id).leftJustified(10))
                            .arg(QString((type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(pair.toUpper())

@@ -12,7 +12,7 @@
 
 
 Database::Database(QSettings& settings)
-    :settings(settings)
+    :settings(settings), db_upgraded(false)
 {
 }
 
@@ -52,7 +52,7 @@ bool Database::init()
 
             while (!(major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR))
             {
-                execute_upgrade_sql(major, minor);
+                db_upgraded = execute_upgrade_sql(major, minor);
             }
         }
         else

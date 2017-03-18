@@ -22,6 +22,12 @@
 #include <signal.h>
 
 
+/// TODO: dep / rates to separate db
+/// TODO: transactions this db, but separate process
+/// TODO: db_check as callable function, app just wrapp it
+/// TODO: util to add buy orders to rounds (params: setting_id rate amount)
+/// TODO: parallel processing secrets
+
 static CurlWrapper w;
 
 static bool exit_asked = false;
@@ -89,6 +95,11 @@ int main(int argc, char *argv[])
 
     Database database(settings);
     database.init();
+    if (database.isDbUpgradePerformed())
+    {
+        std::clog << " *** Database has been upgraded, please run db_check, check warning and re-run this app" << std::endl;
+        return 0;
+    }
 
     BtcTradeApi::enableTradeLog(QCoreApplication::applicationDirPath() + "/../data/trade.log");
 
@@ -335,8 +346,6 @@ int main(int argc, char *argv[])
                         round_in_progress = count > 0;
                         std::clog << QString("active orders count: %1").arg(count)  << std::endl;
                     }
-
-                QVector<BtcObjects::Order::Id> orders_for_round_transition;
 
                 bool sell_order_executed = false;
                 database.transaction();

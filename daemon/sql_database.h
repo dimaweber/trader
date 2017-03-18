@@ -85,12 +85,14 @@ public:
     virtual QList<int> allKeys() override final { return keyStorage->allKeys(); }
 
     void pack_db();
+
+    bool isDbUpgradePerformed() const { return db_upgraded;}
 private:
     QSettings& settings;
     QSqlDatabase db;
     std::unique_ptr<QSqlQuery> sql;
     std::unique_ptr<KeyStorage> keyStorage;
-
+    bool db_upgraded;
 };
 
 
