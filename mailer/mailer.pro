@@ -1,16 +1,21 @@
+QT += core network
+QT -= gui
+
 TEMPLATE  = lib
 
 CONFIG = c++11 warn_on
 #CONFIG += staticlib
 
-SOURCES += mailer/mailer.cpp \
-           mailer/smtp.cpp \
-           mailer/smtpAuthData.cpp
+SOURCES += mailer.cpp \
+           smtp.cpp \
+           smtpAuthData.cpp
 
-HEADERS += mailer/mailer.h \
-           mailer/smtp.h \
-           mailer/smptAuthData.h
+HEADERS += mailer.h \
+           smtp.h \
+           smptAuthData.h
 
-QT += network
+OBJECTS_DIR = .obj
+UI_DIR = .ui
+MOC_DIR = .moc
 
-INCLUDEPATH += mailer
+DESTDIR = ../lib

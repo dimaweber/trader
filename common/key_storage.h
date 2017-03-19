@@ -68,6 +68,4 @@ protected:
 public:
     FileKeyStorage(const QString& fileName);
 };
-
-
 #endif // KEY_STORAGE_H

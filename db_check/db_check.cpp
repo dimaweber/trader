@@ -16,10 +16,6 @@
 
 #include <unistd.h>
 
-
-#define DB_VERSION_MAJOR 2
-#define DB_VERSION_MINOR 3
-
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);

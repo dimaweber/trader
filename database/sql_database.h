@@ -20,18 +20,8 @@ class QSqlQuery;
 class QSqlDatabase;
 class QSettings;
 
-class SqlKeyStorage : public KeyStorage
-{
-    QString _tableName;
-    QSqlDatabase& db;
-
-protected:
-    virtual void load() override;
-    virtual void store() override;
-
-public:
-    SqlKeyStorage(QSqlDatabase& db, const QString& tableName);
-};
+bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
+bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
 
 class Database : public IKeyStorage
 {
@@ -75,6 +65,11 @@ public:
     std::unique_ptr<QSqlQuery> markForTransition;
     std::unique_ptr<QSqlQuery> transitOrders;
 
+    std::unique_ptr<QSqlQuery> insertIntoQueue;
+    std::unique_ptr<QSqlQuery> getFromQueue;
+    std::unique_ptr<QSqlQuery> markQueueDone;
+//    std::unique_ptr<QSqlQuery> deleteFromQueue;
+
     bool init();
     bool check_version();
 
@@ -97,7 +92,7 @@ private:
     QSettings& settings;
     std::unique_ptr<QSqlDatabase> db;
     std::unique_ptr<QSqlQuery> sql;
-    std::unique_ptr<KeyStorage> keyStorage;
+    std::unique_ptr<IKeyStorage> keyStorage;
     bool db_upgraded;
 };
 

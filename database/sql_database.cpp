@@ -4,15 +4,95 @@
 
 #include <QSqlQuery>
 #include <QSqlDatabase>
+#include <QSqlDriver>
 #include <QSettings>
 #include <QStringList>
 #include <QSqlError>
 #include <QFile>
 #include <QTextStream>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 
 #include <unistd.h>
 
+class SqlKeyStorage : public KeyStorage
+{
+    QString _tableName;
+    QSqlDatabase& db;
+
+protected:
+    virtual void load() override;
+    virtual void store() override;
+
+public:
+    SqlKeyStorage(QSqlDatabase& db, const QString& tableName);
+};
+
+bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent)
+{
+    QElapsedTimer executeTimer;
+    quint64 elapsed = 0;
+    bool ok;
+    if (!silent)
+        std::clog << QString("[sql] %1:").arg(message) << std::endl;
+    executeTimer.start();
+    if (sql.isEmpty())
+        ok = query.exec();
+    else
+        ok = query.exec(sql);
+    elapsed = executeTimer.elapsed();
+    if (!silent)
+        std::clog << query.lastQuery() << std::endl;
+    if (ok)
+    {
+        if(!silent)
+            std::clog << "ok ";
+        if (query.isSelect())
+        {
+            int count = 0;
+            if (query.driver()->hasFeature(QSqlDriver::QuerySize))
+                count = query.size();
+            else if (!query.isForwardOnly())
+            {
+                while(query.next())
+                    count++;
+                query.first();
+                query.previous();
+            }
+            else
+                count = -1;
+
+            if (!silent)
+                std::clog << QString("(return %1 records). ").arg(count);
+        }
+        else
+            if (!silent)
+                std::clog << QString("(affected %1 records). ").arg(query.numRowsAffected());
+    }
+    else
+    {
+        if (!silent)
+            std::clog << "Fail.";
+        std::cerr << "SQL: " << query.lastQuery() << "."
+                  << "Reason: " << query.lastError().text();
+    }
+    if(!silent)
+        std::clog << "Done in " << elapsed << "ms" << std::endl;
+    if (!ok)
+        throw query;
+    return ok;
+}
+
+bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds, bool silent)
+{
+    for(QString param: binds.keys())
+    {
+        query.bindValue(param, binds[param]);
+        if (!silent)
+            std::clog << "\tbind: " << param << " = " << binds[param].toString() << std::endl;
+    }
+    return performSql(message, query, QString(), silent);
+}
 
 Database::Database(QSettings& settings)
     :settings(settings), db_upgraded(false)
@@ -250,6 +330,11 @@ bool Database::prepare()
 
     prepareSql("update orders set status_id=-1, modified=now(), round_id=:round_id_to where round_id=:round_id_from and status_id=" ORDER_STATUS_TRANSITION, transitOrders);
 
+    prepareSql("insert into queue (settings_id, amount, rate, put_time) values (:settings_id, :amount, :rate, now())", insertIntoQueue);
+    prepareSql("select queue_id, amount, rate from queue where settings_id=:settings_id and executed = 0", getFromQueue);
+    prepareSql("update queue set executed=1, status=:status, exec_time=now() where queue_id=:queue_id", markQueueDone);
+//    prepareSql("delete from  queue where queue_id=:queue_id", deleteFromQueue);
+
     return true;
 }
 
@@ -262,6 +347,18 @@ bool Database::create_tables()
             << "minor int not null default 0"
             << "unique (major, minor)"
             << "upgrade_date timestamp not null default CURRENT_TIMESTAMP"
+               ;
+
+    createSqls["queue"]
+            << "queue_id INTEGER PRIMARY KEY AUTO_INCREMENT"
+            << "settings_id INTEGER NOT NULL"
+            << "FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE CASCADE"
+            << "amount DECIMAL(14,6) not null check(amount>0)"
+            << "rate DECIMAL(14,6) not null check (rate>0)"
+            << "executed INTEGER not null default 0"
+            << "status varchar(255) default null"
+            << "put_time TIMESTAMP not null"
+            << "exec_time TIMESTAMP not null"
                ;
 
     createSqls["secrets"]

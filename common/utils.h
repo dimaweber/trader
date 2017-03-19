@@ -12,8 +12,6 @@
 
 #include <stdexcept>
 
-class QSqlQuery;
-
 const QString key_field = "__key";
 
 class MissingField : public std::runtime_error
@@ -25,17 +23,6 @@ class BrokenJson : public std::runtime_error
 typedef const EVP_MD* (*HashFunction)();
 
 QByteArray hmac_sha512(const QByteArray& message, const QByteArray& key, HashFunction func = EVP_sha512);
-
-double read_double(const QVariantMap& map, const QString& name);
-QString read_string(const QVariantMap& map, const QString& name);
-qint64 read_long(const QVariantMap& map, const QString& name);
-quint64 read_ulong(const QVariantMap& map, const QString& name);
-QVariantMap read_map(const QVariantMap& map, const QString& name);
-QVariantList read_list(const QVariantMap& map, const QString& name);
-QDateTime read_timestamp(const QVariantMap& map, const QString& name);
-
 std::ostream& operator << (std::ostream& stream, const QString& str);
 
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
-bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
 #endif // UTILS_H

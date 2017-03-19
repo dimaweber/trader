@@ -13,9 +13,11 @@ INCLUDEPATH += ../common ../btce ../database
 
 LIBS += -L../lib -lcommon -lbtce -ldatabase
 
-SOURCES += daemon.cpp
+SOURCES += daemon.cpp \
+    create_close_order.cpp
 
-HEADERS =
+HEADERS = \
+    create_close_order.h
 
 OBJECTS_DIR = .obj
 UI_DIR = .ui

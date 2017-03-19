@@ -1,5 +1,13 @@
 #include "btce.h"
 
+double read_double(const QVariantMap& map, const QString& name);
+QString read_string(const QVariantMap& map, const QString& name);
+qint64 read_long(const QVariantMap& map, const QString& name);
+quint64 read_ulong(const QVariantMap& map, const QString& name);
+QVariantMap read_map(const QVariantMap& map, const QString& name);
+QVariantList read_list(const QVariantMap& map, const QString& name);
+QDateTime read_timestamp(const QVariantMap& map, const QString& name);
+
 namespace BtcObjects
 {
 bool Funds::parse(const QVariantMap& fundsMap)
@@ -649,4 +657,75 @@ bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool sil
         std::clog << std::endl;
 
     return ok;
+}
+
+QString read_string(const QVariantMap& map, const QString& name)
+{
+    if (!map.contains(name))
+        throw MissingField(name);
+
+    return map[name].toString();
+}
+
+double read_double(const QVariantMap& map, const QString& name)
+{
+    bool ok;
+    double ret = read_string(map, name).toDouble(&ok);
+
+    if (!ok)
+        throw BrokenJson(name);
+
+    return ret;
+}
+
+qint64 read_long(const QVariantMap& map, const QString& name)
+{
+    bool ok;
+    long ret = read_string(map, name).toLongLong(&ok);
+
+    if (!ok)
+        throw BrokenJson(name);
+
+    return ret;
+}
+
+quint64 read_ulong(const QVariantMap& map, const QString& name)
+{
+    bool ok;
+    quint64 ret = read_string(map, name).toULongLong(&ok);
+
+    if (!ok)
+        throw BrokenJson(name);
+
+    return ret;
+}
+
+QVariantMap read_map(const QVariantMap& map, const QString& name)
+{
+    if (!map.contains(name))
+        throw MissingField(name);
+
+    if (!map[name].canConvert<QVariantMap>())
+        throw BrokenJson(name);
+
+    QVariantMap ret = map[name].toMap();
+    ret[key_field] = name;
+
+    return ret;
+}
+
+QVariantList read_list(const QVariantMap& map, const QString& name)
+{
+    if (!map.contains(name))
+        throw MissingField(name);
+
+    if (!map[name].canConvert<QVariantList>())
+        throw BrokenJson(name);
+
+    return map[name].toList();
+}
+
+QDateTime read_timestamp(const QVariantMap &map, const QString &name)
+{
+    return QDateTime::fromTime_t(read_long(map, name));
 }

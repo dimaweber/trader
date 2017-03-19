@@ -5,6 +5,8 @@ TEMPLATE = lib
 CONFIG +=  c++11 warn_on
 #CONFIG += staticlib
 
+LIBS += -L../lib -lcommon
+
 INCLUDEPATH += ../common
 
 HEADERS += \
@@ -20,8 +22,6 @@ UI_DIR = .ui
 MOC_DIR = .moc
 
 DESTDIR = ../lib
-
-DISTFILES +=
 
 RESOURCES += \
     resources.qrc

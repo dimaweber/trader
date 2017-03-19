@@ -13,7 +13,7 @@ HEADERS += btce.h \
 http_query.h \
 curl_wrapper.h
 
-LIBS = -lcurl
+LIBS = -lcurl -L../lib -lcommon
 
 INCLUDEPATH += ../common
 

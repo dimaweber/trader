@@ -5,12 +5,13 @@ CONFIG += c++11 warn_on
 
 TEMPLATE=app
 
-LIBS += -L../lib -L../tgbot-cpp
-LIBS += -ltgbot-cpp -lcommon
+LIBS += -L../lib
+LIBS += -ltgbot-cpp -lcommon -ldatabase
 LIBS += -lboost_system -lpthread -lcrypto -lssl
 
 INCLUDEPATH += ../tgbot-cpp/include \
-               ../common
+               ../common \
+               ../database
 
 SOURCES += bot.cpp
 

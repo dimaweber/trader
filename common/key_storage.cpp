@@ -1,8 +1,8 @@
 #include "key_storage.h"
+#include "utils.h"
 
 #include <readline/readline.h>
 
-#include "utils.h"
 
 QByteArray KeyStorage::getPassword(bool needConfirmation)
 {

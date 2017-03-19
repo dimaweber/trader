@@ -32,6 +32,8 @@ common/libcommon.a
 bin/
 .qmake.stash
 
+qrc_*.cpp
+
 Makefile*
 *.pro.user
 *.log

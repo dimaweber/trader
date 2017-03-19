@@ -2,17 +2,21 @@ TEMPLATE=subdirs
 
 SUBDIRS += common \
            btce \
-database \
+           database \
+#           mailer \
+           tgbot-cpp \
            daemon \
            db_check \
            infobot \
-           tgbot-cpp
+           add_order
+
 
 btce.depends = common
 database.depends = common
-daemon.depends = common btce database
-infobot.depends = common tgbot-cpp
-db_check.depends = common database
+daemon.depends =  btce database
+infobot.depends = tgbot-cpp database
+db_check.depends =  database
+add_order.depends = database btce
 
 OTHER_FILES += \
                sql/deposits_for_every_day.sql \
