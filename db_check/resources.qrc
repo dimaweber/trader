@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>sql/sanity_check_v2.3.sql</file>
+    </qresource>
+</RCC>

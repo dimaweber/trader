@@ -2,6 +2,9 @@
 #include "utils.h"
 #include "tablefield.h"
 
+#include <QSqlQuery>
+#include <QSqlDatabase>
+#include <QSettings>
 #include <QStringList>
 #include <QSqlError>
 #include <QFile>
@@ -18,7 +21,7 @@ Database::Database(QSettings& settings)
 
 Database::~Database()
 {
-    db.close();
+    db->close();
 }
 
 bool Database::init()
@@ -30,7 +33,7 @@ bool Database::init()
         // orders table is a core table for whole trader, so if it does not exists, we can
         // say that this is new database and we don't need to upgrade it but simply can
         // create tables and put current version into versions table
-        bool empty_db = !db.tables().contains("orders");
+        bool empty_db = !db->tables().contains("orders");
         create_tables();
 
         if (!empty_db)
@@ -71,10 +74,41 @@ bool Database::init()
     return true;
 }
 
+bool Database::check_version()
+{
+    int major = 0;
+    int minor = 0;
+    performSql("get database version", *sql, "select major, minor from version order by id desc limit 1");
+    if (sql->next())
+    {
+        major = sql->value(0).toInt();
+        minor = sql->value(1).toInt();
+    }
+    else
+    {
+        // database v1 -- no table present then so no value -- upgrade 1.0 -> 2.0
+        major = 1;
+        minor = 0;
+    }
+
+    return (major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR);
+}
+
+bool Database::transaction() { return db->transaction(); }
+
+bool Database::commit() {return db->commit(); }
+
+bool Database::rollback() {return db->rollback();}
+
 void Database::pack_db()
 {
     if (settings.value("debug/pack_db", "false").toBool())
         performSql("remove cancelled orders", *sql, "delete from orders where status_id=2");
+}
+
+QSqlQuery Database::getQuery()
+{
+    return QSqlQuery(*db);
 }
 
 bool Database::connect()
@@ -82,28 +116,28 @@ bool Database::connect()
     settings.sync();
     settings.beginGroup("database");
 
-    if (db.isOpen())
-        db.close();
+    if (db && db->isOpen())
+        db->close();
 
-    while (!db.isOpen())
+    while (!db || !db->isOpen())
     {
         std::clog << "use mysql database" << std::endl;
-        db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
+        db.reset(new QSqlDatabase(QSqlDatabase::addDatabase("QMYSQL", "trader_db")));
         if (settings.value("type", "unknown").toString() != "mysql")
             throw std::runtime_error("unsupported database type");
 
-        db.setHostName(settings.value("host", "localhost").toString());
-        db.setUserName(settings.value("user", "user").toString());
-        db.setPassword(settings.value("password", "password").toString());
-        db.setDatabaseName(settings.value("database", "db").toString());
-        db.setPort(settings.value("port", 3306).toInt());
+        db->setHostName(settings.value("host", "localhost").toString());
+        db->setUserName(settings.value("user", "user").toString());
+        db->setPassword(settings.value("password", "password").toString());
+        db->setDatabaseName(settings.value("database", "db").toString());
+        db->setPort(settings.value("port", 3306).toInt());
         QString optionsString = QString("MYSQL_OPT_RECONNECT=%1").arg(settings.value("options.reconnect", true).toBool()?"TRUE":"FALSE");
-        db.setConnectOptions(optionsString);
+        db->setConnectOptions(optionsString);
 
         std::clog << "connecting to database ... ";
-        if (!db.open())
+        if (!db->open())
         {
-            std::clog << " FAIL. " << db.lastError().text() << std::endl;
+            std::clog << " FAIL. " << db->lastError().text() << std::endl;
             usleep(1000 * 1000 * 5);
         }
         else
@@ -112,10 +146,10 @@ bool Database::connect()
         }
     }
     settings.endGroup();
-    sql.reset(new QSqlQuery(db));
+    sql.reset(new QSqlQuery(*db));
 
     std::clog << "Initialize key storage ... ";
-    keyStorage.reset(new SqlKeyStorage(db, "secrets"));
+    keyStorage.reset(new SqlKeyStorage(*db, "secrets"));
     keyStorage->setPassword(settings.value("secrets/password", "password").toByteArray());
     std::clog << "ok" << std::endl;
 
@@ -126,7 +160,7 @@ bool Database::prepare()
 {
     auto prepareSql = [this](const QString& str, std::unique_ptr<QSqlQuery>& sql)
     {
-        sql.reset(new QSqlQuery(db));
+        sql.reset(new QSqlQuery(*db));
         if (!sql->prepare(str))
             throw *sql;
     };
@@ -350,11 +384,11 @@ bool Database::create_tables()
 
 bool Database::execute_upgrade_sql(int& major, int& minor)
 {
-    db.transaction();
+    transaction();
     try
     {
         QFile file;
-        QString sqlFilePath = QString("%1/../sql/db_upgrade_v%2.%3.sql").arg(QCoreApplication::applicationDirPath()).arg(major).arg(minor);
+        QString sqlFilePath = QString(":/sql/db_upgrade_v%1.%2.sql").arg(major).arg(minor);
         file.setFileName(sqlFilePath);
         if (!file.exists())
         {
@@ -392,10 +426,10 @@ bool Database::execute_upgrade_sql(int& major, int& minor)
     }
     catch (std::runtime_error& e)
     {
-        db.rollback();
+        rollback();
         throw e;
     }
-    db.commit();
+    commit();
 
     performSql("get database version", *sql, "select major, minor from version order by id desc limit 1");
     if (sql->next())
@@ -409,3 +443,59 @@ bool Database::execute_upgrade_sql(int& major, int& minor)
     return true;
 }
 
+void SqlKeyStorage::load()
+{
+    QSqlQuery selectQ(db);
+    QString sql = QString("SELECT apiKey, secret, id, is_crypted from %1").arg(_tableName);
+    QSqlQuery cryptQuery(db);
+    if (!cryptQuery.prepare("UPDATE secrets set apikey=:apikey, secret=:secret, is_crypted=1 where id=:id"))
+        std::cerr << cryptQuery.lastError().text() << std::endl;
+
+    if (selectQ.exec(sql))
+    {
+        while (selectQ.next())
+        {
+            QByteArray ivec = "thiswillbechanged";
+
+            bool is_crypted = selectQ.value(3).toBool();
+            int id = selectQ.value(2).toInt();
+            vault[id].secret = selectQ.value(1).toByteArray();
+            vault[id].apikey = selectQ.value(0).toByteArray();
+
+            if (is_crypted)
+            {
+                vault[id].apikey = QByteArray::fromHex(selectQ.value(0).toByteArray());
+                vault[id].secret = QByteArray::fromHex(selectQ.value(1).toByteArray());
+                decrypt(vault[id].apikey, getPassword(false), ivec );
+                decrypt(vault[id].secret, getPassword(false), ivec );
+            }
+            else
+            {
+                QByteArray apikey = vault[id].apikey;
+                QByteArray secret = vault[id].secret;
+
+                encrypt(apikey, getPassword(false), ivec);
+                encrypt(secret, getPassword(false), ivec);
+
+                cryptQuery.bindValue(":id", id);
+                cryptQuery.bindValue(":apikey", apikey.toHex());
+                cryptQuery.bindValue(":secret", secret.toHex());
+                if (!cryptQuery.exec())
+                {
+                    std::cerr << cryptQuery.lastError().text() << std::endl;
+                }
+            }
+        }
+    }
+    else
+    {
+        std::cerr << QString("fail to retrieve secrets: %1").arg(selectQ.lastError().text()) << std::endl;
+    }
+}
+
+void SqlKeyStorage::store()
+{
+    throw 1;
+}
+
+SqlKeyStorage::SqlKeyStorage(QSqlDatabase& db, const QString& tableName) : KeyStorage(), _tableName(tableName), db(db){}

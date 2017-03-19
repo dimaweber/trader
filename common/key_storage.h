@@ -5,8 +5,6 @@
 #include <QByteArray>
 #include <QFile>
 #include <QDataStream>
-#include <QSqlQuery>
-#include <QSqlError>
 
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
@@ -71,17 +69,5 @@ public:
     FileKeyStorage(const QString& fileName);
 };
 
-class SqlKeyStorage : public KeyStorage
-{
-    QString _tableName;
-    QSqlDatabase& db;
-
-protected:
-    virtual void load() override;
-    virtual void store() override;
-
-public:
-    SqlKeyStorage(QSqlDatabase& db, const QString& tableName);
-};
 
 #endif // KEY_STORAGE_H

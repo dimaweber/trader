@@ -9,25 +9,13 @@ CONFIG -= app_bundle
 
 TEMPLATE = app
 
-INCLUDEPATH += ../common
+INCLUDEPATH += ../common ../btce ../database
 
-LIBS += -lcrypto -lcurl -lreadline
-LIBS += -L../lib -lcommon
+LIBS += -L../lib -lcommon -lbtce -ldatabase
 
-SOURCES += daemon.cpp \
-	key_storage.cpp \
-	http_query.cpp \
-	btce.cpp \
-	tablefield.cpp \
-	sql_database.cpp
+SOURCES += daemon.cpp
 
-HEADERS += \
-	btce.h \
-	http_query.h \
-	curl_wrapper.h \
-	key_storage.h \
-	tablefield.h \
-	sql_database.h
+HEADERS =
 
 OBJECTS_DIR = .obj
 UI_DIR = .ui

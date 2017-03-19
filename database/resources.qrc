@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>sql/db_upgrade_v2.2.sql</file>
+        <file>sql/db_upgrade_v2.1.sql</file>
+        <file>sql/db_upgrade_v1.0.sql</file>
+        <file>sql/db_upgrade_v2.0.sql</file>
+    </qresource>
+</RCC>

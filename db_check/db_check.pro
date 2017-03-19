@@ -3,8 +3,8 @@ QT -= gui
 
 CONFIG += c++11
 
-INCLUDEPATH += ../common
-LIBS += -L../lib -lcommon
+INCLUDEPATH += ../common ../database
+LIBS += -L../lib -lcommon -ldatabase
 LIBS += -lcrypto -lcurl -lreadline
 
 TARGET = db_check
@@ -20,3 +20,6 @@ UI_DIR = .ui
 MOC_DIR = .moc
 
 DESTDIR = ../bin
+
+RESOURCES += \
+    resources.qrc

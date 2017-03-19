@@ -3,6 +3,9 @@
 #include "key_storage.h"
 #include "sql_database.h"
 
+#include <QSqlQuery>
+#include <QSqlError>
+
 #include <QCoreApplication>
 #include <QString>
 #include <QDateTime>
@@ -21,7 +24,6 @@
 #include <unistd.h>
 #include <signal.h>
 
-
 /// TODO: util to add buy orders to rounds (params: setting_id rate amount)
 /// TODO: dep / rates to separate db
 /// TODO: transactions this db, but separate process
@@ -30,8 +32,6 @@
 /// TODO: parallel processing secrets
 /// TODO: switch to backup db
 
-
-static CurlWrapper w;
 
 static bool exit_asked = false;
 

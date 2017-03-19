@@ -3,9 +3,6 @@
 
 #include "key_storage.h"
 
-#include <QSqlQuery>
-#include <QSqlDatabase>
-#include <QSettings>
 #include <memory>
 
 #define DB_VERSION_MAJOR 2
@@ -18,6 +15,23 @@
 #define ORDER_STATUS_CANCEL "2"
 #define ORDER_STATUS_PARTIAL "3"
 #define ORDER_STATUS_INSTANT "3"
+
+class QSqlQuery;
+class QSqlDatabase;
+class QSettings;
+
+class SqlKeyStorage : public KeyStorage
+{
+    QString _tableName;
+    QSqlDatabase& db;
+
+protected:
+    virtual void load() override;
+    virtual void store() override;
+
+public:
+    SqlKeyStorage(QSqlDatabase& db, const QString& tableName);
+};
 
 class Database : public IKeyStorage
 {
@@ -62,10 +76,11 @@ public:
     std::unique_ptr<QSqlQuery> transitOrders;
 
     bool init();
+    bool check_version();
 
-    bool transaction() { return db.transaction(); }
-    bool commit() {return db.commit(); }
-    bool rollback() {return db.rollback();}
+    bool transaction();
+    bool commit();
+    bool rollback();
 
     virtual void setPassword(const QByteArray& pwd) override final { keyStorage->setPassword(pwd); }
     virtual bool setCurrent(int id) override final { return keyStorage->setCurrent(id); }
@@ -75,11 +90,12 @@ public:
     virtual QList<int> allKeys() override final { return keyStorage->allKeys(); }
 
     void pack_db();
-
     bool isDbUpgradePerformed() const { return db_upgraded;}
+
+    QSqlQuery getQuery();
 private:
     QSettings& settings;
-    QSqlDatabase db;
+    std::unique_ptr<QSqlDatabase> db;
     std::unique_ptr<QSqlQuery> sql;
     std::unique_ptr<KeyStorage> keyStorage;
     bool db_upgraded;

@@ -164,67 +164,10 @@ void KeyStorage::changePassword()
     store();
 }
 
-void SqlKeyStorage::load()
-{
-    QSqlQuery selectQ(db);
-    QString sql = QString("SELECT apiKey, secret, id, is_crypted from %1").arg(_tableName);
-    QSqlQuery cryptQuery(db);
-    if (!cryptQuery.prepare("UPDATE secrets set apikey=:apikey, secret=:secret, is_crypted=1 where id=:id"))
-        std::cerr << cryptQuery.lastError().text() << std::endl;
-
-    if (selectQ.exec(sql))
-    {
-        while (selectQ.next())
-        {
-            QByteArray ivec = "thiswillbechanged";
-
-            bool is_crypted = selectQ.value(3).toBool();
-            int id = selectQ.value(2).toInt();
-            vault[id].secret = selectQ.value(1).toByteArray();
-            vault[id].apikey = selectQ.value(0).toByteArray();
-
-            if (is_crypted)
-            {
-                vault[id].apikey = QByteArray::fromHex(selectQ.value(0).toByteArray());
-                vault[id].secret = QByteArray::fromHex(selectQ.value(1).toByteArray());
-                decrypt(vault[id].apikey, getPassword(false), ivec );
-                decrypt(vault[id].secret, getPassword(false), ivec );
-            }
-            else
-            {
-                QByteArray apikey = vault[id].apikey;
-                QByteArray secret = vault[id].secret;
-
-                encrypt(apikey, getPassword(false), ivec);
-                encrypt(secret, getPassword(false), ivec);
-
-                cryptQuery.bindValue(":id", id);
-                cryptQuery.bindValue(":apikey", apikey.toHex());
-                cryptQuery.bindValue(":secret", secret.toHex());
-                if (!cryptQuery.exec())
-                {
-                    std::cerr << cryptQuery.lastError().text() << std::endl;
-                }
-            }
-        }
-    }
-    else
-    {
-        std::cerr << QString("fail to retrieve secrets: %1").arg(selectQ.lastError().text()) << std::endl;
-    }
-}
-
-void SqlKeyStorage::store()
-{
-    throw 1;
-}
-
-SqlKeyStorage::SqlKeyStorage(QSqlDatabase& db, const QString& tableName) : KeyStorage(), _tableName(tableName), db(db){}
-
 FileKeyStorage::FileKeyStorage(const QString& fileName) : KeyStorage(), _fileName(fileName){}
 
 QList<int> KeyStorage::allKeys()  {if (vault.isEmpty()) load(); return vault.keys();}
 
-const QByteArray&KeyStorage::secret() { if (vault.isEmpty()) load(); return vault[currentPair].secret;}
+const QByteArray& KeyStorage::secret() { if (vault.isEmpty()) load(); return vault[currentPair].secret;}
 
-const QByteArray&KeyStorage::apiKey() { if (vault.isEmpty()) load(); return vault[currentPair].apikey;}
+const QByteArray& KeyStorage::apiKey() { if (vault.isEmpty()) load(); return vault[currentPair].apikey;}
