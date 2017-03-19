@@ -139,11 +139,11 @@ int main(int argc, char *argv[])
                             {
                                 db.transaction();
                                 if (!sql.exec(sqlStr))
-                                    throw std::runtime_error(QString("fail to create temporary table: %1").arg(sql.lastError().text()).toLatin1());
+                                    throw std::runtime_error(QString("fail to create temporary table: %1").arg(sql.lastError().text()).toUtf8().constData());
                                 if (!sql.exec("delete from rounds where round_id in (select round_id from T) and reason='done'"))
-                                    throw std::runtime_error(QString("fail to delete rounds: %1").arg(sql.lastError().text()).toLatin1());
+                                    throw std::runtime_error(QString("fail to delete rounds: %1").arg(sql.lastError().text()).toUtf8().constData());
                                 if (!sql.exec("drop table T"))
-                                    throw std::runtime_error(QString("fail to drop temporary table: %1").arg(sql.lastError().text()).toLatin1());
+                                    throw std::runtime_error(QString("fail to drop temporary table: %1").arg(sql.lastError().text()).toUtf8().constData());
                                 db.commit();
                                 std::clog << "\t FIXED" << std::endl;
                             }
