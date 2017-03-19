@@ -22,11 +22,14 @@
 #include <signal.h>
 
 
+/// TODO: util to add buy orders to rounds (params: setting_id rate amount)
 /// TODO: dep / rates to separate db
 /// TODO: transactions this db, but separate process
 /// TODO: db_check as callable function, app just wrapp it
-/// TODO: util to add buy orders to rounds (params: setting_id rate amount)
+/// TODO: sanity checks severity -- critical, repairable, warning
 /// TODO: parallel processing secrets
+/// TODO: switch to backup db
+
 
 static CurlWrapper w;
 
@@ -116,7 +119,7 @@ int main(int argc, char *argv[])
 
     int settings_id = 1;
     quint32 round_id = 0;
-
+    quint32 prev_round_id = 0;
     double dep = 3.00;
     double first_step = 0.01;
     double martingale = 0.05;
@@ -330,6 +333,14 @@ int main(int argc, char *argv[])
                     round_id = 0;
                 param[":round_id"] = round_id;
 
+                performSql("get previous round id", *database.getPrevRoundId, param, silent_sql);
+                if (database.getPrevRoundId->next())
+                    prev_round_id = database.getPrevRoundId->value(0).toUInt();
+                else
+                    prev_round_id = 0;
+                param[":prev_round_id"] = round_id;
+
+
                 std::clog << QString("\n -------     Processing settings_id %1. Pair: %2   [%3]   --------------- ").arg(settings_id).arg(pairName).arg(round_id) << std::endl;
                 std::clog << QString("Available: %1 %2, %3 %4") .arg(funds[pair.currency()])
                                                                 .arg(pair.currency())
@@ -404,6 +415,8 @@ int main(int argc, char *argv[])
 
                             QVariantMap round_close;
                             round_close[":round_id"] = round_id;
+                            performSql("archive round", *database.archiveRound, round_close, silent_sql);
+                            round_close[":round_id"] = prev_round_id;
                             performSql("close round", *database.closeRound, round_close, silent_sql);
 
                             QVariantMap dep_upd = param;
@@ -412,6 +425,7 @@ int main(int argc, char *argv[])
                             dep_upd[":dep_inc"] = income * dep_inc;
                             performSql("increase deposit", *database.depositIncrease, dep_upd, silent_sql);
 
+                            prev_round_id = round_id;
                             round_id = 0;
                             round_in_progress = false;
                         }
@@ -554,15 +568,8 @@ int main(int argc, char *argv[])
                     QVariantMap transParams;
                     transParams[":settings_id"] = settings_id;
                     transParams[":round_id_to"] = round_id;
-                    if (performSql("get previous round id", *database.getPrevRoundId, transParams, silent_sql))
-                    {
-                        if (database.getPrevRoundId->next())
-                        {
-                            quint32 prev_round_id = database.getPrevRoundId->value(0).toUInt();
-                            transParams[":prev_round_from"] = prev_round_id;
-                            performSql("transit orders from previous round", *database.transitOrders, transParams, silent_sql);
-                        }
-                    }
+                    transParams[":prev_round_from"] = prev_round_id;
+                    performSql("transit orders from previous round", *database.transitOrders, transParams, silent_sql);
                 }
                 else
                 {

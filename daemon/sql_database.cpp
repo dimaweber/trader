@@ -147,7 +147,7 @@ bool Database::prepare()
                " where o.status_id < " ORDER_STATUS_DONE " and o.round_id=:round_id and o.type='sell'", selectSellOrder);
 
     prepareSql("SELECT id, comission, first_step, martingale, dep, coverage, count, currency, goods, secret_id, dep_inc from settings"
-               " where enabled=" SQL_TRUE, selectSettings);
+               " where enabled=1" , selectSettings);
 
     prepareSql("SELECT count(*) from orders o "
                " where o.status_id= " ORDER_STATUS_ACTIVE" and o.round_id=:round_id", selectCurrentRoundActiveOrdersCount);
@@ -168,24 +168,30 @@ bool Database::prepare()
     prepareSql("SELECT order_id from orders o "
                " where o.round_id=:round_id and o.status_id < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
-    prepareSql("select " LEAST "(:last_price, o.rate + (:last_price - o.rate) / 10 * " LEAST "(" MINUTES_DIFF(r.end_time) ", 10)) from rounds r left join orders o on r.round_id=o.round_id "
-               " where r.settings_id=:settings_id and o.type='sell' and o.status_id in (" ORDER_STATUS_DONE ", " ORDER_STATUS_INSTANT ", " ORDER_STATUS_PARTIAL ") group by r.round_id order by r.end_time desc limit 1", selectPrevRoundSellRate);
+    prepareSql("select  least(:last_price, o.rate + (:last_price - o.rate) / 10 * least(timestampdiff(MINUTE, r.end_time, now()), 10)) from rounds r left join orders o on r.round_id=o.round_id "
+               " where r.settings_id=:settings_id and r.reason='archive' and o.type='sell' and o.status_id in (" ORDER_STATUS_DONE ", " ORDER_STATUS_INSTANT ", " ORDER_STATUS_PARTIAL ") group by r.round_id", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
                " where t.secret_id=:secret_id", selectMaxTransHistoryId);
 
     prepareSql("insert into transactions (id, type, amount, currency, description, status, secret_id, timestamp, order_id) values (:id, :type, :amount, :currency, :description, :status, :secret_id, :timestamp, :order_id)", insertTransaction);
 
-    prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, " SQL_NOW ", 0)", insertRound);
+    prepareSql("insert into rounds (settings_id, start_time, income) values (:settings_id, now(), 0)", insertRound);
 
     prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out "
                " where round_id=:round_id", updateRound);
 
-    prepareSql("update rounds set end_time=" SQL_NOW ", reason='done' "
+    prepareSql("update rounds set end_time=now(), reason='done' "
                " where round_id=:round_id", closeRound);
+
+    prepareSql("update rounds set end_time=now(), reason='archive' "
+               " where round_id=:round_id", archiveRound);
 
     prepareSql("select round_id from rounds r "
                " where r.settings_id=:settings_id and reason='active'", getRoundId);
+
+    prepareSql("select round_id from rounds r "
+               " where r.settings_id=:settings_id and reason='archive'", getPrevRoundId);
 
     prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
                " where o.type='buy' and o.round_id=:round_id", roundBuyStat);
@@ -205,8 +211,6 @@ bool Database::prepare()
     prepareSql("insert into rates (time, currency, goods, buy_rate, sell_rate, last_rate, currency_volume, goods_volume) values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 
     prepareSql("insert into dep (time, name, secret_id, value, on_orders) values (:time, :name, :secret, :dep, :orders)", insertDep);
-
-    prepareSql("select round_id from rounds where settings_id=:settings_id order by round_id desc limit 1", getPrevRoundId);
 
     prepareSql("update orders set status_id=" ORDER_STATUS_TRANSITION ", modified=now() where order_id=:order_id", markForTransition);
 
@@ -230,7 +234,7 @@ bool Database::create_tables()
             << TableField("id", TableField::Integer).primaryKey(true)
             << TableField("apikey", TableField::Char, 255).notNull()
             << TableField("secret", TableField::Char, 255).notNull()
-            << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(SQL_FALSE)
+            << TableField("is_crypted", TableField::Boolean).notNull().defaultValue(0)
             ;
 
     createSqls["settings"]
@@ -245,7 +249,7 @@ bool Database::create_tables()
              << TableField("currency", TableField::Char, 3).notNull().defaultValue("usd")
              << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
              << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
-             << TableField("enabled", TableField::Boolean).notNull().defaultValue(SQL_TRUE)
+             << TableField("enabled", TableField::Boolean).notNull().defaultValue(1)
              << TableField("secret_id", TableField::Integer).notNull().references("secrets", {"id"})
              << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
              ;
@@ -255,7 +259,7 @@ bool Database::create_tables()
             << TableField("start_time", TableField::Datetime).notNull()
             << "end_time DATETIME"
             << "income DECIMAL(14,6) default 0"
-            << "reason ENUM ('active', 'done') not null default 'active'"
+            << "reason ENUM ('active', 'arvhive', 'done') not null default 'active'"
             << "g_in decimal(14,6) not null default 0"
             << "g_out decimal(14,6) not null default 0"
             << "c_in decimal(14,6) not null default 0"
@@ -331,7 +335,7 @@ bool Database::create_tables()
     for (const QString& tableName : createSqls.keys())
     {
         QStringList& fields = createSqls[tableName];
-        QString createSql = QString("CREATE TABLE IF NOT EXISTS %1 (%2) " SQL_UTF8SUPPORT)
+        QString createSql = QString("CREATE TABLE IF NOT EXISTS %1 (%2) character set utf8 COLLATE utf8_general_ci")
                             .arg(tableName)
                             .arg(fields.join(','))
                             ;

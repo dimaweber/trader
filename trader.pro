@@ -18,5 +18,6 @@ OTHER_FILES += \
 
 DISTFILES += \
     sql/db_upgrade_v2.1.sql \
-    sql/sanity_check_v2.2.sql
+    sql/db_upgrade_v2.2.sql \
+    sql/sanity_check_v2.3.sql
 

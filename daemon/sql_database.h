@@ -9,15 +9,7 @@
 #include <memory>
 
 #define DB_VERSION_MAJOR 2
-#define DB_VERSION_MINOR 2
-
-#   define SQL_NOW "now()"
-#   define SQL_TRUE "TRUE"
-#   define SQL_FALSE "FALSE"
-#   define SQL_AUTOINCREMENT "auto_increment"
-#   define SQL_UTF8SUPPORT "character set utf8 COLLATE utf8_general_ci"
-#   define LEAST "least"
-#   define MINUTES_DIFF(y) "timestampdiff(MINUTE, " #y ", now())"
+#define DB_VERSION_MINOR 3
 
 #define ORDER_STATUS_TRANSITION "-2"
 #define ORDER_STATUS_CHECKING "-1"
@@ -26,9 +18,6 @@
 #define ORDER_STATUS_CANCEL "2"
 #define ORDER_STATUS_PARTIAL "3"
 #define ORDER_STATUS_INSTANT "3"
-
-#define CLOSED_ORDER "1"
-#define ACTIVE_ORDER "0"
 
 class Database : public IKeyStorage
 {
@@ -58,6 +47,7 @@ public:
     std::unique_ptr<QSqlQuery> insertRound;
     std::unique_ptr<QSqlQuery> updateRound;
     std::unique_ptr<QSqlQuery> closeRound;
+    std::unique_ptr<QSqlQuery> archiveRound;
     std::unique_ptr<QSqlQuery> getRoundId;
     std::unique_ptr<QSqlQuery> roundBuyStat;
     std::unique_ptr<QSqlQuery> roundSellStat;

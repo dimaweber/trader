@@ -16,11 +16,17 @@
 #include "utils.h"
 
 #define DB_VERSION_MAJOR 2
-#define DB_VERSION_MINOR 2
+#define DB_VERSION_MINOR 3
 
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+
+    bool run_fixes = false;
+
+    if (argc>1)
+        if (strcmp(argv[1],"--fix") == 0)
+            run_fixes = true;
 
     QString iniFilePath = QCoreApplication::applicationDirPath() + "/../data/trader.ini";
     if (!QFileInfo(iniFilePath).exists())
@@ -93,13 +99,18 @@ int main(int argc, char *argv[])
     const char* colorDefault = "\033[0m";
     const char* boldText = "\033[1m";
 
+    bool is_fixable = false;
+    bool is_round = false;
+
     while (!stream.atEnd())
     {
         line = stream.readLine();
         if (line.startsWith("--"))
         {
             comment = line;
-            comment.remove(0, 3);
+            is_fixable = comment[2] == 'F';
+            is_round = comment[3] == 'R';
+            comment.remove(0, 5);
             line = stream.readLine();
         }
         else
@@ -118,9 +129,36 @@ int main(int argc, char *argv[])
                     {
                         std::clog << "\t" << sql.value(0).toString() << std::endl;
                     } while (sql.next());
+
+                    if (run_fixes && is_fixable)
+                    {
+                        if (is_round)
+                        {
+                            QString sqlStr = "create temporary table T as " + line;
+                            try
+                            {
+                                db.transaction();
+                                if (!sql.exec(sqlStr))
+                                    throw std::runtime_error(QString("fail to create temporary table: %1").arg(sql.lastError().text()).toLatin1());
+                                if (!sql.exec("delete from rounds where round_id in (select round_id from T) and reason='done'"))
+                                    throw std::runtime_error(QString("fail to delete rounds: %1").arg(sql.lastError().text()).toLatin1());
+                                if (!sql.exec("drop table T"))
+                                    throw std::runtime_error(QString("fail to drop temporary table: %1").arg(sql.lastError().text()).toLatin1());
+                                db.commit();
+                                std::clog << "\t FIXED" << std::endl;
+                            }
+                            catch(std::runtime_error& e)
+                            {
+                                db.rollback();
+                                throw e;
+                            }
+                        }
+                    }
                 }
                 else
                     std::clog << colorGreen << " ok" << colorDefault << std::endl;
+
+
             }
         }
     }
