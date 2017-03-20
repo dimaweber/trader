@@ -201,11 +201,16 @@ bool Database::connect()
 
     while (!db || !db->isOpen())
     {
-        std::clog << "use mysql database" << std::endl;
-        db.reset(new QSqlDatabase(QSqlDatabase::addDatabase("QMYSQL", "trader_db")));
-        if (settings.value("type", "unknown").toString() != "mysql")
-            throw std::runtime_error("unsupported database type");
-
+	QString db_type = settings.value("type", "unknown").toString();
+	if (db_type == "mysql") 
+	{
+	    std::clog << "use mysql database" << std::endl;
+	    db.reset(new QSqlDatabase(QSqlDatabase::addDatabase("QMYSQL", "trader_db")));
+	}
+	else
+	{
+	    throw std::runtime_error("unsupported database type");
+	}
         db->setHostName(settings.value("host", "localhost").toString());
         db->setUserName(settings.value("user", "user").toString());
         db->setPassword(settings.value("password", "password").toString());
