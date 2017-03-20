@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <signal.h>
 
-/// TODO: util to add buy orders to rounds (params: setting_id rate amount)
 /// TODO: dep / rates to separate db
 /// TODO: transactions this db, but separate process
 /// TODO: db_check as callable function, app just wrapp it

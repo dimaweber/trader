@@ -33,8 +33,9 @@ bool create_order (Database& database, quint32 round_id, const QString& pair_nam
         insertOrderParam[":type"] = (type==BtcObjects::Order::Buy)?"buy":"sell";
         insertOrderParam[":amount"] = order.remains;
         insertOrderParam[":start_amount"] = order.received + order.remains;
-        insertOrderParam[":rate"] = rate;
+        insertOrderParam[":rate"] = order.rate;
         insertOrderParam[":round_id"] = round_id;
+        /// BUG: if order is instant -- actual rate might be significally lower/higher then  asked -- this lead to improper sell rate calculation and extra goods on balance.
 
         /// BUG: if STOP here -- db inconsistent with exchanger!!!!!
         return performSql("insert  order record", *database.insertOrder, insertOrderParam, silent_sql);

@@ -9,6 +9,10 @@
 
 #include <iostream>
 
+
+/// TODO: check rate - prevent instant orders
+/// TODO: interactive mode
+
 struct Arg: public option::Arg
 {
   static void printError(const char* msg1, const option::Option& opt, const char* msg2)
