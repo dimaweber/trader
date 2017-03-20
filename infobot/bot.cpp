@@ -8,58 +8,40 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QFileInfo>
 #include <QRegExp>
+#include <QSettings>
 
 #include <iostream>
-
-#define USE_SQLITE
 
 int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
 
-//	app.addLibraryPath("/opt/Qt/5.6/gcc_64/plugins/sqldrivers");
-
-    QSqlDatabase db;
-#ifdef USE_SQLITE
-    std::clog << "use sqlite database" << std::endl;
-    db = QSqlDatabase::addDatabase("QSQLITE", "trader_db");
-    db.setDatabaseName("../data/trader.db");
-#else
-    std::clog << "use mysql database" << std::endl;
-    db = QSqlDatabase::addDatabase("QMYSQL", "trader_db");
-    db.setHostName("192.168.10.112");
-    db.setUserName("trader");
-    db.setPassword("traderpassword");
-    db.setDatabaseName("trade");
-    db.setConnectOptions("MYSQL_OPT_RECONNECT=true");
-#endif
-
-    while (!db.isOpen())
+    QString iniFilePath = QCoreApplication::applicationDirPath() + "/../data/trader.ini";
+    if (!QFileInfo(iniFilePath).exists())
     {
-        std::clog << "connecting to database ... ";
-        if (!db.open())
-        {
-            std::clog << " FAIL. " << db.lastError().text() << std::endl;
-            usleep(1000 * 1000 * 5);
-        }
-        else
-            std::clog << " ok" << std::endl;
+        throw std::runtime_error("*** No INI file!");
+    }
+    QSettings settings(iniFilePath, QSettings::IniFormat);
+
+    Database database(settings);
+    if (!    database.init())
+    {
+        throw std::runtime_error("failt to connect to db");
+        return 1;
     }
 
-    QSqlQuery enumeratePairs(db);
-#ifdef USE_SQLITE
-    enumeratePairs.prepare("SELECT distinct id || ': ' || goods || '/' ||  currency from settings");
-#else
-    enumeratePairs.prepare("SELECT distinct concat(id, ': ', goods, '/' , currency) from settings");
-#endif
+    QSqlQuery enumeratePairs = database.getQuery();
 
-    QSqlQuery getPairById(db);
+    enumeratePairs.prepare("SELECT distinct concat(id, ': ', goods, '/' , currency) from settings");
+
+    QSqlQuery getPairById = database.getQuery();
     getPairById.prepare("SELECT id, profit, comission, first_step, martingale,"
                         "dep, coverage, count, currency, goods, enabled "
                         "from settings where id=:id");
 
-    QSqlQuery getPairByName(db);
+    QSqlQuery getPairByName = database.getQuery();
     getPairByName.prepare("SELECT * from settings where goods=:goods and currency=:currency");
 
     QMap<QString, std::shared_ptr<QSqlQuery>> setQueriesId;
@@ -69,9 +51,9 @@ int main(int argc, char* argv[])
 
     for (const QString& verb: verbs)
     {
-        setQueriesId[verb].reset(new QSqlQuery(db));
+        setQueriesId[verb].reset(new QSqlQuery(database.getQuery()));
         setQueriesId[verb]->prepare(QString("UPDATE settings set %1=:value where id=:id").arg(verb));
-        setQueriesName[verb].reset(new QSqlQuery(db));
+        setQueriesName[verb].reset(new QSqlQuery(database.getQuery()));
         setQueriesName[verb]->prepare(QString("UPDATE settings set %1=:value where goods=:goods and currency=:currency").arg(verb));
     }
 

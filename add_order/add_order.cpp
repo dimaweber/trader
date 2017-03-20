@@ -100,8 +100,8 @@ int main(int argc, char *argv[])
     argc -= (argc>0);
     argv += (argc>0);
     option::Stats stats(usage, argc, argv);
-    option::Option options[stats.options_max];
-    option::Option buffer[stats.buffer_max];
+    option::Option* options = new option::Option[stats.options_max];
+    option::Option* buffer = new option::Option[stats.buffer_max];
     option::Parser parser(usage, argc, argv, options, buffer);
 
     if (parser.error())
@@ -132,6 +132,9 @@ int main(int argc, char *argv[])
             case Rate: rate = arg.toDouble(); break;
         }
     }
+
+    delete [] buffer;
+    delete [] options;
 
     if (amount == 0 || rate == 0)
     {

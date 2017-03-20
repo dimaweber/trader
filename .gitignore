@@ -30,6 +30,7 @@ daemon/trader
 infobot/infobot
 common/libcommon.a
 bin/
+lib/
 .qmake.stash
 
 qrc_*.cpp
