@@ -114,7 +114,6 @@ bool Database::init()
         // say that this is new database and we don't need to upgrade it but simply can
         // create tables and put current version into versions table
         bool empty_db = !db->tables().contains("orders");
-        create_tables();
 
         if (!empty_db)
         {
@@ -140,6 +139,7 @@ bool Database::init()
         }
         else
         {
+            create_tables();
             performSql("set database version", *sql, QString("insert into version (major, minor) values (%1, %2)").arg(DB_VERSION_MAJOR).arg(DB_VERSION_MINOR));
         }
 
@@ -197,20 +197,27 @@ bool Database::connect()
     settings.beginGroup("database");
 
     if (db && db->isOpen())
+    {
         db->close();
+    }
 
     while (!db || !db->isOpen())
     {
-	QString db_type = settings.value("type", "unknown").toString();
-	if (db_type == "mysql") 
-	{
-	    std::clog << "use mysql database" << std::endl;
-	    db.reset(new QSqlDatabase(QSqlDatabase::addDatabase("QMYSQL", "trader_db")));
-	}
-	else
-	{
-	    throw std::runtime_error("unsupported database type");
-	}
+        QString db_type = settings.value("type", "unknown").toString();
+        if (db_type == "mysql")
+        {
+            std::clog << "use mysql database" << std::endl;
+            foreach (std::unique_ptr<QSqlQuery>* q, preparedQueriesCollection)
+            {
+                q->reset();
+            }
+            QSqlDatabase::removeDatabase("trader_db");
+            db.reset(new QSqlDatabase(QSqlDatabase::addDatabase("QMYSQL", "trader_db")));
+        }
+        else
+        {
+            throw std::runtime_error("unsupported database type");
+        }
         db->setHostName(settings.value("host", "localhost").toString());
         db->setUserName(settings.value("user", "user").toString());
         db->setPassword(settings.value("password", "password").toString());
@@ -248,6 +255,7 @@ bool Database::prepare()
         sql.reset(new QSqlQuery(*db));
         if (!sql->prepare(str))
             throw *sql;
+        preparedQueriesCollection << &sql;
     };
 
     prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CHECKING
@@ -362,8 +370,8 @@ bool Database::create_tables()
             << "rate DECIMAL(14,6) not null check (rate>0)"
             << "executed INTEGER not null default 0"
             << "status varchar(255) default null"
-            << "put_time TIMESTAMP not null"
-            << "exec_time TIMESTAMP not null"
+            << "put_time TIMESTAMP not null DEFAULT '0000-00-00 00:00:00'"
+            << "exec_time TIMESTAMP not null DEFAULT '0000-00-00 00:00:00'"
                ;
 
     createSqls["secrets"]
@@ -413,8 +421,8 @@ bool Database::create_tables()
              << TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
-             << "created TIMESTAMP NOT NULL"
-             << "modified TIMESTAMP NOT NULL"
+             << "created TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00'"
+             << "modified TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00'"
              << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
              << "FOREIGN KEY(status_id) REFERENCES order_status(status_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
              ;

@@ -3,12 +3,13 @@ TEMPLATE=subdirs
 SUBDIRS += common \
            btce \
            database \
-#           mailer \
+           mailer \
            tgbot-cpp \
            daemon \
            db_check \
            infobot \
-           add_order
+           add_order \
+    bitfinex_client
 
 
 btce.depends = common

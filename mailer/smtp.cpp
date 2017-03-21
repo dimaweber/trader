@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QDataStream>
 
 const QString mailLog = "mail.log";
 QFile file (mailLog);
@@ -130,9 +131,7 @@ Letter::Letter(const SmtpAuthData &smtpAuthData)
     filesCount = 0;
     recipientsExist = false;
 
-    encoding = "windows-1251";
-    QTextCodec::setCodecForCStrings(QTextCodec::codecForName("Windows-1251"));
-    QTextCodec::setCodecForTr(QTextCodec::codecForName("Windows-1251"));
+    sslSocket.setProtocol(QSsl::SslV3);
 
     // init text stream
     stream.setDevice(&sslSocket);
@@ -158,77 +157,6 @@ void Letter::setSmtpAuth(const SmtpAuthData &smtpAuthData)
     smtpData.rewriteData(smtpAuthData.get_SmtpAuth());
 }
 
-void Letter::set_encoding(QString encode)
-{
-    // put your coding there and don't
-    // forget add new enum and comboBox for coding
-
-    if (encode == "windows-1251")
-    {
-        qDebug() << "choosed win encoding";
-
-        encoding = "windows-1251";
-        QTextCodec::setCodecForCStrings(QTextCodec::codecForName("Windows-1251"));
-        QTextCodec::setCodecForTr(QTextCodec::codecForName("Windows-1251"));
-        stream.setCodec("Windows-1251");
-
-        return;
-    }
-
-    else if (encode == "utf-8")
-    {
-        qDebug() << "choosed utf-8 encoding";
-
-        encoding = "utf-8";
-        QTextCodec::setCodecForCStrings(QTextCodec::codecForName("UTF-8"));
-        stream.setCodec("UTF-8");
-
-        return;
-    }
-
-    else if (encode == "macintosh")
-    {
-        qDebug() << "choosed mac encoding";
-
-        encoding = "macintosh";
-        QTextCodec::setCodecForCStrings(QTextCodec::codecForName("Apple Roman"));
-        stream.setCodec("Apple Roman");
-
-        return;
-    }
-
-    else if (encode == "koi8-u")
-    {
-        qDebug() << "choosed koi8-u encoding";
-
-        encoding = "koi8-u";
-        QTextCodec::setCodecForCStrings(QTextCodec::codecForName("KOI8-U"));
-        stream.setCodec("KOI8-U");
-
-        return;
-    }
-
-    else if (encode == "koi8-r")
-    {
-        qDebug() << "choosed koi8-r encoding";
-
-        encoding = "koi8-r";
-        QTextCodec::setCodecForCStrings(QTextCodec::codecForName("KOI8-R"));
-        stream.setCodec("KOI8-R");
-
-        return;
-    }
-
-    else
-    {
-        qDebug() << "not such encoding in void SmtpAuthData::set_encoding()";
-        encoding = "windows-1251";
-
-        return;
-    }
-
-
-}
 
 void Letter::set_sslEncrypting(bool enable)
 {
@@ -267,10 +195,10 @@ void Letter::set_text(QString text)
         this->text.clear();
         // prepend plain text
         this->text += QString("--%1\r\n"
-                      "Content-Type: text/plain; charset=%2\r\n"
+                      "Content-Type: text/plain; charset=utf-8\r\n"
                       "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                      "%3\r\n\r\n"
-                      "--%4").arg(FILE_SEPARATOR, encoding, text, FILE_SEPARATOR);
+                      "%2\r\n\r\n"
+                      "--%3").arg(FILE_SEPARATOR,text, FILE_SEPARATOR);
 
         // prepend encoded files
         for (int i = 0; i < filesCount; ++i)
@@ -310,11 +238,11 @@ void Letter::set_header()
 
     header = "Date: " + QDateTime::currentDateTime().toString("dd.MM.yyyy, hh:mm:ss \r\n");
 
-    header += "From: =?" + encoding + "?B?" + encodeToBase64(smtpAuth.name) +
+    header += "From: =?utf-8?B?" + encodeToBase64(smtpAuth.name) +
               "?= <" + smtpAuth.email + ">\r\n";
 
     header += "X_Mailer: Mail Client 1.0\r\n";
-    header += "Reply-To: =?" + encoding + "B?" +
+    header += "Reply-To: =?utf-8?B?" +
               encodeToBase64(smtpAuth.name) + "?= <" + smtpAuth.email + ">\r\n";
     header += "X-Priority: 3 (Normal)\r\n";
     header += "Message-ID: <172562218." + QDateTime::currentDateTime()
@@ -325,7 +253,7 @@ void Letter::set_header()
     QStringList mailTo_List;
     for (int i = 0; i < receiversList.count(); ++i)
     {
-        mailTo_List.append("=?" + encoding + "?B?" + encodeToBase64(receiversList.at(i).first) +
+        mailTo_List.append("=?utf-8?B?" + encodeToBase64(receiversList.at(i).first) +
                           "?= <" + receiversList.at(i).second + ">");
     }
 
@@ -341,7 +269,7 @@ void Letter::set_header()
         QStringList mailBcc_List;
         for (int i = 0; i < blindReceiversList.count(); ++i)
         {
-            mailBcc_List.append("=?" + encoding + "?B?" + encodeToBase64(blindReceiversList.at(i).first) +
+            mailBcc_List.append("=?utf-8?B?" + encodeToBase64(blindReceiversList.at(i).first) +
                               "?= <" + blindReceiversList.at(i).second + ">");
         }
 
@@ -351,12 +279,12 @@ void Letter::set_header()
             header += mailBcc_List.at(0) + "\r\n";
     }
 
-    header += "Subject: =?" + encoding + "?B?" + encodeToBase64(subject) + "?=\r\n";
+    header += "Subject: =?utf-8?B?" + encodeToBase64(subject) + "?=\r\n";
     header += "MIME-Version: 1.0\r\n";
 
     if (attachementFilesList.isEmpty())
     {
-        header += "Content-Type: text/plain; charset=" + encoding + "\r\n";
+        header += "Content-Type: text/plain; charset=utf-8\r\n";
         header += "Content-Transfer-Encoding: 8bit\r\n";
     }
     else
@@ -519,7 +447,6 @@ void Letter::establishConnectionToSocket(int port)
         sslSocket.connectToHostEncrypted(smtpItself, port);
         connect(&sslSocket, SIGNAL(encrypted()), this, SLOT(ready()));
     }
-
     else
         sslSocket.connectToHost(smtpItself, port);
 
@@ -848,9 +775,10 @@ void Letter::on_read()
 
 }
 
-void Letter::error_happens(QAbstractSocket::SocketError socketError)
+void Letter::error_happens(QAbstractSocket::SocketError /*socketError*/)
 {
-    emit sendingProcessState((int)ERROR, sslSocket.errorString());
+    QSslSocket* socket = qobject_cast<QSslSocket*>(sender());
+    emit sendingProcessState((int)ERROR, socket->errorString());
 
     qDebug() << sslSocket.errorString();
 }

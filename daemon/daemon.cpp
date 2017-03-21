@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     database.init();
     if (database.isDbUpgradePerformed())
     {
-        std::clog << " *** Database has been upgraded, please run db_check, check warning and re-run this app" << std::endl;
+        std::clog << " *** Database has been upgraded, please run db_check, check warnings and re-run this app" << std::endl;
         return 0;
     }
 

@@ -93,6 +93,9 @@ private:
     std::unique_ptr<QSqlDatabase> db;
     std::unique_ptr<QSqlQuery> sql;
     std::unique_ptr<IKeyStorage> keyStorage;
+
+    QList<std::unique_ptr<QSqlQuery>*> preparedQueriesCollection;
+
     bool db_upgraded;
 };
 

@@ -1,5 +1,6 @@
 #include "sql_database.h"
 #include "optionparser.h"
+#include "mailer.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/qglobal.h>
@@ -95,7 +96,7 @@ int main(int argc, char *argv[])
     QSettings settings(iniFilePath, QSettings::IniFormat);
 
     Database database(settings);
-    if (!    database.init())
+    if (! database.init())
     {
         throw std::runtime_error("failt to connect to db");
         return 1;
@@ -119,7 +120,6 @@ int main(int argc, char *argv[])
     }
 
     quint32 settings_id = 0;
-    QString pair ;
     double amount =0;
     double rate =0;
 
@@ -161,5 +161,11 @@ int main(int argc, char *argv[])
 
     std::clog << "order created";
 
-    return 0;
+    Mailer mailer(nullptr);
+    a.connect (&mailer, SIGNAL(sentResult(QString)), &a, SLOT(quit()));
+    mailer.addSmtpServer("192.168.10.4", "25", false, "nas@dweber.lan", "NAS", "nas", "zooTh1ae");
+    mailer.send(QDateTime::currentDateTime().toMSecsSinceEpoch(), "diepress@gmail.com", "Order created",
+                QString("Your order for settings id %1 %2@%3 has been created").arg(settings_id).arg(amount).arg(rate), QStringList(), 1);
+
+    return a.exec();
 }

@@ -16,6 +16,21 @@
 
 #include <unistd.h>
 
+/// TODO: sanity check to xml
+/*
+ *  <check>
+ *    <title>Orders that are broken</title>
+ *    <sql severity="critical" fix='deleting'>
+ *      select order_id from orders where broken=1
+ *    </sql>
+ *    <fix transaction='true'>
+ *       <step order=1>create temporary table fix as select order_id from orders where broken=1</step>
+ *       <step order=2>delete from orders where order_id in (select * from fix</step>
+ *       <step order=3>drop table fix</step>
+ *    </fix>
+ *  </check>
+ */
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
@@ -34,7 +49,7 @@ int main(int argc, char *argv[])
     QSettings settings(iniFilePath, QSettings::IniFormat);
 
     Database database(settings);
-    if (!database.connect())
+    if (!database.init())
     {
         throw std::runtime_error("failt to connect to db");
         return 1;

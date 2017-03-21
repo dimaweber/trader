@@ -3,7 +3,6 @@
 #include "smptAuthData.h"
 #include <QSettings>
 #include <QFile>
-#include <QMessageBox>
 #include <QDebug>
 
 Mailer::Mailer(QObject *parent) :
@@ -70,12 +69,11 @@ void Mailer::send(int customerId, const QString &to, const QString &subject, con
         if (QFile(file).exists())
             verifiedAttaches.append(file);
         else
-            QMessageBox::warning(0, tr("File not found"), QString(tr("File %1 not found -- won't be attached")).arg(file), QMessageBox::Ok);
+            qWarning() << QString(tr("File %1 not found -- won't be attached")).arg(file);
     }
 
     //QString blindCopyReceivers = "";
     // choice letter encoding
-    letter->set_encoding("utf-8");
     letter->set_receivers(to);
     //letter.set_blindCopyReceivers(blindCopyReceivers);
     letter->set_subject(subject);

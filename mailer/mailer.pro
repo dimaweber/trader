@@ -3,7 +3,7 @@ QT -= gui
 
 TEMPLATE  = lib
 
-CONFIG = c++11 warn_on
+CONFIG += c++11 warn_on
 #CONFIG += staticlib
 
 SOURCES += mailer.cpp \

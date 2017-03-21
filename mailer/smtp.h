@@ -15,7 +15,6 @@ class Letter : public QObject, private SmtpAuthData
     QString header;
     QString text;
     QString subject;
-    QString encoding;
     ReceiversList receiversList;
     ReceiversList blindReceiversList;
     QStringList attachementFilesList;
@@ -38,11 +37,8 @@ public:
     Letter(const SmtpAuthData &smtpAuthData);
     ~Letter();
     void setSmtpAuth(const SmtpAuthData &smtpAuthData);
-    // set encoding
-    void set_encoding(QString encode);
     // enable or disable ssl encrypting
     void set_sslEncrypting(bool enable);
-    const QString& get_encoding() const { return encoding; }
     // set letter text
     void set_text(QString text);
     void set_subject(QString subj);

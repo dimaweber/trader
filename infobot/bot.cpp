@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
     QSettings settings(iniFilePath, QSettings::IniFormat);
 
     Database database(settings);
-    if (!    database.init())
+    if (!database.init())
     {
         throw std::runtime_error("failt to connect to db");
         return 1;

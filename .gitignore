@@ -34,6 +34,7 @@ lib/
 .qmake.stash
 
 qrc_*.cpp
+moc_*.cpp
 
 Makefile*
 *.pro.user
