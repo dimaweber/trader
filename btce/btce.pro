@@ -1,3 +1,4 @@
+QT -= gui
 QT += sql
 
 CONFIG +=  c++11 warn_on
@@ -7,7 +8,7 @@ TEMPLATE = lib
 
 SOURCES += btce.cpp \
 http_query.cpp \
-    curl_wrapper.cpp
+	curl_wrapper.cpp
 
 HEADERS += btce.h \
 http_query.h \

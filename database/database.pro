@@ -1,3 +1,4 @@
+QT -= gui
 QT += sql
 
 TEMPLATE = lib
@@ -10,12 +11,12 @@ LIBS += -L../lib -lcommon
 INCLUDEPATH += ../common
 
 HEADERS += \
-    tablefield.h \
-    sql_database.h
+	tablefield.h \
+	sql_database.h
 
 SOURCES += \
-    tablefield.cpp \
-    sql_database.cpp
+	tablefield.cpp \
+	sql_database.cpp
 
 OBJECTS_DIR = .obj
 UI_DIR = .ui
@@ -24,4 +25,4 @@ MOC_DIR = .moc
 DESTDIR = ../lib
 
 RESOURCES += \
-    resources.qrc
+	resources.qrc
