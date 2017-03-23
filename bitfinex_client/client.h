@@ -9,7 +9,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 
-#define BITFINEX_WEBSOCKET_API_URL "wss://api.bitfinex.com/ws"
+#define BITFINEX_WEBSOCKET_API_URL "wss://api.bitfinex.com/ws/2"
 
 class QWebSocket;
 
@@ -19,20 +19,35 @@ protected:
     QDateTime lastUpdate;
     quint32 chanId;
 public:
-    ChannelMessageHandler(quint32 chanId) : chanId(chanId){}
+    ChannelMessageHandler(quint32 chanId):chanId(chanId){}
     virtual bool processMessage(const QVariantList& msg) =0;
     virtual ~ChannelMessageHandler(){}
+
     QDateTime getLastUpdate() const;
     quint32 getChanId() const;
+
+    virtual QString getName() const =0;
+    virtual QString getPair() const =0;
 };
 
-class TickerChannelMessageHandler : public ChannelMessageHandler
+class PublicChannelMessageHandler : public ChannelMessageHandler
 {
 protected:
+    QString name;
     QString pair;
 public:
+    PublicChannelMessageHandler(quint32 chanId, const QString& pair, const QString& name) : ChannelMessageHandler (chanId), name(name), pair(pair){}
+
+    virtual bool processMessage(const QVariantList& msg) override = 0;
+    virtual QString getName() const override;
+    virtual QString getPair() const override;
+};
+
+class TickerChannelMessageHandler : public PublicChannelMessageHandler
+{
+public:
     TickerChannelMessageHandler(quint32 chanId, const QString& pair)
-        :ChannelMessageHandler(chanId), pair(pair)
+        :PublicChannelMessageHandler(chanId, pair, "ticker")
     {}
     virtual bool processMessage(const QVariantList& msg) override;
 };
@@ -46,11 +61,11 @@ public:
     virtual bool processMessage(const QVariantList& msg) override;
 };
 
-class TradeChannelMessageHandler : public ChannelMessageHandler
+class TradeChannelMessageHandler : public PublicChannelMessageHandler
 {
 public:
     TradeChannelMessageHandler(quint32 chanId, const QString& pair)
-        :ChannelMessageHandler(chanId), pair(pair)
+        :PublicChannelMessageHandler(chanId, pair, "trades")
     {}
     virtual bool processMessage(const QVariantList& msg) override;
 protected:
@@ -70,20 +85,27 @@ protected:
     virtual bool parseUpdate(const QVariantList& msg) override;
 };
 
+class PrivateChannelMessageHandler: public ChannelMessageHandler
+{
+public:
+    PrivateChannelMessageHandler():ChannelMessageHandler(0){}
+    virtual bool processMessage(const QVariantList& msg) override;
+    virtual QString getName() const override {return QString();}
+    virtual QString getPair() const override {return QString();}
+};
+
 class Client : public QObject
 {
     Q_OBJECT
+    bool loggedIn;
     qint64 pingLatency;
     QElapsedTimer pingLanetcyTimer;
-    QTimer pingTimer;
+    QTimer heartbeatTimer;
     QWebSocket* wsocket;
     QMap<quint32, ChannelMessageHandler*> channelHandlers;
     int serverProtocol;
 public:
     explicit Client(QObject *parent = 0);
-
-    void subscribeTickerChannel(const QString &pair);
-    void subscribeTradesChannel(const QString &pair);
 
 signals:
     void reconnectRequired();
@@ -93,28 +115,29 @@ signals:
     void unsubscribedEvent(QVariantMap);
     void infoEvent(QVariantMap);
     void errorEvent(QVariantMap);
+    void authEvent(QVariantMap);
     void pongEvent();
-
     void updateRecieved(QVariantList);
 
 public slots:
-    void onConnectWSocket();
-    void onMessage(const QString& msg);
-    void onTimer();
     void connectServer();
-
-    void unsubscribeChannel(quint32 chanId);
-
     void subscribeAll();
     void unsubscribeAll();
     void resubscribeAll();
 
 private slots:
+    void onConnectWSocket();
+    void onMessage(const QString& msg);
+    void onTimer();
     void onInfoEvent(QVariantMap m);
     void onSubscribedEvent(QVariantMap m);
     void onUnsubscribedEvent(QVariantMap m);
     void onErrorEvent(QVariantMap m);
+    void onAuthEvent(QVariantMap m);
     void onPongEvent();
+    void subscribeChannel(const QString& name, const QString &pair);
+    void unsubscribeChannel(quint32 chanId);
+    void authenticate();
 };
 
 #endif // CLIENT_H
