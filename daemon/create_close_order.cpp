@@ -21,7 +21,7 @@ BtcTradeApi::OrderInfo cancel_order(Database& database, BtcObjects::Order::Id or
     return info;
 }
 
-bool create_order (Database& database, quint32 round_id, const QString& pair_name, BtcObjects::Order::OrderType type, double rate, double amount, BtcObjects::Funds& funds, bool silent_http, bool silent_sql)
+bool create_order (Database& database, quint32 round_id, const QString& pair_name, BtcObjects::Order::Type type, double rate, double amount, BtcObjects::Funds& funds, bool silent_http, bool silent_sql)
 {
     static quint32 auto_executed_counter = 1;
     QVariantMap insertOrderParam;

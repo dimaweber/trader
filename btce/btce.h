@@ -94,23 +94,23 @@ struct Pairs: public QMap<QString, Pair>, ExchangeObject
 
 struct Order  : public ExchangeObject
 {
-    enum OrderType {Buy, Sell, Invalid};
-    enum OrderStatus {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3, Unknonwn};
+    enum Type {Buy, Sell, Invalid};
+    enum Status {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3, Unknonwn};
     typedef quint64 Id;
 
     Order()
-        :type(OrderType::Invalid), amount(0), start_amount(0), rate(0), status(OrderStatus::Unknonwn)
+        :type(Type::Invalid), amount(0), start_amount(0), rate(0), status(Status::Unknonwn)
     {}
     virtual ~Order()
     {}
 
     QString pair;
-    OrderType type;
+    Type type;
     double amount;
     double start_amount;
     double rate;
     QDateTime timestamp_created;
-    OrderStatus status;
+    Status status;
     Id order_id;
 
     void display() const override;
@@ -265,7 +265,7 @@ public:
 class Trade : public Api
 {
     QString pair;
-    BtcObjects::Order::OrderType type;
+    BtcObjects::Order::Type type;
     double rate;
     double amount;
 protected:
@@ -281,7 +281,7 @@ public:
     BtcObjects::Funds& funds;
 
     Trade(IKeyStorage& storage, BtcObjects::Funds& funds,
-          const QString& pair, BtcObjects::Order::OrderType type, double rate, double amount)
+          const QString& pair, BtcObjects::Order::Type type, double rate, double amount)
         :Api(storage), pair(pair), type(type), rate(rate), amount(amount),
           funds(funds)
     {}
