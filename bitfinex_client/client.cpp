@@ -55,6 +55,7 @@ void Client::authenticate()
     v["authNonce"] = nonce;
     v["authPayload"] = QString("AUTH%1").arg(nonce);
     v["authSig"] = hmac_sha512(v["authPayload"].toByteArray(), QByteArray(API_SECRET), EVP_sha384).toHex();
+    v["filter"] = QStringList({"trading", "wallet", "balance"});
 
     QString msg = QString::fromUtf8(QJsonDocument::fromVariant(v).toJson());
     wsocket->sendTextMessage(msg);
@@ -356,10 +357,10 @@ bool TradeChannelMessageHandler::processMessage(const QVariantList &msg)
 bool TradeChannelMessageHandler::parseUpdate(const QVariantList &msg)
 {
     int idx=1;
-    QString tue = msg[idx++].toString();
+    QString type = msg[idx++].toString();
     QString seq = msg[idx++].toString();
     quint32 id = 0;
-    if (tue=="tu")
+    if (type=="tu")
     {
         id = msg[idx++].toUInt();
     }
@@ -367,7 +368,7 @@ bool TradeChannelMessageHandler::parseUpdate(const QVariantList &msg)
     float price = msg[idx++].toFloat();
     float amount = msg[idx++].toFloat();
 
-    if (tue == "tu")
+    if (type == "tu")
         printTrade(id, QDateTime::fromTime_t(timestamp), price, amount);
 
     return true;
@@ -393,7 +394,11 @@ bool TradeChannelMessageHandler::parseSnapshot(const QVariantList &lst)
 
 void TradeChannelMessageHandler::printTrade(quint32 id, const QDateTime& timestamp, float price, float amount)
 {
-//    qDebug() << timestamp.toString(Qt::ISODate) << pair << (amount>0?"buy":"sell") << qAbs(amount) << '@' << price << "[" << id << "]";
+    qDebug() << timestamp.toString(Qt::ISODate)
+             << "[" << id << "]"
+             << pair
+             << (amount>0?"buy":"sell")
+             << qAbs(amount) << '@' << price;
 }
 
 bool PublicChannelMessageHandler::processMessage(const QVariantList &msg)
@@ -502,10 +507,10 @@ bool TickerChannelMessageHandler_v2::processMessage(const QVariantList &msg)
     float high = lst[idx++].toFloat(); //	Daily high
     float low = lst[idx++].toFloat(); //	Daily low
 
-//    qDebug() << "pair: " << pair
-//             << "   last:" << last_price
-//             << "   high:" << high
-//             << "   low:" << low;
+    qDebug() << "pair: " << pair
+             << "   last:" << last_price
+             << "   high:" << high
+             << "   low:" << low;
 
     return true;
 }
@@ -515,6 +520,102 @@ bool PrivateChannelMessageHandler::processMessage(const QVariantList &msg)
     if (ChannelMessageHandler::processMessage(msg))
         return true;
 
-//    qDebug() << msg;
+    QString type = msg[1].toString();
+    QVariantList data = msg[2].toList();
+    if (type == "ws")
+        parseWalletsSnapshot(data);
+    else if (type == "wu")
+        parseWallet(data);
+    else if (type == "os")
+        parseOrdersSnapshot(data);
+    else if (type == "ou")
+        parseOrder(data);
+    else if (type == "hos")
+        parseHistoryOrdersSnapshot(data);
+    else if (type == "bs" || type == "bu")
+        parseBalance(data);
+    else
+        qDebug() << type << data;
+
     return true;
+}
+
+void PrivateChannelMessageHandler::parseWallet(const QVariantList &wallet)
+{
+    int idx=0;
+    QString walletType = wallet[idx++].toString();
+    QString currency = wallet[idx++].toString();
+    float balance = wallet[idx++].toFloat();
+    float unsettledInterest = wallet[idx++].toFloat();
+    float balanceAvailable = wallet[idx++].toFloat();
+
+    qDebug() << walletType << currency << balance << unsettledInterest << balanceAvailable;
+}
+
+void PrivateChannelMessageHandler::parseOrder(const QVariantList &order)
+{
+    int idx=0;
+    quint32 id = order[idx++].toInt();
+    quint32 gid = order[idx++].toInt();
+    quint32 cid = order[idx++].toInt();
+    QString pair = order[idx++].toString();
+    quint32 timestamp_create = order[idx++].toUInt();
+    quint32 timestamp_update = order[idx++].toUInt();
+    float amount = order[idx++].toFloat();
+    float amount_orig = order[idx++].toFloat();
+    QString type = order[idx++].toString();
+    QString type_prev = order[idx++].toString();
+    idx++;
+    idx++;
+    quint32 flags = order[idx++].toUInt();
+    QString status = order[idx++].toString();
+    idx++;
+    idx++;
+    float rate = order[idx++].toFloat();
+    float rate_avg = order[idx++].toFloat();
+    float rate_trailing = order[idx++].toFloat();
+    float rate_aux_Limit = order[idx++].toFloat();
+    idx++;
+    idx++;
+    idx++;
+    bool notify = order[idx++].toBool();
+    bool hidden = order[idx++].toBool();
+    quint32 place_id = order[idx++].toUInt();
+
+    qDebug() << id << gid << cid << pair << timestamp_create << timestamp_update << amount << amount_orig << type << type_prev << status << rate << rate_avg;
+}
+
+void PrivateChannelMessageHandler::parseBalance(const QVariantList &balance)
+{
+    int idx = 0;
+    float aus = balance[idx++].toFloat(); // Total Assets Under Management
+    float aus_net = balance[idx++].toFloat(); //Net Assets Under Management
+    //QString wallet_type = balance[idx++].toString(); //Exchange, Trading, or Deposit
+    //QString currency = balance[idx++].toString(); //"BTC", "USD", etc
+
+    qDebug() << aus << aus_net; // << wallet_type << currency;
+}
+
+void PrivateChannelMessageHandler::parseWalletsSnapshot(const QVariantList& v)
+{
+    for (const QVariant& w: v )
+    {
+        parseWallet(w.toList());
+    }
+}
+
+void PrivateChannelMessageHandler::parseOrdersSnapshot(const QVariantList& v)
+{
+    for (const QVariant& o: v )
+    {
+        parseOrder(o.toList());
+    }
+}
+
+void PrivateChannelMessageHandler::parseHistoryOrdersSnapshot(const QVariantList &v)
+{
+    for (const QVariant& o: v )
+    {
+        parseOrder(o.toList());
+    }
 }

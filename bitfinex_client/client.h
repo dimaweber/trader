@@ -92,6 +92,13 @@ public:
     virtual bool processMessage(const QVariantList& msg) override;
     virtual QString getName() const override {return QString();}
     virtual QString getPair() const override {return QString();}
+protected:
+    void parseWallet(const QVariantList& wallet);
+    void parseOrder(const QVariantList& order);
+    void parseBalance(const QVariantList& balance);
+    void parseWalletsSnapshot(const QVariantList &v);
+    void parseOrdersSnapshot(const QVariantList &v);
+    void parseHistoryOrdersSnapshot(const QVariantList& v);
 };
 
 class Client : public QObject
