@@ -558,7 +558,7 @@ int main(int argc, char *argv[])
                     QVariantMap transParams;
                     transParams[":settings_id"] = settings_id;
                     transParams[":round_id_to"] = round_id;
-                    transParams[":prev_round_from"] = prev_round_id;
+                    transParams[":round_id_from"] = prev_round_id;
                     performSql("transit orders from previous round", *database.transitOrders, transParams, silent_sql);
                 }
                 else
