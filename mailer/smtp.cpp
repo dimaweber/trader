@@ -783,9 +783,9 @@ void Letter::error_happens(QAbstractSocket::SocketError /*socketError*/)
     qDebug() << sslSocket.errorString();
 }
 
-void Letter::sslError_happens(const QList<QSslError> &sslErrors)
+void Letter::sslError_happens(const QList<QSslError>& sslErrors)
 {
-    foreach (QSslError error, sslErrors)
+    foreach (const QSslError& error, sslErrors)
         qDebug() << error.errorString();
 
 }
