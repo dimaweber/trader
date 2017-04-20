@@ -15,7 +15,10 @@ http_query.h \
 curl_wrapper.h
 
 LIBS = -lcurl -L../lib -lcommon
-
+win32 {
+	INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-static-ipv6-sspi-winssl/inlude 
+	LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-static-ipv6-sspi-winssl/lib
+}
 INCLUDEPATH += ../common
 
 OBJECTS_DIR = .obj
