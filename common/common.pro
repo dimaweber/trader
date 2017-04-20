@@ -14,6 +14,11 @@ LIBS = -lssl -lcrypto -lreadline
 HEADERS += utils.h \
 key_storage.h
 
+win32 {
+	INCLUDEPATH += C:\OpenSSL-Win64\include
+	LIBS += -LC:\OpenSSL-Win64\lib
+}
+
 OBJECTS_DIR = .obj
 UI_DIR = .ui
 MOC_DIR = .moc
