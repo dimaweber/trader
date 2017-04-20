@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QSettings>
 #include <QSqlQuery>
+#include <QDateTime>
 
 #include <iostream>
 
