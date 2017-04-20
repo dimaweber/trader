@@ -7,7 +7,8 @@ SUBDIRS += common \
            daemon \
            db_check \
            add_order \
-    bitfinex_client
+    bitfinex_client \
+    tests
 
 !win32 {
 SUBDIRS += tgbot-cpp \
