@@ -7,8 +7,6 @@
 #include <QVariantMap>
 #include <QString>
 
-#include <openssl/sha.h>
-#include <openssl/hmac.h>
 
 #include <stdexcept>
 
@@ -20,9 +18,11 @@ class MissingField : public std::runtime_error
 class BrokenJson : public std::runtime_error
 {public : BrokenJson(const QString& msg): std::runtime_error(msg.toStdString()){}};
 
-typedef const EVP_MD* (*HashFunction)();
+//typedef const EVP_MD* (*HashFunction)();
 
-QByteArray hmac_sha512(const QByteArray& message, const QByteArray& key, HashFunction func = EVP_sha512);
+QByteArray hmac_sha512(const QByteArray& message, const QByteArray& key); // , HashFunction func = EVP_sha512
+QByteArray hmac_sha384(const QByteArray& message, const QByteArray& key);
+
 std::ostream& operator << (std::ostream& stream, const QString& str);
 
 #endif // UTILS_H

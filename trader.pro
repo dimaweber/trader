@@ -4,18 +4,21 @@ SUBDIRS += common \
            btce \
            database \
            mailer \
-           tgbot-cpp \
            daemon \
            db_check \
-           infobot \
            add_order \
     bitfinex_client
 
+!win32 {
+SUBDIRS += tgbot-cpp \
+           infobot \
+
+infobot.depends = tgbot-cpp database
+}
 
 btce.depends = common
 database.depends = common
 daemon.depends =  btce database
-infobot.depends = tgbot-cpp database
 db_check.depends =  database
 add_order.depends = database btce
 

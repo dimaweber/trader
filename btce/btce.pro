@@ -8,7 +8,7 @@ TEMPLATE = lib
 
 SOURCES += btce.cpp \
 http_query.cpp \
-	curl_wrapper.cpp
+    curl_wrapper.cpp
 
 HEADERS += btce.h \
 http_query.h \

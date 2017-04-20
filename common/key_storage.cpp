@@ -7,6 +7,10 @@
 #  include <iostream>
 #endif
 
+#include <openssl/sha.h>
+#include <openssl/hmac.h>
+#include <openssl/aes.h>
+
 QByteArray KeyStorage::getPassword(bool needConfirmation)
 {
     if (_hashPwd.isEmpty())

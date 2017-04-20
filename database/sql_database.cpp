@@ -13,7 +13,11 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 
-#include <unistd.h>
+#ifndef Q_OS_WIN
+# include <unistd.h>
+#else
+# include <Windows.h>
+#endif
 
 class SqlKeyStorage : public KeyStorage
 {
@@ -230,7 +234,11 @@ bool Database::connect()
         if (!db->open())
         {
             std::clog << " FAIL. " << db->lastError().text() << std::endl;
+#ifndef Q_OS_WIN
             usleep(1000 * 1000 * 5);
+#else
+            Sleep(1000);
+#endif
         }
         else
         {

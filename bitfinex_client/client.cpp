@@ -7,8 +7,6 @@
 #include <QJsonParseError>
 #include <QByteArray>
 
-#include <openssl/evp.h>
-
 #define API_KEY "qIx1exnyQPFSxkGpaXEdOORMqYSrDW4ONo9ia70atwn"
 #define API_SECRET "yb54vszGFfi876fgBpJ0fikGLeJYe17Yx4oPc1Z051c"
 
@@ -54,7 +52,7 @@ void Client::authenticate()
     v["apiKey"] = API_KEY;
     v["authNonce"] = nonce;
     v["authPayload"] = QString("AUTH%1").arg(nonce);
-    v["authSig"] = hmac_sha512(v["authPayload"].toByteArray(), QByteArray(API_SECRET), EVP_sha384).toHex();
+    v["authSig"] = hmac_sha384(v["authPayload"].toByteArray(), QByteArray(API_SECRET)).toHex();
     v["filter"] = QStringList({"trading", "wallet", "balance"});
 
     QString msg = QString::fromUtf8(QJsonDocument::fromVariant(v).toJson());

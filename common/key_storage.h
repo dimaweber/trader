@@ -6,9 +6,6 @@
 #include <QFile>
 #include <QDataStream>
 
-#include <openssl/sha.h>
-#include <openssl/hmac.h>
-#include <openssl/aes.h>
 
 class QSqlDatabase;
 
