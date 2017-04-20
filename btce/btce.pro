@@ -14,14 +14,11 @@ HEADERS += btce.h \
 http_query.h \
 curl_wrapper.h
 
-LIBS += -L../lib -lcommon
-win32 {
-    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-static-ipv6-sspi-winssl/include
-    LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-static-ipv6-sspi-winssl/lib -llibcurl
+win32: {
+    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/include
+    INCLUDEPATH += C:/OpenSSL-Win64/include
 }
-!win32 {
- LIBS += -lcurl
-}
+
 INCLUDEPATH += ../common
 
 OBJECTS_DIR = .obj

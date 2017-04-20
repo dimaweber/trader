@@ -10,9 +10,15 @@ CONFIG -= app_bundle
 TEMPLATE = app
 
 SOURCES += main.cpp \
-	client.cpp
+    client.cpp
 
-LIBS += -L../lib -lcommon -lcrypto
+win32: {
+    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/include
+    INCLUDEPATH += C:/OpenSSL-Win64/include
+         LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/lib
+         LIBS += -LC:/OpenSSL-Win64/lib
+}
+LIBS += -L../lib -lcommon -lcrypto -lcurl
 INCLUDEPATH += ../common
 
 # The following define makes your compiler emit warnings if you use
@@ -27,7 +33,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 HEADERS += \
-	client.h
+    client.h
 
 DESTDIR = ../bin
 

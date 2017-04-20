@@ -6,7 +6,7 @@ TEMPLATE = lib
 CONFIG +=  c++11 warn_on
 CONFIG += staticlib
 
-LIBS += -L../lib -lcommon
+#LIBS += -L../lib -lcommon
 
 INCLUDEPATH += ../common
 
@@ -20,7 +20,7 @@ SOURCES += \
 
 win32 {
     INCLUDEPATH += C:\OpenSSL-Win64\include
-    LIBS += -LC:\OpenSSL-Win64\lib
+#    LIBS += -LC:\OpenSSL-Win64\lib
 }
 
 OBJECTS_DIR = .obj

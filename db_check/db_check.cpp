@@ -14,7 +14,10 @@
 
 #include <iostream>
 
-#include <unistd.h>
+#ifndef Q_OS_WIN
+# include <unistd.h>
+#else
+#endif
 
 /// TODO: sanity check to xml
 /*

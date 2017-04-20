@@ -9,15 +9,15 @@ TEMPLATE = lib
 SOURCES += utils.cpp \
 key_storage.cpp
 
-LIBS = -lssl -lcrypto
-
-HEADERS += utils.h \
-key_storage.h
+#LIBS = -lssl -lcrypto
 
 win32 {
     INCLUDEPATH += C:\OpenSSL-Win64\include
-    LIBS += -LC:\OpenSSL-Win64\lib
+#    LIBS += -LC:\OpenSSL-Win64\lib
 }
+
+HEADERS += utils.h \
+key_storage.h
 
 !win32 {
     CONFIG += readline
@@ -25,7 +25,7 @@ win32 {
 
 readline {
     DEFINES += USE_READLINE
-    LIBS += -lreadline
+#    LIBS += -lreadline
 }
 
 OBJECTS_DIR = .obj
