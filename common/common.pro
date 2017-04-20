@@ -23,11 +23,11 @@ LIBS += -lssl -lcrypto -lcurl
 HEADERS += utils.h \
 key_storage.h
 
-!win32 {
+!win32: {
     CONFIG += readline
 }
 
-readline {
+readline: {
     DEFINES += USE_READLINE
     LIBS += -lreadline
 }

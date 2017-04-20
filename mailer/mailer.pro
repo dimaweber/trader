@@ -4,6 +4,7 @@ QT -= gui
 TEMPLATE  = lib
 
 CONFIG += c++11 warn_on
+
 win32: {
  CONFIG += staticlib
 }
