@@ -49,4 +49,4 @@ void commonTest::hmac_sha384_test()
 
 QTEST_APPLESS_MAIN(commonTest)
 
-#include "tst_commontest.moc"
+#include "tst_common.moc"
