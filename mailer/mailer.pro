@@ -4,7 +4,10 @@ QT -= gui
 TEMPLATE  = lib
 
 CONFIG += c++11 warn_on
-CONFIG += staticlib
+win32: {
+ CONFIG += staticlib
+}
+
 
 SOURCES += mailer.cpp \
            smtp.cpp \

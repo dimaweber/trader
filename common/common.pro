@@ -2,7 +2,10 @@ QT -= gui
 QT += sql
 
 CONFIG +=  c++11 warn_on
-CONFIG += staticlib
+win32: {
+ CONFIG += staticlib
+}
+
 
 TEMPLATE = lib
 
