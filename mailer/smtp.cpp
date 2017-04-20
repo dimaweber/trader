@@ -130,17 +130,19 @@ Letter::Letter(const SmtpAuthData &smtpAuthData)
     blockSize = 0;
     filesCount = 0;
     recipientsExist = false;
-
+#ifndef QT_NO_SSL
     sslSocket.setProtocol(QSsl::SslV3);
-
+#endif
     // init text stream
     stream.setDevice(&sslSocket);
 
     connect(&sslSocket, SIGNAL(error(QAbstractSocket::SocketError )),
             this, SLOT(error_happens(QAbstractSocket::SocketError )));
 
+#ifndef QT_NO_SSL
     connect(&sslSocket, SIGNAL(sslErrors(QList<QSslError>)),
                 this, SLOT(sslError_happens(QList<QSslError>)));
+#endif
 
     connect(&sslSocket, SIGNAL(readyRead()), this, SLOT(on_read()));
 
@@ -440,7 +442,7 @@ void Letter::establishConnectionToSocket(int port)
 
     // abort previous sending
     sslSocket.abort();
-
+#ifndef QT_NO_SSL
     if (isEnabledSsl())
     {
         qDebug() << "SSL enabled";
@@ -448,6 +450,7 @@ void Letter::establishConnectionToSocket(int port)
         connect(&sslSocket, SIGNAL(encrypted()), this, SLOT(ready()));
     }
     else
+#endif
         sslSocket.connectToHost(smtpItself, port);
 
     Request = RequestState_Init;
@@ -777,18 +780,20 @@ void Letter::on_read()
 
 void Letter::error_happens(QAbstractSocket::SocketError /*socketError*/)
 {
-    QSslSocket* socket = qobject_cast<QSslSocket*>(sender());
+    QAbstractSocket* socket = qobject_cast<QAbstractSocket*>(sender());
     emit sendingProcessState((int)ERROR, socket->errorString());
 
-    qDebug() << sslSocket.errorString();
+    qDebug() << socket->errorString();
 }
 
+#ifndef QT_NO_SSL
 void Letter::sslError_happens(const QList<QSslError> &sslErrors)
 {
     foreach (QSslError error, sslErrors)
         qDebug() << error.errorString();
 
 }
+#endif
 
 Letter::~Letter()
 {
