@@ -4,7 +4,7 @@ QT += sql
 TEMPLATE = lib
 
 CONFIG +=  c++11 warn_on
-CONFIG += staticlib
+#CONFIG += staticlib
 
 LIBS += -L../lib -lcommon
 
