@@ -4,7 +4,11 @@
 #include <QStringList>
 #include <QPair>
 #include <stdexcept>
-#include <QSslSocket>
+#ifndef QT_NO_SSL
+# include <QSslSocket>
+#else
+# include <QTcpSocket>
+#endif
 #include <QTextStream>
 #include "smptAuthData.h"
 
@@ -23,7 +27,11 @@ class Letter : public QObject, private SmtpAuthData
     SmtpAuthData smtpData;
 
     // socket for ssl encrypted connection
+#ifndef QT_NO_SSL
     QSslSocket sslSocket;
+#else
+    QTcpSocket sslSocket;
+#endif
     // stream that operate of protocol
     QTextStream stream;
     quint16 blockSize;
@@ -88,7 +96,9 @@ private:
 
 private slots:
     void error_happens(QAbstractSocket::SocketError socketError);
+#ifndef QT_NO_SSL
     void sslError_happens(const QList<QSslError> &sslErrors);
+#endif
     void on_read();
     void ready();
 
