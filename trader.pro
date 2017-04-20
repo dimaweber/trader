@@ -23,6 +23,8 @@ daemon.depends =  btce database
 db_check.depends =  database
 add_order.depends = database btce
 
+tests.depends = common
+
 OTHER_FILES += \
                sql/deposits_for_every_day.sql \
                sql/create_db_v1.0.sql

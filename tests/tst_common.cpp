@@ -32,18 +32,18 @@ void commonTest::cleanupTestCase()
 void commonTest::hmac_sha512_test()
 {
     QByteArray key = "AveCaesar";
-    QByteArray input = {"Lorep ipsum sic dolor"};
-    QByteArray expected_output = {"ac851d7312fb0b2891b00548cdb4d06b68333e76df384e349719203d37dbbbffa45f2f349ea7a7b596200822100fdd3540201d5570b3c7a0151400626c7d5f27"};
-    QByteArray output = hmac_sha512(input, key);
+    QByteArray input = {"Lorem ipsum sit dolor"};
+    QByteArray expected_output = {"96a9c3fece48b566d1af4abb031b58682d3c1e5a2b0e2f0b373c61f822f0efd8dcfd6f7935a185759571dfd30ba691bfee202763400868bd33e984f14fbf92a3"};
+    QByteArray output = hmac_sha512(input, key).toHex();
     QVERIFY2(output == expected_output, "Failure");
 }
 
 void commonTest::hmac_sha384_test()
 {
     QByteArray key = "AveCaesar";
-    QByteArray input = {"Lorep ipsum sic dolor"};
-    QByteArray expected_output = {"1cc5babc740bdb057bf64ca0790fc6feb7b9d06b1b70e62db6dcce7be407fcb411e60138c17fbde32fcc3c8f1f840b1c"};
-    QByteArray output = hmac_sha384(input, key);
+    QByteArray input = {"Lorem ipsum sit dolor"};
+    QByteArray expected_output = {"db3ab031e72512d2e04757aea25891e442e20faca985db445f831d91e0427d648cb2a1acba96525145d916b1100210d3"};
+    QByteArray output = hmac_sha384(input, key).toHex();
     QVERIFY2(output == expected_output, "Failure");
 }
 
