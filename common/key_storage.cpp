@@ -1,8 +1,11 @@
 #include "key_storage.h"
 #include "utils.h"
 
-#include <readline/readline.h>
-
+#ifdef USE_READLINE
+#  include <readline/readline.h>
+#else
+#  include <iostream>
+#endif
 
 QByteArray KeyStorage::getPassword(bool needConfirmation)
 {
@@ -37,7 +40,11 @@ void KeyStorage::setPassword(const QByteArray& pwd)
 void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
 {
     char* line;
+#ifdef USE_READLINE
     line = readline((prompt + ": ").toUtf8());
+#else
+    std::cin >> line;
+#endif
 
     ba.clear();
     ba.append(line, strlen(line));
