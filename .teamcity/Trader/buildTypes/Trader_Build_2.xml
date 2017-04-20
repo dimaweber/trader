@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="795ed03a-42f2-4ba8-bfdd-6c3db98d7248" xsi:noNamespaceSchemaLocation="http://www.jetbrains.com/teamcity/schemas/10.0/project-config.xsd">
+  <name>Linux ARM Build</name>
+  <description>Rpi ARM build</description>
+  <settings>
+    <options>
+      <option name="artifactRules" value="bin =&gt; bin&#xA;data =&gt; data&#xA;lib =&gt; lib" />
+    </options>
+    <parameters />
+    <build-runners>
+      <runner id="RUNNER_8" name="" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="%system.agent.qt.dir%/bin/qmake" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+      <runner id="RUNNER_9" name="build" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="make" />
+          <param name="command.parameters" value="-j2" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <vcs-settings>
+      <vcs-entry-ref root-id="Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster" />
+    </vcs-settings>
+    <requirements>
+      <equals id="RQ_7" name="teamcity.agent.jvm.os.name" value="Linux" />
+      <equals id="RQ_8" name="teamcity.agent.jvm.os.arch" value="arm" />
+      <no-less-than id="RQ_9" name="system.agent.qt.version" value="5.6" />
+    </requirements>
+    <build-triggers>
+      <build-trigger id="vcsTrigger" type="vcsTrigger">
+        <parameters>
+          <param name="branchFilter" value="+:*" />
+          <param name="enableQueueOptimization" value="true" />
+          <param name="quietPeriodMode" value="DO_NOT_USE" />
+        </parameters>
+      </build-trigger>
+    </build-triggers>
+    <build-extensions>
+      <extension id="swabra" type="swabra">
+        <parameters>
+          <param name="swabra.enabled" value="swabra.before.build" />
+          <param name="swabra.processes" value="report" />
+          <param name="swabra.strict" value="true" />
+        </parameters>
+      </extension>
+      <extension id="BUILD_EXT_3" type="VcsLabeling">
+        <parameters>
+          <param name="labelingPattern" value="build-%teamcity.agent.jvm.os.name%-%teamcity.agent.jvm.os.arch%-%system.build.number%" />
+          <param name="successfulOnly" value="true" />
+          <param name="vcsRootId" value="Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster" />
+        </parameters>
+      </extension>
+    </build-extensions>
+    <cleanup />
+  </settings>
+</build-type>
+

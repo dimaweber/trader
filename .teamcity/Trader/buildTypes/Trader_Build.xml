@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="a724777b-7454-4c0c-8ad0-bda23dfe0195" xsi:noNamespaceSchemaLocation="http://www.jetbrains.com/teamcity/schemas/10.0/project-config.xsd">
+  <name>Linux x64 build</name>
+  <description>Binaries and configuration</description>
+  <settings>
+    <options>
+      <option name="artifactRules" value="bin =&gt; trader.zip&#xA;data =&gt; trader.zip&#xA;lib =&gt; trader.zip" />
+      <option name="cleanBuild" value="true" />
+    </options>
+    <parameters />
+    <build-runners>
+      <runner id="RUNNER_1" name="qmake" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="%system.agent.qt.dir%/bin/qmake" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+      <runner id="RUNNER_2" name="make" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="make" />
+          <param name="command.parameters" value="-j%teamcity.agent.hardware.cpuCount%" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <vcs-settings>
+      <vcs-entry-ref root-id="Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster" />
+    </vcs-settings>
+    <requirements>
+      <equals id="RQ_1" name="teamcity.agent.jvm.os.name" value="Linux" />
+      <equals id="RQ_3" name="teamcity.agent.jvm.os.arch" value="amd64" />
+      <no-less-than id="RQ_2" name="system.agent.qt.version" value="5.6" />
+    </requirements>
+    <build-triggers>
+      <build-trigger id="vcsTrigger" type="vcsTrigger">
+        <parameters>
+          <param name="groupCheckinsByCommitter" value="true" />
+          <param name="perCheckinTriggering" value="true" />
+          <param name="quietPeriodMode" value="DO_NOT_USE" />
+          <param name="triggerRules" value="-:root=Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster;comment=NO BUILD:**" />
+        </parameters>
+      </build-trigger>
+      <build-trigger id="TRIGGER_1" type="schedulingTrigger">
+        <parameters>
+          <param name="cronExpression_dm" value="*" />
+          <param name="cronExpression_dw" value="?" />
+          <param name="cronExpression_hour" value="*" />
+          <param name="cronExpression_min" value="0" />
+          <param name="cronExpression_month" value="*" />
+          <param name="cronExpression_sec" value="0" />
+          <param name="cronExpression_year" value="*" />
+          <param name="dayOfWeek" value="Sunday" />
+          <param name="enableQueueOptimization" value="true" />
+          <param name="hour" value="1" />
+          <param name="minute" value="0" />
+          <param name="promoteWatchedBuild" value="true" />
+          <param name="revisionRule" value="lastFinished" />
+          <param name="revisionRuleBuildBranch" value="&lt;default&gt;" />
+          <param name="schedulingPolicy" value="daily" />
+          <param name="timezone" value="SERVER" />
+        </parameters>
+      </build-trigger>
+    </build-triggers>
+    <build-extensions>
+      <extension id="swabra" type="swabra">
+        <parameters>
+          <param name="swabra.enabled" value="swabra.before.build" />
+          <param name="swabra.processes" value="report" />
+          <param name="swabra.strict" value="true" />
+        </parameters>
+      </extension>
+      <extension id="BUILD_EXT_1" type="VcsLabeling">
+        <parameters>
+          <param name="labelingPattern" value="build-%teamcity.agent.jvm.os.name%-%teamcity.agent.jvm.os.arch%-%system.build.number%" />
+          <param name="successfulOnly" value="true" />
+          <param name="vcsRootId" value="Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster" />
+        </parameters>
+      </extension>
+    </build-extensions>
+    <cleanup />
+  </settings>
+</build-type>
+
