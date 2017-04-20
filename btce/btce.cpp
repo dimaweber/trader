@@ -91,6 +91,7 @@ void Pairs::display() const
     for(Pair& pair: values())
         pair.display();
 }
+
 void Order::display() const
 {
     QString sStatus;
@@ -109,7 +110,7 @@ void Order::display() const
               << QString("   type   : %1\n").arg((type==Sell)?"sell":"buy")
               << QString("   amount : %1 (%2)").arg(amount).arg(start_amount)
               << QString("   rate   : %1").arg(rate)
-              << QString("   created: %1").arg(timestamp_created.toString());
+              << QString("   created: %1").arg(timestamp_created.toString(Qt::ISODate));
 //	qDebug() << QString("      %1 : %2 / %3").arg(mon).arg(gain()).arg(comission());
 }
 

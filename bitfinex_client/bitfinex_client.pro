@@ -12,8 +12,8 @@ TEMPLATE = app
 SOURCES += main.cpp \
 	client.cpp
 
-LIBS += -L../lib -lcommon -lcrypto
-INCLUDEPATH += ../common
+LIBS += -L../lib -lcommon -lcrypto -lbtce
+INCLUDEPATH += ../common ../btce
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings

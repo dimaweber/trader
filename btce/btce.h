@@ -26,8 +26,8 @@ public:
 struct Funds : public QMap<QString, double>, ExchangeObject
 {
 public:
-    bool parse(const QVariantMap& fundsMap) override;
-    void display() const override;
+    virtual bool parse(const QVariantMap& fundsMap) override;
+    virtual void display() const override;
 };
 
 struct Ticker : public ExchangeObject
@@ -38,8 +38,8 @@ public:
     QDateTime updated;
 
     Ticker() : high(0), low(0), avg(0), vol(0), vol_cur(0), last(0), buy(0), sell(0){}
-    bool parse(const QVariantMap& map) override;
-    void display() const override;
+    virtual bool parse(const QVariantMap& map) override;
+    virtual void display() const override;
 };
 
 struct Depth : public ExchangeObject
@@ -56,8 +56,8 @@ public:
     QList<Position> bids;
     QList<Position> asks;
 
-    bool parse(const QVariantMap& map) override;
-    void display() const override;
+    virtual bool parse(const QVariantMap& map) override;
+    virtual void display() const override;
 };
 
 struct Pair : public ExchangeObject
@@ -79,7 +79,7 @@ public:
     void display() const override;
     QString currency() const;
     QString goods() const;
-    bool parse(const QVariantMap& map) override;
+    virtual bool parse(const QVariantMap& map) override;
 };
 
 struct Pairs: public QMap<QString, Pair>, ExchangeObject
@@ -88,8 +88,8 @@ struct Pairs: public QMap<QString, Pair>, ExchangeObject
     static Pairs& ref();
     static Pair& ref(const QString& pairName);
 
-    bool parse(const QVariantMap& map) override;
-    void display() const override;
+    virtual bool parse(const QVariantMap& map) override;
+    virtual void display() const override;
 };
 
 struct Order  : public ExchangeObject
@@ -113,8 +113,8 @@ struct Order  : public ExchangeObject
     Status status;
     Id order_id;
 
-    void display() const override;
-    bool parse(const QVariantMap& map) override;
+    virtual void display() const override;
+    virtual bool parse(const QVariantMap& map) override;
 
     QString goods() const;
     QString currency() const;
@@ -135,8 +135,8 @@ struct Transaction : public ExchangeObject
     int status;
     QDateTime timestamp;
 
-    bool parse(const QVariantMap& map) override;
-    void display() const override {throw 1;}
+    virtual bool parse(const QVariantMap& map) override;
+    virtual void display() const override {throw 1;}
 };
 }
 
@@ -227,7 +227,7 @@ class Info : public Api
     virtual QString methodName() const  override {return "getInfo";}
 public:
     Info(IKeyStorage& storage, BtcObjects::Funds& funds):Api(storage),funds(funds){}
-    void showSuccess() const override;
+    virtual void showSuccess() const override;
 };
 
 class TransHistory : public Api
@@ -259,7 +259,7 @@ public:
     TransHistory& setSince(const QDateTime& d = QDateTime()) {_since = d.isValid()?d.toTime_t():-1;return *this;}
     TransHistory& setEnd(const QDateTime& d = QDateTime()) {_end= d.isValid()?d.toTime_t():-1;return *this;}
 
-    void showSuccess() const override { throw 1;}
+    virtual void showSuccess() const override { throw 1;}
 };
 
 class Trade : public Api
@@ -312,7 +312,7 @@ public:
     ActiveOrders(IKeyStorage& storage):Api(storage){}
     QMap<BtcObjects::Order::Id, BtcObjects::Order> orders;
 
-    void showSuccess() const override;
+    virtual void showSuccess() const override;
 };
 
 class OrderInfo : public Api
@@ -326,7 +326,7 @@ public:
 
     OrderInfo(IKeyStorage& storage, BtcObjects::Order::Id id)
         :Api(storage), order_id(id) {}
-    void showSuccess() const override;
+    virtual void showSuccess() const override;
 };
 }
 

@@ -1,5 +1,6 @@
 #include "client.h"
 #include "utils.h"
+#include "btce.h"
 
 #include <QDebug>
 #include <QWebSocket>
@@ -11,6 +12,14 @@
 
 #define API_KEY "qIx1exnyQPFSxkGpaXEdOORMqYSrDW4ONo9ia70atwn"
 #define API_SECRET "yb54vszGFfi876fgBpJ0fikGLeJYe17Yx4oPc1Z051c"
+
+QString bitfinex_pair_to_btce_pair(const QString& str)
+{
+    int pos=0;
+    if (str.length()>6)
+        pos++;
+    return QString("%1_%2").arg(str.mid(pos,3)).arg(str.mid(pos+3,3)).toLower();
+}
 
 Client::Client(QObject *parent) : QObject(parent)
   ,loggedIn(false), serverProtocol(-1)
@@ -582,7 +591,24 @@ void PrivateChannelMessageHandler::parseOrder(const QVariantList &order)
     bool hidden = order[idx++].toBool();
     quint32 place_id = order[idx++].toUInt();
 
-    qDebug() << id << gid << cid << pair << timestamp_create << timestamp_update << amount << amount_orig << type << type_prev << status << rate << rate_avg;
+    BtcObjects::Order o;
+    o.type = (amount<0) ? BtcObjects::Order::Sell : BtcObjects::Order::Buy;
+    o.amount = qAbs(amount);
+    o.rate = rate;
+    o.pair = bitfinex_pair_to_btce_pair(pair);
+    o.timestamp_created = QDateTime::fromTime_t(timestamp_create);
+    o.order_id = id;
+    o.start_amount = amount_orig;
+    if (status == "ACTIVE")
+        o.status = BtcObjects::Order::Active;
+    else if (status == "EXECUTED")
+        o.status = BtcObjects::Order::Done;
+    else if (status == "PARTIALLY FILLED")
+        o.status = BtcObjects::Order::CanceledPartiallyDone;
+    else if (status == "CANCELED")
+        o.status = BtcObjects::Order::Canceled;
+
+    o.display();
 }
 
 void PrivateChannelMessageHandler::parseBalance(const QVariantList &balance)
