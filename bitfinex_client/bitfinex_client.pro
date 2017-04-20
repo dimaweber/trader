@@ -28,3 +28,10 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 HEADERS += \
 	client.h
+
+DESTDIR = ../bin
+
+
+OBJECTS_DIR = .obj
+UI_DIR = .ui
+MOC_DIR = .moc
