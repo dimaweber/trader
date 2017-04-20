@@ -43,16 +43,22 @@ void KeyStorage::setPassword(const QByteArray& pwd)
 
 void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
 {
-    char* line;
 #ifdef USE_READLINE
+    char* line = nullptr;
     line = readline((prompt + ": ").toUtf8());
 #else
-    std::cin >> line;
+    const char* line = nullptr;
+    std::string input;
+    std::cout << prompt << ": ";
+    std::cin >> input;
+    line = input.c_str();
 #endif
 
     ba.clear();
     ba.append(line, strlen(line));
+#ifdef USE_READLINE
     free(line);
+#endif
 }
 
 void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)

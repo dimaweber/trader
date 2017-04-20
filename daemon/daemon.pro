@@ -12,6 +12,14 @@ TEMPLATE = app
 INCLUDEPATH += ../common ../btce ../database
 
 LIBS += -L../lib -lcommon -lbtce -ldatabase
+win32 {
+    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-static-ipv6-sspi-winssl/include
+    LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-static-ipv6-sspi-winssl/lib -llibcurl
+}
+!win32 {
+ LIBS += -lcurl
+}
+INCLUDEPATH += ../common
 
 SOURCES += daemon.cpp \
     create_close_order.cpp
