@@ -26,7 +26,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bo
 class Database : public IKeyStorage
 {
 public:
-    Database(QSettings& settings);
+    explicit Database(QSettings& settings);
     virtual ~Database();
 
     bool connect();

@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
                         // no orders yet - just ignore
                     }
                     else
-                        throw e;
+                        throw;
                 }
 
                 BtcObjects::Funds& funds = allFunds[id];

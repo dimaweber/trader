@@ -41,7 +41,7 @@ void KeyStorage::setPassword(const QByteArray& pwd)
     _hashPwd = hash;
 }
 
-void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
+void KeyStorage::read_input(const QString& prompt, QByteArray& ba)
 {
 #ifdef USE_READLINE
     char* line = nullptr;
@@ -63,7 +63,6 @@ void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
 
 void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)
 {
-    const unsigned char* inbuf;
     unsigned char outbuf[AES_BLOCK_SIZE];
 
     AES_KEY key;
@@ -74,7 +73,7 @@ void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArra
     while (ptr < data.length())
     {
         int num =0;
-        inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
+        const unsigned char* inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
         int size = qMin(AES_BLOCK_SIZE, data.length() - ptr);
         AES_cfb128_encrypt(inbuf, outbuf, size, &key, reinterpret_cast<unsigned char*>(ivec.data()), &num, AES_ENCRYPT);
         memcpy(data.data()+ptr, outbuf, size);
@@ -84,7 +83,6 @@ void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArra
 
 void KeyStorage::decrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)
 {
-    const unsigned char* inbuf;
     unsigned char outbuf[AES_BLOCK_SIZE];
 
     AES_KEY key;
@@ -95,7 +93,7 @@ void KeyStorage::decrypt(QByteArray& data, const QByteArray& password, QByteArra
     while (ptr < data.length())
     {
         int num =0;
-        inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
+        const unsigned char* inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
         int size = qMin(AES_BLOCK_SIZE, data.length() - ptr);
         AES_cfb128_encrypt(inbuf, outbuf, size, &key, reinterpret_cast<unsigned char*>(ivec.data()), &num, AES_DECRYPT);
         memcpy(data.data()+ptr, outbuf, size);

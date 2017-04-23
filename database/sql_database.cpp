@@ -152,7 +152,7 @@ bool Database::init()
     catch (const QSqlQuery& e)
     {
         std::cerr << "Fail to perform " << e.lastQuery() << " : " << e.lastError().text() << std::endl;
-        throw e;
+        throw;
     }
 
     return true;
@@ -545,7 +545,7 @@ bool Database::execute_upgrade_sql(int& major, int& minor)
     catch (std::runtime_error& e)
     {
         rollback();
-        throw e;
+        throw;
     }
     commit();
 

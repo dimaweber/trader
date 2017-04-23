@@ -32,6 +32,7 @@ LIBS += -lssl -lcrypto -lcurl
 OBJECTS_DIR = .obj
 UI_DIR = .ui
 MOC_DIR = .moc
+RCC_DIR = .rcc
 
 DESTDIR = ../lib
 

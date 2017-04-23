@@ -9,18 +9,19 @@ SUBDIRS += common \
            add_order \
     bitfinex_client \
     tests
-
+!win32: {
 SUBDIRS += tgbot-cpp \
            infobot \
 
 infobot.depends = tgbot-cpp database
+}
 
 btce.depends = common
 database.depends = common
 daemon.depends =  btce database
 db_check.depends =  database
 add_order.depends = database btce
-bitfinix_client.depends = common
+bitfinex_client.depends = common
 tests.depends = common
 
 OTHER_FILES += \

@@ -19,7 +19,7 @@ protected:
     QDateTime lastUpdate;
     quint32 chanId;
 public:
-    ChannelMessageHandler(quint32 chanId):chanId(chanId){}
+    explicit ChannelMessageHandler(quint32 chanId):chanId(chanId){}
     virtual bool processMessage(const QVariantList& msg) =0;
     virtual ~ChannelMessageHandler(){}
 
@@ -69,7 +69,6 @@ public:
     {}
     virtual bool processMessage(const QVariantList& msg) override;
 protected:
-    QString pair;
     virtual bool parseUpdate(const QVariantList& msg);
     virtual bool parseSnapshot(const QVariantList& msg);
     virtual void printTrade(quint32 id, const QDateTime &timestamp, float price, float amount);
