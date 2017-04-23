@@ -312,16 +312,16 @@ bool TickerChannelMessageHandler::processMessage(const QVariantList& msg)
         return false;
 
     int idx=1;
-    float bid = msg[idx++].toFloat(); //	Price of last highest bid
-    float bid_size = msg[idx++].toFloat(); // Size of the last highest bid
-    float ask = msg[idx++].toFloat(); //	Price of last lowest ask
-    float ask_size = msg[idx++].toFloat(); //	Size of the last lowest ask
-    float daily_change = msg[idx++].toFloat(); //	Amount that the last price has changed since yesterday
-    float daily_change_perc = msg[idx++].toFloat(); //	Amount that the price has changed expressed in percentage terms
-    float last_price = msg[idx++].toFloat(); //	Price of the last trade.
-    float volume = msg[idx++].toFloat(); //	Daily volume
-    float high = msg[idx++].toFloat(); //	Daily high
-    float low = msg[idx++].toFloat(); //	Daily low
+    /*float bid =*/ msg[idx++].toFloat(); //	Price of last highest bid
+    /*float bid_size =*/ msg[idx++].toFloat(); // Size of the last highest bid
+    /*float ask =*/ msg[idx++].toFloat(); //	Price of last lowest ask
+    /*float ask_size =*/ msg[idx++].toFloat(); //	Size of the last lowest ask
+    /*float daily_change =*/ msg[idx++].toFloat(); //	Amount that the last price has changed since yesterday
+    /*float daily_change_perc =*/ msg[idx++].toFloat(); //	Amount that the price has changed expressed in percentage terms
+    /*float last_price =*/ msg[idx++].toFloat(); //	Price of the last trade.
+    /*float volume =*/ msg[idx++].toFloat(); //	Daily volume
+    /*float high =*/ msg[idx++].toFloat(); //	Daily high
+    /*float low =*/ msg[idx++].toFloat(); //	Daily low
 
 //    qDebug() << "pair: " << pair << "   last:" << last_price << "   high:" << high << "   low:" << low;
 
@@ -494,14 +494,14 @@ bool TickerChannelMessageHandler_v2::processMessage(const QVariantList &msg)
         return false;
 
     int idx=0;
-    float bid = lst[idx++].toFloat(); //	Price of last highest bid
-    float bid_size = lst[idx++].toFloat(); // Size of the last highest bid
-    float ask = lst[idx++].toFloat(); //	Price of last lowest ask
-    float ask_size = lst[idx++].toFloat(); //	Size of the last lowest ask
-    float daily_change = lst[idx++].toFloat(); //	Amount that the last price has changed since yesterday
-    float daily_change_perc = lst[idx++].toFloat(); //	Amount that the price has changed expressed in percentage terms
+    /*float bid =*/ lst[idx++].toFloat(); //	Price of last highest bid
+    /*float bid_size =*/ lst[idx++].toFloat(); // Size of the last highest bid
+    /*float ask =*/ lst[idx++].toFloat(); //	Price of last lowest ask
+    /*float ask_size =*/ lst[idx++].toFloat(); //	Size of the last lowest ask
+    /*float daily_change =*/ lst[idx++].toFloat(); //	Amount that the last price has changed since yesterday
+    /*float daily_change_perc =*/ lst[idx++].toFloat(); //	Amount that the price has changed expressed in percentage terms
     float last_price = lst[idx++].toFloat(); //	Price of the last trade.
-    float volume = lst[idx++].toFloat(); //	Daily volume
+    /*float volume =*/ lst[idx++].toFloat(); //	Daily volume
     float high = lst[idx++].toFloat(); //	Daily high
     float low = lst[idx++].toFloat(); //	Daily low
 
@@ -565,20 +565,20 @@ void PrivateChannelMessageHandler::parseOrder(const QVariantList &order)
     QString type_prev = order[idx++].toString();
     idx++;
     idx++;
-    quint32 flags = order[idx++].toUInt();
+    /*quint32 flags =*/ order[idx++].toUInt();
     QString status = order[idx++].toString();
     idx++;
     idx++;
     float rate = order[idx++].toFloat();
     float rate_avg = order[idx++].toFloat();
-    float rate_trailing = order[idx++].toFloat();
-    float rate_aux_Limit = order[idx++].toFloat();
+    /*float rate_trailing =*/ order[idx++].toFloat();
+    /*float rate_aux_Limit =*/ order[idx++].toFloat();
     idx++;
     idx++;
     idx++;
-    bool notify = order[idx++].toBool();
-    bool hidden = order[idx++].toBool();
-    quint32 place_id = order[idx++].toUInt();
+    /*bool notify =*/ order[idx++].toBool();
+    /*bool hidden =*/ order[idx++].toBool();
+    /*quint32 place_id =*/ order[idx++].toUInt();
 
     qDebug() << id << gid << cid << pair << timestamp_create << timestamp_update << amount << amount_orig << type << type_prev << status << rate << rate_avg;
 }
