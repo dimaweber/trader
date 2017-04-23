@@ -36,10 +36,10 @@ def handle_output_line(line):
         line = line.strip('\n')
         m = re.search("^(##teamcity[^']*\s+description=')(.*)('[^']*)$", line)
         if m is None:
-            print line
+            print (line)
         else:
             escaped = re.sub("(['|\[\]])", "|\\1", m.group(2))
-            print m.group(1) + escaped + m.group(3)
+            print (m.group(1) + escaped + m.group(3))
         return True
     else:
         return False
