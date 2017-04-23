@@ -10,12 +10,10 @@ SUBDIRS += common \
     bitfinex_client \
     tests
 
-!win32 {
 SUBDIRS += tgbot-cpp \
            infobot \
 
 infobot.depends = tgbot-cpp database
-}
 
 btce.depends = common
 database.depends = common
