@@ -23,6 +23,8 @@ public:
     virtual ~HttpQuery() {}
     bool isValid() const { return valid;}
     bool performQuery();
+
+    friend class CommonTest;
 };
 
 

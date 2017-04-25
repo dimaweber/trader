@@ -9,7 +9,7 @@ QT       += testlib
 QT       -= gui
 
 TARGET = tst_common
-CONFIG   += console
+CONFIG   += console c++14
 CONFIG   -= app_bundle
 
 TEMPLATE = app
@@ -30,9 +30,10 @@ SOURCES += \
     tst_common.cpp
 DEFINES += SRCDIR=\\\"$$PWD/\\\"
 
-LIBS += -L../lib -lcommon
+LIBS += -L../lib -lcommon -lbtce
 
-INCLUDEPATH += ../common
+INCLUDEPATH += ../common \
+../btce
 
 win32: {
     INCLUDEPATH += C:/OpenSSL-Win64/include

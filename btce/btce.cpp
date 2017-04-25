@@ -332,7 +332,7 @@ void disableTradeLog()
     tradeLogFile.reset();
 }
 
-quint32 Api::_nonce = QDateTime::currentDateTime().toTime_t();
+QAtomicInteger<quint32> Api::_nonce = QDateTime::currentDateTime().toTime_t();
 
 bool TransHistory::parseSuccess(const QVariantMap& returnMap)
 {

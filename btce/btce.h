@@ -14,6 +14,8 @@
 #include "key_storage.h"
 #include "curl_wrapper.h"
 
+class CommonTest;
+
 namespace BtcObjects {
 
 struct ExchangeObject
@@ -188,7 +190,7 @@ void disableTradeLog();
 class Api : public HttpQuery
 {
     IKeyStorage& storage;
-    static quint32 _nonce;
+    static QAtomicInteger<quint32> _nonce;
     static QString nonce() { return QString::number(++_nonce);}
     QByteArray postParams;
 protected:
@@ -214,6 +216,8 @@ public:
     bool isSuccess() const {return isValid() && success;}
     QString error() const {return errorMsg;}
     virtual QString methodName() const = 0;
+
+    friend class ::CommonTest;
 };
 
 class Info : public Api
@@ -228,6 +232,10 @@ class Info : public Api
 public:
     Info(IKeyStorage& storage, BtcObjects::Funds& funds):Api(storage),funds(funds){}
     void showSuccess() const override;
+protected:
+	int runme() {return 1;}
+
+    friend class ::CommonTest;
 };
 
 class TransHistory : public Api
@@ -328,7 +336,9 @@ public:
         :Api(storage), order_id(id) {}
     void showSuccess() const override;
 };
+
 }
 
 bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=false);
+
 #endif // BTCE_H

@@ -2,34 +2,41 @@
 #include <QtTest>
 
 #include "utils.h"
+#include "btce.h"
 
-class commonTest : public QObject
+class CommonTest : public QObject
 {
     Q_OBJECT
 
 public:
-    commonTest();
+    CommonTest();
 
 private Q_SLOTS:
     void initTestCase();
     void cleanupTestCase();
     void hmac_sha512_test();
     void hmac_sha384_test();
+    void btce_api_trade_info_test();
+private:
+    std::unique_ptr<IKeyStorage> keyStorage;
+    std::unique_ptr<BtcObjects::Funds> funds;
 };
 
-commonTest::commonTest()
+CommonTest::CommonTest()
 {
 }
 
-void commonTest::initTestCase()
+void CommonTest::initTestCase()
+{
+    keyStorage = std::make_unique<FileKeyStorage>("/dev/null");
+    funds = std::make_unique<BtcObjects::Funds>();
+}
+
+void CommonTest::cleanupTestCase()
 {
 }
 
-void commonTest::cleanupTestCase()
-{
-}
-
-void commonTest::hmac_sha512_test()
+void CommonTest::hmac_sha512_test()
 {
     QByteArray key = "AveCaesar";
     QByteArray input = {"Lorem ipsum sit dolor"};
@@ -38,7 +45,7 @@ void commonTest::hmac_sha512_test()
     QVERIFY2(output == expected_output, "Failure");
 }
 
-void commonTest::hmac_sha384_test()
+void CommonTest::hmac_sha384_test()
 {
     QByteArray key = "AveCaesar";
     QByteArray input = {"Lorem ipsum sit dolor"};
@@ -47,6 +54,34 @@ void commonTest::hmac_sha384_test()
     QVERIFY2(output == expected_output, "Failure");
 }
 
-QTEST_APPLESS_MAIN(commonTest)
+void CommonTest::btce_api_trade_info_test()
+{
+    QString json =
+    "{"
+       "\"success\":1,"
+        "\"return\":{"
+            "\"funds\":{"
+                "\"usd\":325,"
+                "\"btc\":23.998,"
+                "\"ltc\":0,"
+            "},"
+            "\"rights\":{"
+                "\"info\":1,"
+                "\"trade\":0,"
+                "\"withdraw\":0"
+            "},"
+            "\"transaction_count\":0,"
+            "\"open_orders\":1,"
+            "\"server_time\":1342123547"
+        "}"
+    "}";
+    std::unique_ptr<BtcTradeApi::Api>info = std::make_unique<BtcTradeApi::Info>(*keyStorage, *funds);
+
+    bool parse_success = info->parse(json.toUtf8());
+
+    QVERIFY(parse_success);
+}
+
+QTEST_APPLESS_MAIN(CommonTest)
 
 #include "tst_common.moc"
