@@ -1,3 +1,4 @@
+#include <QtMath>
 #include <QString>
 #include <QtTest>
 
@@ -14,9 +15,11 @@ public:
 private Q_SLOTS:
     void initTestCase();
     void cleanupTestCase();
+    void init();
     void hmac_sha512_test();
     void hmac_sha384_test();
-    void btce_api_trade_info_test();
+    void btce_api_success_trade_info_test();
+    void btce_api_failed_trade_info_test();
 private:
     std::unique_ptr<IKeyStorage> keyStorage;
     std::unique_ptr<BtcObjects::Funds> funds;
@@ -34,6 +37,12 @@ void CommonTest::initTestCase()
 
 void CommonTest::cleanupTestCase()
 {
+}
+
+void CommonTest::init()
+{
+    (*funds)["usd"] = 100;
+    (*funds)["btc"] = 2;
 }
 
 void CommonTest::hmac_sha512_test()
@@ -54,7 +63,7 @@ void CommonTest::hmac_sha384_test()
     QVERIFY2(output == expected_output, "Failure");
 }
 
-void CommonTest::btce_api_trade_info_test()
+void CommonTest::btce_api_success_trade_info_test()
 {
     QString json =
     "{"
@@ -79,8 +88,28 @@ void CommonTest::btce_api_trade_info_test()
 
     bool parse_success = info->parse(json.toUtf8());
 
-    QVERIFY(parse_success);
+    QVERIFY2(parse_success, "parse failed");
+    QVERIFY(info->isSuccess());
+    QVERIFY2(qFuzzyCompare((*funds)["usd"], 325), "USD funds parsed wrong");
+    QVERIFY2(qFuzzyCompare((*funds)["btc"], 23.998), "BTC funds parsed wrong");
 }
+
+void CommonTest::btce_api_failed_trade_info_test()
+{
+    QString json = "{\"success\":0, \"error\": \"malformed request\"}";
+    std::unique_ptr<BtcTradeApi::Api>info = std::make_unique<BtcTradeApi::Info>(*keyStorage, *funds);
+
+    bool parse_success;
+    parse_success = info->parse(json.toUtf8());
+
+    QVERIFY(parse_success);
+    QVERIFY(!info->isSuccess());
+    QVERIFY(info->error() == "malformed request");
+    QVERIFY2(qFuzzyCompare((*funds)["usd"], 100), "USD funds parsed wrong");
+    QVERIFY2(qFuzzyCompare((*funds)["btc"], 2), "BTC funds parsed wrong");
+}
+
+
 
 QTEST_APPLESS_MAIN(CommonTest)
 
