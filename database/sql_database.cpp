@@ -316,7 +316,7 @@ bool Database::prepare()
     prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out "
                " where round_id=:round_id", updateRound);
 
-    prepareSql("update rounds set end_time=now(), reason='done' "
+    prepareSql("update rounds set reason='done' "
                " where round_id=:round_id", closeRound);
 
     prepareSql("update rounds set end_time=now(), reason='archive' "
