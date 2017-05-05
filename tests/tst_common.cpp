@@ -63,7 +63,7 @@ void CommonTest::btce_api_trade_info_test()
             "\"funds\":{"
                 "\"usd\":325,"
                 "\"btc\":23.998,"
-                "\"ltc\":0,"
+                "\"ltc\":0"
             "},"
             "\"rights\":{"
                 "\"info\":1,"
