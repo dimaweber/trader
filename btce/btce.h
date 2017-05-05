@@ -3,7 +3,6 @@
 
 #include <QMap>
 #include <QUrlQuery>
-#include <QJsonDocument>
 #include <QFile>
 #include <QTextStream>
 
@@ -233,7 +232,7 @@ public:
     Info(IKeyStorage& storage, BtcObjects::Funds& funds):Api(storage),funds(funds){}
     void showSuccess() const override;
 protected:
-	int runme() {return 1;}
+    int runme() {return 1;}
 
     friend class ::CommonTest;
 };

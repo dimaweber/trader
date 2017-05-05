@@ -1,4 +1,6 @@
+#include "utils.h"
 #include "http_query.h"
+#include <QJsonDocument>
 
 size_t HttpQuery::writeFunc(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
@@ -11,6 +13,27 @@ size_t HttpQuery::writeFunc(char* ptr, size_t size, size_t nmemb, void* userdata
 void HttpQuery::setHeaders(CurlListWrapper& headers)
 {
     headers.setHeaders(curlHandle);
+}
+
+QVariantMap HttpQuery::convertReplyToMap(const QByteArray& json)
+{
+    QJsonDocument jsonResponce;
+    QJsonParseError error;
+    jsonResponce = QJsonDocument::fromJson(json, &error);
+    if (jsonResponce.isNull())
+    {
+        throw BrokenJson(QString("json parse error [offset: %2]: %1").arg(error.errorString()).arg(error.offset));
+    }
+    if (!jsonResponce.isObject())
+        throw BrokenJson("json recieved but it is not object");
+
+    QVariant v = jsonResponce.toVariant();
+
+    if (!v.canConvert<QVariantMap>())
+        throw BrokenJson("json could not be converted to map");
+
+    return v.toMap();
+
 }
 
 bool HttpQuery::performQuery()

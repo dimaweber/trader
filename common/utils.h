@@ -13,10 +13,13 @@
 const QString key_field = "__key";
 
 class MissingField : public std::runtime_error
-{public : explicit MissingField(const QString& msg): std::runtime_error(msg.toStdString()){}};
+{public : explicit MissingField(const QString& msg): std::runtime_error(QString("required field '%1' is missing").arg(msg).toStdString()){}};
 
 class BrokenJson : public std::runtime_error
 {public : explicit BrokenJson(const QString& msg): std::runtime_error(msg.toStdString()){}};
+
+class BadFieldValue: public std::runtime_error
+{public: BadFieldValue(const QString& field, const QVariant& value): std::runtime_error(QString("Inappropriate value '%2' for field '%1'").arg(field).arg(value.toString()).toStdString()){}};
 
 //typedef const EVP_MD* (*HashFunction)();
 

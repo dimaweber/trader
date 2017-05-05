@@ -18,7 +18,6 @@ HEADERS += \
     sql_database.h
 
 SOURCES += \
-    tablefield.cpp \
     sql_database.cpp
 
 win32: {

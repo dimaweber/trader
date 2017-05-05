@@ -122,7 +122,7 @@ bool Order::parse(const QVariantMap& map)
     else if (sType == "buy")
         type = Order::Buy;
     else
-        throw BrokenJson("type");
+        throw BadFieldValue("type", sType);
 
     amount = read_double(map, "amount");
     rate = read_double(map, "rate");
@@ -298,15 +298,7 @@ QString Api::path() const
 
 bool Api::parse(const QByteArray& serverAnswer)
 {
-    QJsonDocument jsonResponce;
-    jsonResponce = QJsonDocument::fromJson(serverAnswer);
-    QVariant json = jsonResponce.toVariant();
-
-    if (!json.canConvert<QVariantMap>())
-        throw BrokenJson("");
-
-    QVariantMap jsonMap = json.toMap();
-    return parseSuccess(jsonMap);
+    return parseSuccess(HttpQuery::convertReplyToMap(serverAnswer));
 }
 
 }
@@ -407,30 +399,17 @@ bool Api::parse(const QByteArray& serverAnswer)
     valid = false;
 
     try {
-        QJsonDocument jsonResponce;
-        QJsonParseError error;
-        jsonResponce = QJsonDocument::fromJson(serverAnswer, &error);
-        if (jsonResponce.isNull())
-        {
-            throw BrokenJson(QString("json parse error [offset: %2]: %1").arg(error.errorString()).arg(error.offset));
-        }
-        QVariant json = jsonResponce.toVariant();
-
-        if (!json.canConvert<QVariantMap>())
-            throw BrokenJson("");
-
-
-        QVariantMap jsonMap = json.toMap();
-        if (read_long(jsonMap, "success"))
+        QVariantMap map = HttpQuery::convertReplyToMap(serverAnswer);
+        if (read_long(map, "success"))
         {
             success = true;
 
-            parseSuccess(read_map(jsonMap, "return"));
+            parseSuccess(read_map(map, "return"));
         }
         else
         {
             success = false;
-            errorMsg = read_string(jsonMap, "error");
+            errorMsg = read_string(map, "error");
         }
 
         valid = true;
@@ -603,7 +582,7 @@ QString CancelOrder::methodName() const
 bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
 {
     if (read_ulong(returnMap, "order_id") != order_id)
-        throw BrokenJson("order_id");
+        throw BadFieldValue("order_id", order_id);
 
     funds.parse(read_map(returnMap, "funds"));
 
@@ -675,10 +654,11 @@ QString read_string(const QVariantMap& map, const QString& name)
 double read_double(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    double ret = read_string(map, name).toDouble(&ok);
+    QString v = read_string(map, name);
+    double ret = v.toDouble(&ok);
 
     if (!ok)
-        throw BrokenJson(name);
+        throw BadFieldValue(name, v);
 
     return ret;
 }
@@ -686,10 +666,11 @@ double read_double(const QVariantMap& map, const QString& name)
 qint64 read_long(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    long ret = read_string(map, name).toLongLong(&ok);
+    QString v = read_string(map, name);
+    long ret = v.toLongLong(&ok);
 
     if (!ok)
-        throw BrokenJson(name);
+        throw BadFieldValue(name, v);
 
     return ret;
 }
@@ -697,10 +678,11 @@ qint64 read_long(const QVariantMap& map, const QString& name)
 quint64 read_ulong(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    quint64 ret = read_string(map, name).toULongLong(&ok);
+    QString v = read_string(map, name);
+    quint64 ret = v.toULongLong(&ok);
 
     if (!ok)
-        throw BrokenJson(name);
+        throw BadFieldValue(name, v);
 
     return ret;
 }
@@ -711,7 +693,7 @@ QVariantMap read_map(const QVariantMap& map, const QString& name)
         throw MissingField(name);
 
     if (!map[name].canConvert<QVariantMap>())
-        throw BrokenJson(name);
+        throw BrokenJson(QString("Field '%1' value could not be converted to map").arg(name));
 
     QVariantMap ret = map[name].toMap();
     ret[key_field] = name;
@@ -725,7 +707,7 @@ QVariantList read_list(const QVariantMap& map, const QString& name)
         throw MissingField(name);
 
     if (!map[name].canConvert<QVariantList>())
-        throw BrokenJson(name);
+        throw BrokenJson(QString("Field '%1' value could not be converted to list").arg(name));
 
     return map[name].toList();
 }
