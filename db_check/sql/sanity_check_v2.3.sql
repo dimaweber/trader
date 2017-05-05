@@ -19,19 +19,19 @@ select o.order_id from transactions t right join orders o on o.order_id=t.order_
 --   partially done orders with start_amount == amount or zero amount
 select order_id from orders where status_id=3 and (start_amount = amount or amount=0);
 --   buy orders with goods income differ from transactions income
-select o.*, sum(t.amount) as t_sum, (1-s.comission) * (o.start_amount-o.amount) as o_sum from transactions t left join orders o on t.order_id=o.order_id left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where o.type='buy' and t.type=4 and t.currency=s.goods group by t.order_id having abs(t_sum-o_sum) > .00001;
+select o.*, sum(t.amount) as t_sum, (1-s.comission) * (o.start_amount-o.amount) as o_sum from transactions t left join orders o on t.order_id=o.order_id left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where o.type='buy' and t.type=4 and t.currency=s.goods group by t.order_id having abs(t_sum-o_sum) > .001;
 --   sell orders with goods outcome differ from transactions
-select o.*, sum(t.amount) as t_sum, (1-s.comission) * (o.start_amount-o.amount) as o_sum from transactions t left join orders o on t.order_id=o.order_id left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where o.type='sell' and t.type=5 and t.currency=s.currency group by t.order_id having abs(t_sum-o_sum) > .00001;
+select o.*, sum(t.amount) as t_sum, (1-s.comission) * (o.start_amount-o.amount) as o_sum from transactions t left join orders o on t.order_id=o.order_id left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where o.type='sell' and t.type=5 and t.currency=s.currency group by t.order_id having abs(t_sum-o_sum) > .001;
 --   buy orders with currency outcome differ from transactions
 select o.*, sum( (t.type * 2 - 9) * t.amount) as t_sum, o.rate  * (o.start_amount-o.amount) as o_sum from transactions t left join orders o on t.order_id=o.order_id left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where o.type='buy' and t.currency=s.currency and o.status_id > 0 group by t.order_id having abs(t_sum-o_sum) > .01;
 --FR rounds with goods income mismatch orders goods income
-select r.round_id, truncate(r.g_in, 5) as rounds_g_in, truncate(sum(start_amount - amount)*(1-s.comission),5) as orders_g_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where r.reason='done' and o.type='buy' group by r.round_id having abs(rounds_g_in - orders_g_in) > .00001;
+select r.round_id, truncate(r.g_in, 5) as rounds_g_in, truncate(sum(start_amount - amount)*(1-s.comission),5) as orders_g_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where r.reason='done' and o.type='buy' group by r.round_id having abs(rounds_g_in - orders_g_in) > .001;
 --FR rounds with goods outcome mismatch orders goods outcome
 select r.round_id, truncate(r.g_out, 5) as rounds_g_out, truncate(SUM(o.start_amount-o.amount),5)  as orders_g_out from orders o left join rounds r on r.round_id=o.round_id where r.reason='done' and o.type='sell' group by r.round_id having rounds_g_out <> orders_g_out;
 --FR rounds with currency income mismatch orders currency income
 select r.round_id, truncate(sum((o.start_amount - o.amount)*o.rate)*(1-s.comission), 3) as orders_c_in, truncate(r.c_in, 3) as rounds_c_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id where status_id <> 2 and r.reason='done' and o.type='sell' group by r.round_id having orders_c_in <> rounds_c_in;
 --FR rounds with goods income / outcome mismatch
-select r.round_id, r.g_in, r.g_out from rounds  r where abs(truncate(r.g_in,5) - truncate(r.g_out,5)) > .00001;
+select r.round_id, r.g_in, r.g_out from rounds  r where abs(truncate(r.g_in,5) - truncate(r.g_out,5)) > .001;
 --FR rounds with negative outcome
 select r.round_id, r.income from rounds r where r.income < 0;
 --FR rounds with end_time and reason mismatch
@@ -47,7 +47,7 @@ select B.round_id from (select o.round_id from orders o where o.type='sell' and 
 --FR rounds with zero dep_usage
 select r.round_id from rounds r where r.dep_usage=0;
 --FR round orders goods in/out mismatch
-select B.round_id, B.g_in * (1-B.comission), S.g_out from (select o1.round_id, sum(o1.start_amount-o1.amount) as g_in, s.comission from orders o1 left join rounds r on r.round_id=o1.round_id left join settings s on r.settings_id=s.id where o1.type='buy' and r.reason='done' group by o1.round_id) B left join (select o2.round_id, sum(o2.start_amount-o2.amount) as g_out from orders o2 where o2.type='sell' group by o2.round_id) S on B.round_id=S.round_id where abs(B.g_in * (1-B.comission) - S.g_out) > .0001;
+select B.round_id, B.g_in * (1-B.comission), S.g_out from (select o1.round_id, sum(o1.start_amount-o1.amount) as g_in, s.comission from orders o1 left join rounds r on r.round_id=o1.round_id left join settings s on r.settings_id=s.id where o1.type='buy' and r.reason='done' group by o1.round_id) B left join (select o2.round_id, sum(o2.start_amount-o2.amount) as g_out from orders o2 where o2.type='sell' group by o2.round_id) S on B.round_id=S.round_id where abs(B.g_in * (1-B.comission) - S.g_out) > .001;
 --FR active rounds with non zero g/c in/out
 select r.round_id from rounds r where r.c_in + r.c_out + r.g_in + r.g_out <> 0 and r.reason = 'active';
 --FR done rounds with more then 1 executed sell
