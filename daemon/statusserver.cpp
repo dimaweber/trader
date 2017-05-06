@@ -61,6 +61,7 @@ void StatusServer::onSocketReadyRead()
         socket->close();
         socket->deleteLater();
     }
+    socket->flush();
 }
 
 void StatusServer::onSocketError(QAbstractSocket::SocketError)
