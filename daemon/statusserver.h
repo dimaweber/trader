@@ -17,6 +17,7 @@ signals:
 
 public slots:
     void onStatusChange(State state);
+    void start();
 protected slots:
     void onNewStatusConnection();
     void onStatusServerError();
@@ -25,6 +26,7 @@ protected slots:
 private:
     QTcpServer statusServer;
     State state;
+    int port;
 };
 
 #endif // STATUSSERVER_H

@@ -7,16 +7,20 @@
 #include <memory>
 
 StatusServer::StatusServer(int port, QObject *parent)
-    : QObject(parent), state(Starting)
+    : QObject(parent), state(Starting), port(port)
 {
-    connect (&statusServer, &QTcpServer::newConnection, this, &StatusServer::onNewStatusConnection);
-    connect (&statusServer, &QTcpServer::acceptError, this, &StatusServer::onStatusServerError);
-    statusServer.listen(QHostAddress::AnyIPv4, port);
 }
 
 void StatusServer::onStatusChange(State state)
 {
     this->state = state;
+}
+
+void StatusServer::start()
+{
+    connect (&statusServer, &QTcpServer::newConnection, this, &StatusServer::onNewStatusConnection);
+    connect (&statusServer, &QTcpServer::acceptError, this, &StatusServer::onStatusServerError);
+    statusServer.listen(QHostAddress::AnyIPv4, port);
 }
 
 void StatusServer::onNewStatusConnection()

@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QSettings>
+#include <QThread>
 
 #ifndef Q_OS_WIN
 # include <signal.h>
@@ -52,12 +53,19 @@ int main(int argc, char *argv[])
     }
     BtcTradeApi::enableTradeLog(QCoreApplication::applicationDirPath() + "/../data/trade.log");
 
+    QThread statusServerThread;
     StatusServer statusServer;
+    statusServer.moveToThread(&statusServerThread);
+    statusServerThread. connect (&statusServerThread, SIGNAL(started()), &statusServer, SLOT(start()));
     Trader trader(settings, database, exit_asked);
 
     app.connect(&trader, &Trader::statusChanged, &statusServer, &StatusServer::onStatusChange);
+    app.connect (&trader, &Trader::done, &statusServerThread, &QThread::quit);
     app.connect (&trader, &Trader::done, &app, &QCoreApplication::quit);
 
-    return app.exec();
+    int ret = app.exec();
+    statusServerThread.wait();
+
+    return ret;
 }
 
