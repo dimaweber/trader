@@ -40,18 +40,18 @@ void StatusServer::onSocketReadyRead()
     if (!socket->canReadLine())
         return;
 
-    QByteArray msg = socket->readLine();
+    QString msg = QString::fromUtf8(socket->readLine()).trimmed();
     if (msg == "get_status")
     {
         switch (state)
         {
-            case Starting: socket->write("STARTING"); break;
-            case Idle: socket->write("IDLE"); break;
-            case Running: socket->write("RUNNING"); break;
-            case Db_Issue: socket->write("DB_ISSUE"); break;
-            case Http_Issue: socket->write("HTTP_ISSUE"); break;
-            case Unknown_Issue: socket->write("UNKNOWN_ISSUE"); break;
-            case Btc_Issue: socket->write("BTC_ISSUE"); break;
+            case Starting: socket->write("STARTING\n"); break;
+            case Idle: socket->write("IDLE\n"); break;
+            case Running: socket->write("RUNNING\n"); break;
+            case Db_Issue: socket->write("DB_ISSUE\n"); break;
+            case Http_Issue: socket->write("HTTP_ISSUE\n"); break;
+            case Unknown_Issue: socket->write("UNKNOWN_ISSUE\n"); break;
+            case Btc_Issue: socket->write("BTC_ISSUE\n"); break;
             case Done: socket->write("DONE"); break;
         }
         socket->flush();
