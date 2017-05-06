@@ -279,10 +279,12 @@ void Trader::process()
                 }
                 catch (const QSqlQuery& e)
                 {
+                    database.rollback();
                     status = e.lastError().text();
                 }
                 catch (const std::runtime_error& e)
                 {
+                    database.rollback();
                     status = e.what();
                 }
 
@@ -503,9 +505,6 @@ void Trader::process()
                         }
                     }
                 }
-                /// BUG: if STOP here -- db inconsistent with exchanger!!!!! Update dep usage when creating buy order insted -- in transaction!
-                usage_params[":usage"] = total_currency_spent;
-                performSql("set dep_usage", *database.setRoundsDepUsage, usage_params, silent_sql);
 
                 round_in_progress = true;
                 std::clog << QString("total bid: %1 %2").arg(total_currency_spent).arg(pair.currency())

@@ -342,6 +342,7 @@ bool Database::prepare()
 
     prepareSql("update rounds set dep_usage=:usage "
                " where round_id=:round_id", setRoundsDepUsage);
+    prepareSql("update rounds set dep_usage=dep_usage + :increase where round_id=:round_id", increaseRoundDepUsage);
 
     prepareSql("insert into rates (time, currency, goods, buy_rate, sell_rate, last_rate, currency_volume, goods_volume) values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);
 

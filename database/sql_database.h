@@ -58,6 +58,7 @@ public:
     std::unique_ptr<QSqlQuery> depositIncrease;
     std::unique_ptr<QSqlQuery> orderTransition;
     std::unique_ptr<QSqlQuery> setRoundsDepUsage;
+    std::unique_ptr<QSqlQuery> increaseRoundDepUsage;
     std::unique_ptr<QSqlQuery> insertRate;
     std::unique_ptr<QSqlQuery> insertDep;
     std::unique_ptr<QSqlQuery> updateOrdersCheckToActive;
