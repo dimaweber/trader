@@ -10,7 +10,7 @@ StatusServer::StatusServer(int port, QObject *parent)
     : QObject(parent), state(Starting)
 {
     connect (&statusServer, &QTcpServer::newConnection, this, &StatusServer::onNewStatusConnection);
-    connect (&statusServer, &QTcpServer::serverError, this, &StatusServer::onStatusServerError);
+    connect (&statusServer, &QTcpServer::acceptError, this, &StatusServer::onStatusServerError);
     statusServer.listen(QHostAddress::AnyIPv4, port);
 }
 
@@ -22,10 +22,11 @@ void StatusServer::onStatusChange(State state)
 void StatusServer::onNewStatusConnection()
 {
     std::unique_ptr<QTcpSocket> socket = std::make_unique<QTcpSocket>(statusServer.nextPendingConnection());
-    socket->write("OK");
-    if (socket->canReadLine())
+    socket->write("OK\n");
+    socket->flush();
+    //if (socket->canReadLine())
     {
-        QByteArray msg = socket->readLine();
+        //QByteArray msg = socket->readLine();
         switch (state)
         {
             case Starting: socket->write("STARTING"); break;
@@ -38,6 +39,7 @@ void StatusServer::onNewStatusConnection()
             case Done: socket->write("DONE"); break;
         }
     }
+    socket->flush();
 }
 
 void StatusServer::onStatusServerError()
