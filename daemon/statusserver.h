@@ -20,6 +20,8 @@ public slots:
 protected slots:
     void onNewStatusConnection();
     void onStatusServerError();
+    void onSocketReadyRead();
+    void onSocketError(QAbstractSocket::SocketError);
 private:
     QTcpServer statusServer;
     State state;

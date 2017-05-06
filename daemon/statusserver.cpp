@@ -10,7 +10,7 @@ StatusServer::StatusServer(int port, QObject *parent)
     : QObject(parent), state(Starting)
 {
     connect (&statusServer, &QTcpServer::newConnection, this, &StatusServer::onNewStatusConnection);
-    connect (&statusServer, &QTcpServer::serverError, this, &StatusServer::onStatusServerError);
+    connect (&statusServer, &QTcpServer::acceptError, this, &StatusServer::onStatusServerError);
     statusServer.listen(QHostAddress::AnyIPv4, port);
 }
 
@@ -21,11 +21,28 @@ void StatusServer::onStatusChange(State state)
 
 void StatusServer::onNewStatusConnection()
 {
-    std::unique_ptr<QTcpSocket> socket = std::make_unique<QTcpSocket>(statusServer.nextPendingConnection());
-    socket->write("OK");
-    if (socket->canReadLine())
+    QTcpSocket* socket = statusServer.nextPendingConnection();
+    connect(socket, &QTcpSocket::readyRead, this, &StatusServer::onSocketReadyRead);
+    connect(socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onSocketError(QAbstractSocket::SocketError)));
+}
+
+void StatusServer::onStatusServerError()
+{
+    std::cerr << statusServer.errorString() << std::endl;
+}
+
+void StatusServer::onSocketReadyRead()
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (!socket)
+        return;
+
+    if (!socket->canReadLine())
+        return;
+
+    QByteArray msg = socket->readLine();
+    if (msg == "get_status")
     {
-        QByteArray msg = socket->readLine();
         switch (state)
         {
             case Starting: socket->write("STARTING"); break;
@@ -37,10 +54,20 @@ void StatusServer::onNewStatusConnection()
             case Btc_Issue: socket->write("BTC_ISSUE"); break;
             case Done: socket->write("DONE"); break;
         }
+        socket->flush();
+    }
+    else if (msg=="exit")
+    {
+        socket->close();
+        socket->deleteLater();
     }
 }
 
-void StatusServer::onStatusServerError()
+void StatusServer::onSocketError(QAbstractSocket::SocketError)
 {
-    std::cerr << statusServer.errorString() << std::endl;
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (!socket)
+        return;
+
+    std::cerr << socket->errorString() << std::endl;
 }
