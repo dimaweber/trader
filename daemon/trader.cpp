@@ -23,7 +23,7 @@ Trader::Trader(QSettings& settings, Database& database, bool& exit_asked, QObjec
     emit statusChanged(StatusServer::Idle);
     connect (&runTimer, &QTimer::timeout, this, &Trader::process);
     runTimer.setSingleShot(true);
-    runTimer.setInterval(10000);
+    runTimer.setInterval(1);
     runTimer.start();
 }
 
@@ -57,7 +57,7 @@ void Trader::process()
     settings.sync();
     bool silent_sql = settings.value("debug/silent_sql", true).toBool();
     bool silent_http = settings.value("debug/silent_http", true).toBool();
-    QDateTime ratesUpdateTime = QDateTime::currentDateTime();
+    QDateTime ratesUpdateTime = QDateTime::currentDateTime().toUTC();
     try
     {
         timer.restart();
