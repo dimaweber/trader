@@ -60,6 +60,8 @@ int main(int argc, char *argv[])
     Trader trader(settings, database, exit_asked);
     statusServerThread.start();
 
+    qRegisterMetaType<StatusServer::State>("StatusServer::State");
+
     app.connect (&trader, &Trader::statusChanged, &statusServer, &StatusServer::onStatusChange);
     app.connect (&trader, &Trader::done, &statusServerThread, &QThread::quit);
     app.connect (&trader, &Trader::done, &app, &QCoreApplication::quit);
