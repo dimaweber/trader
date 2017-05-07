@@ -16,7 +16,7 @@ public:
 signals:
 
 public slots:
-    void onStatusChange(State state);
+    void onStatusChange(StatusServer::State state);
     void start();
 protected slots:
     void onNewStatusConnection();
@@ -28,5 +28,7 @@ private:
     State state;
     int port;
 };
+
+Q_DECLARE_METATYPE(StatusServer::State)
 
 #endif // STATUSSERVER_H

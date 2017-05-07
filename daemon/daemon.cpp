@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
     statusServerThread. connect (&statusServerThread, SIGNAL(started()), &statusServer, SLOT(start()));
     Trader trader(settings, database, exit_asked);
 
-    app.connect(&trader, &Trader::statusChanged, &statusServer, &StatusServer::onStatusChange);
+    app.connect(&trader, SIGNAL(statusChanged(StatusServer::State)), &statusServer, SLOT(onStatusChange(StatusServer::State)));
     app.connect (&trader, &Trader::done, &statusServerThread, &QThread::quit);
     app.connect (&trader, &Trader::done, &app, &QCoreApplication::quit);
 

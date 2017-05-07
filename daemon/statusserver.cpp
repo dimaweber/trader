@@ -11,7 +11,7 @@ StatusServer::StatusServer(int port, QObject *parent)
 {
 }
 
-void StatusServer::onStatusChange(State state)
+void StatusServer::onStatusChange(StatusServer::State state)
 {
     this->state = state;
 }
