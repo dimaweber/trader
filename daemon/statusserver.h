@@ -30,4 +30,6 @@ private:
     int port;
 };
 
+Q_DECLARE_METATYPE(StatusServer::State)
+
 #endif // STATUSSERVER_H
