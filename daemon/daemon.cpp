@@ -58,6 +58,7 @@ int main(int argc, char *argv[])
     statusServer.moveToThread(&statusServerThread);
     app.connect (&statusServerThread, SIGNAL(started()), &statusServer, SLOT(start()));
     Trader trader(settings, database, exit_asked);
+    statusServerThread.start();
 
     app.connect (&trader, &Trader::statusChanged, &statusServer, &StatusServer::onStatusChange);
     app.connect (&trader, &Trader::done, &statusServerThread, &QThread::quit);
