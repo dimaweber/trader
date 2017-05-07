@@ -27,7 +27,7 @@ public:
 
 signals:
     void done();
-    void statusChanged(StatusServer::State);
+    void statusChanged(int);
 
 public slots:
     void process();

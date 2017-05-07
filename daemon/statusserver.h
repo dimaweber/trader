@@ -17,7 +17,7 @@ public:
 signals:
 
 public slots:
-    void onStatusChange(StatusServer::State state);
+    void onStatusChange(int);
     void start();
 protected slots:
     void onNewStatusConnection();
