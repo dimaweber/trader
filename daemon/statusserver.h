@@ -10,13 +10,14 @@ class StatusServer : public QObject
     Q_OBJECT
 public:
     enum State { Starting, Idle, Running, Db_Issue, Http_Issue, Unknown_Issue, Btc_Issue, Done};
+    Q_ENUM(State)
 
     explicit StatusServer(int port = 5010, QObject *parent = 0);
 
 signals:
 
 public slots:
-    void onStatusChange(State state);
+    void onStatusChange(StatusServer::State state);
     void start();
 protected slots:
     void onNewStatusConnection();
