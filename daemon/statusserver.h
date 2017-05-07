@@ -10,7 +10,7 @@ class StatusServer : public QObject
     Q_OBJECT
 public:
     enum State { Starting, Idle, Running, Db_Issue, Http_Issue, Unknown_Issue, Btc_Issue, Done};
-    Q_ENUM(State)
+    Q_ENUM(StatusServer::State)
 
     explicit StatusServer(int port = 5010, QObject *parent = 0);
 
