@@ -12,9 +12,9 @@ StatusServer::StatusServer(int port, QObject *parent)
 {
 }
 
-void StatusServer::onStatusChange(int)
+void StatusServer::onStatusChange(StatusServer::State)
 {
-    this->state = static_cast<StatusServer::State>(state);
+    this->state = state;
 }
 
 void StatusServer::start()

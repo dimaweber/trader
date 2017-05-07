@@ -20,7 +20,7 @@ public:
 signals:
 
 public slots:
-    void onStatusChange(int);
+    void onStatusChange(StatusServer::State);
     void start();
 protected slots:
     void onNewStatusConnection();
