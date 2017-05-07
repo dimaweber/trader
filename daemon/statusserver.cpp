@@ -1,6 +1,7 @@
 #include "statusserver.h"
 #include <utils.h>
 
+#include <QTcpServer>
 #include <QTcpSocket>
 
 #include <iostream>
@@ -18,21 +19,30 @@ void StatusServer::onStatusChange(int)
 
 void StatusServer::start()
 {
-    connect (&statusServer, &QTcpServer::newConnection, this, &StatusServer::onNewStatusConnection);
-    connect (&statusServer, &QTcpServer::acceptError, this, &StatusServer::onStatusServerError);
-    statusServer.listen(QHostAddress::AnyIPv4, port);
+    statusServer = new QTcpServer(this);
+    connect (statusServer, &QTcpServer::newConnection, this, &StatusServer::onNewStatusConnection);
+    connect (statusServer, &QTcpServer::acceptError, this, &StatusServer::onStatusServerError);
+    statusServer->listen(QHostAddress::AnyIPv4, port);
 }
 
 void StatusServer::onNewStatusConnection()
 {
-    QTcpSocket* socket = statusServer.nextPendingConnection();
+    QTcpServer* server = qobject_cast<QTcpServer*>(sender());
+    if (!server)
+        return;
+
+    QTcpSocket* socket = server->nextPendingConnection();
     connect(socket, &QTcpSocket::readyRead, this, &StatusServer::onSocketReadyRead);
     connect(socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onSocketError(QAbstractSocket::SocketError)));
 }
 
 void StatusServer::onStatusServerError()
 {
-    std::cerr << statusServer.errorString() << std::endl;
+    QTcpServer* server = qobject_cast<QTcpServer*>(sender());
+    if (!server)
+        return;
+
+    std::cerr << server->errorString() << std::endl;
 }
 
 void StatusServer::onSocketReadyRead()

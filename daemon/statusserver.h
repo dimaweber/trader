@@ -1,9 +1,12 @@
 #ifndef STATUSSERVER_H
 #define STATUSSERVER_H
 
+#include <QAbstractSocket>
+
 #include <QtCore/QObject>
 #include <QtCore/qglobal.h>
-#include <QTcpServer>
+
+class QTcpServer;
 
 class StatusServer : public QObject
 {
@@ -25,7 +28,7 @@ protected slots:
     void onSocketReadyRead();
     void onSocketError(QAbstractSocket::SocketError);
 private:
-    QTcpServer statusServer;
+    QTcpServer* statusServer;
     State state;
     int port;
 };
