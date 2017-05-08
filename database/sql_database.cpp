@@ -340,8 +340,7 @@ bool Database::prepare()
     prepareSql("update orders set round_id=:round_id, modified=now() "
                " where order_id=:order_id", orderTransition);
 
-    prepareSql("update rounds set dep_usage=:usage "
-               " where round_id=:round_id", setRoundsDepUsage);
+    prepareSql("update rounds r left join orders o on o.round_id=r.round_id set dep_usage=dep_usage - :decrease where o.order_id=:order_id", decreaseRoundDepUsage);
     prepareSql("update rounds set dep_usage=dep_usage + :increase where round_id=:round_id", increaseRoundDepUsage);
 
     prepareSql("insert into rates (time, currency, goods, buy_rate, sell_rate, last_rate, currency_volume, goods_volume) values (:time, :currency, :goods, :buy, :sell, :last, :currency_volume, :goods_volume)", insertRate);

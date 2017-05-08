@@ -16,6 +16,11 @@ BtcTradeApi::OrderInfo cancel_order(Database& database, BtcObjects::Order::Id or
 
         /// BUG: if STOP here -- db inconsistent with exchanger!!!!!
         performSql(QString("update order %1").arg(order_id), *database.updateSetCanceled, upd_param, silent_sql);
+
+        QVariantMap params;
+        params[":order_id"] = order_id;
+        params[":decrease"] = info.order.rate * info.order.amount;
+        performSql("update dep_usage", *database.decreaseRoundDepUsage, params, silent_sql);
     }
 
     return info;

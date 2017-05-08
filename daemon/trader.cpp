@@ -65,10 +65,10 @@ void Trader::process()
         std::clog << ratesUpdateTime.toString() << std::endl;
         std::clog << "update currencies rate info ...";
         if (!pticker.performQuery())
-            std::clog << "fail" << std::endl;
+            std::clog << "fail to get curren rates" << std::endl;
         else
         {
-            std::clog << "ok" << std::endl;
+            std::clog << "current rates recieved" << std::endl;
 
             QVariantMap params;
             try
