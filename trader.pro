@@ -8,7 +8,8 @@ SUBDIRS += common \
 		   db_check \
 		   add_order \
 	bitfinex_client \
-	tests
+	tests \
+    emul
 !win32:!linux-* {
 SUBDIRS += tgbot-cpp \
 		   infobot \
