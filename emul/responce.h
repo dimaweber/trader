@@ -9,8 +9,8 @@ class QSqlQuery;
 
 enum Method {Invalid, PublicInfo, PublicTicker, PublicDepth};
 QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& method);
-QVariantMap getInfoResponce(QSqlQuery& query);
-QVariantMap getTickerResponce(QSqlQuery& query, const QueryParser& httpQuery);
-QVariantMap getDepthResponce(QSqlQuery& query, const QueryParser& httpQuery);
+QVariantMap getInfoResponce(QSqlDatabase& database);
+QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQuery);
+QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuery);
 
 #endif // RESPONCE_H

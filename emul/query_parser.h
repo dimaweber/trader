@@ -70,5 +70,18 @@ public:
             return true;
         return false;
     }
+    int limit() const
+    {
+        QUrlQuery q(url);
+        if (!q.hasQueryItem("limit"))
+            return 150;
+        bool ok;
+        int l = q.queryItemValue("limit").toInt(&ok);
+        if (!ok)
+            return 150;
+        if (l>5000)
+            return 5000;
+        return l;
+    }
 };
 #endif // QUERY_PARSER_H

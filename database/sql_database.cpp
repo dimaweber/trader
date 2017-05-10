@@ -178,7 +178,7 @@ bool Database::check_version()
     return (major == DB_VERSION_MAJOR && minor == DB_VERSION_MINOR);
 }
 
-bool Database::transaction() { return db->transaction(); }
+bool Database::transaction() { return db->transaction(); /* TODO: check sql friver has Transaction feature. use sql.exec("START TRANSACTION") if not*/}
 
 bool Database::commit() {return db->commit(); }
 

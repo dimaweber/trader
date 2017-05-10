@@ -4,10 +4,11 @@
 #include <QSqlQuery>
 #include <QDateTime>
 
-QVariantMap getInfoResponce(QSqlQuery& query)
+QVariantMap getInfoResponce(QSqlDatabase& database)
 {
     QVariantMap var;
     QVariantMap pairs;
+    QSqlQuery query(database);
     var["server_time"] = QDateTime::currentDateTime().toTime_t();
     if (query.exec( "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs" ))
     {
@@ -15,11 +16,11 @@ QVariantMap getInfoResponce(QSqlQuery& query)
         {
             QVariantMap pair;
             pair["decimal_places"] = query.value(1).toInt();
-            pair["min_price"] = query.value(2).toDouble();
-            pair["max_price"] = query.value(3).toDouble();
-            pair["min_amount"] = query.value(4).toDouble();
+            pair["min_price"] = query.value(2).toFloat();
+            pair["max_price"] = query.value(3).toFloat();
+            pair["min_amount"] = query.value(4).toFloat();
             pair["hidden"] = query.value(5).toInt();
-            pair["fee"] = query.value(6).toDouble();
+            pair["fee"] = query.value(6).toFloat();
 
             pairs[query.value(0).toString()] = pair;
         }
@@ -28,10 +29,11 @@ QVariantMap getInfoResponce(QSqlQuery& query)
     return var;
 }
 
-QVariantMap getTickerResponce(QSqlQuery& query, const QueryParser& httpQuery)
+QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQuery)
 {
     QVariantMap var;
-    query.prepare("select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker where pair=:name");
+    QSqlQuery query(database);
+    query.prepare("select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name");
     for (const QString& pairName: httpQuery.pairs())
     {
         if (pairName.isEmpty())
@@ -49,15 +51,15 @@ QVariantMap getTickerResponce(QSqlQuery& query, const QueryParser& httpQuery)
             if (query.next())
             {
                 QVariantMap pair;
-                pair["high"] = query.value(0).toFloat();
-                pair["low"] = query.value(1).toDouble();
-                pair["avg"] = query.value(2).toDouble();
-                pair["vol"] = query.value(3).toDouble();
-                pair["vol_cur"] = query.value(4).toInt();
-                pair["last"] = query.value(5).toDouble();
-                pair["buy"] = query.value(6).toFloat();
-                pair["sell"] = query.value(7).toFloat();
-                pair["updated"] = query.value(8).toInt();
+                pair["high"] = query.value(0);
+                pair["low"] = query.value(1);
+                pair["avg"] = query.value(2);
+                pair["vol"] = query.value(3);
+                pair["vol_cur"] = query.value(4);
+                pair["last"] = query.value(5);
+                pair["buy"] = query.value(6);
+                pair["sell"] = query.value(7);
+                pair["updated"] = query.value(8);
 
                 var[pairName] = pair;
             }
@@ -84,22 +86,21 @@ QVariantMap getTickerResponce(QSqlQuery& query, const QueryParser& httpQuery)
 QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& method)
 {
     QString methodName = parser.method();
-    QSqlQuery sqlQuery(db);
     QVariantMap var;
 
     if (methodName == "info")
     {
-        var = getInfoResponce(sqlQuery);
+        var = getInfoResponce(db);
         method = PublicInfo;
     }
     else if (methodName == "ticker" )
     {
-        var = getTickerResponce(sqlQuery, parser);
+        var = getTickerResponce(db, parser);
         method = PublicTicker;
     }
     else if (methodName == "depth")
     {
-        var = getDepthResponce(sqlQuery, parser);
+        var = getDepthResponce(db, parser);
         method = PublicDepth;
     }
     else
@@ -112,10 +113,41 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
     return var;
 }
 
-QVariantMap getDepthResponce(QSqlQuery& query, const QueryParser& httpQuery)
+void appendDepthToMap(QVariantMap& var, QSqlQuery& query, const QString& pairName, int limit)
+{
+    query.bindValue(":name", pairName);
+    if (query.exec())
+    {
+        while(query.next())
+        {
+            QString type = query.value(0).toString();
+
+            QVariantMap mapPair;
+            if (var.contains(pairName))
+                mapPair = var[pairName].toMap();
+            QVariantList list;
+            if (mapPair.contains(type))
+                list = mapPair[type].toList();
+            if (list.size() >= limit)
+                break;
+            QVariantList values;
+            values << query.value(1) << query.value(2);
+            QVariant castedValue = values;
+            list << castedValue;
+            mapPair[type] = list;
+            var[pairName] = mapPair;
+        }
+    }
+}
+
+QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuery)
 {
     QVariantMap var;
-    query.prepare("select type, rate, sum(start_amount - amount) from active_orders where status = 0 and pair=:name group by pair, type, rate order by pair, type, rate");
+    int limit = httpQuery.limit();
+    QSqlQuery bidsQuery(database);
+    QSqlQuery asksQuery(database);
+    bidsQuery.prepare("select type, rate, sum(amount), decimal_places from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='bids' and p.pair=:name group by pair, type, rate order by pair, type, rate desc");
+    asksQuery.prepare("select type, rate, sum(amount), decimal_places from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='asks' and p.pair=:name group by pair, type, rate order by pair, type, rate asc");
     for (const QString& pairName: httpQuery.pairs())
     {
         if (pairName.isEmpty())
@@ -127,29 +159,8 @@ QVariantMap getDepthResponce(QSqlQuery& query, const QueryParser& httpQuery)
             var["error"] = "Duplicated pair name: " + pairName;
             break;
         }
-        query.bindValue(":name", pairName);
-        if (query.exec())
-        {
-            while(query.next())
-            {
-                QString type = query.value(0).toString();
-                float rate = query.value(1).toFloat();
-                float amount = query.value(2).toFloat();
-
-                QVariantMap mapPair;
-                if (var.contains(pairName))
-                    mapPair = var[pairName].toMap();
-                QVariantList list;
-                if (mapPair.contains(type))
-                    list = mapPair[type].toList();
-                QVariantList values;
-                values << rate << amount;
-                QVariant castedValue = values;
-                list << castedValue;
-                mapPair[type] = list;
-                var[pairName] = mapPair;
-            }
-        }
+        appendDepthToMap(var, bidsQuery, pairName, limit);
+        appendDepthToMap(var, asksQuery, pairName, limit);
     }
     if (var.isEmpty())
     {

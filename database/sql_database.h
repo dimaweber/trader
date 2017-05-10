@@ -69,7 +69,7 @@ public:
     std::unique_ptr<QSqlQuery> insertIntoQueue;
     std::unique_ptr<QSqlQuery> getFromQueue;
     std::unique_ptr<QSqlQuery> markQueueDone;
-//    std::unique_ptr<QSqlQuery> deleteFromQueue;
+
 
     bool init();
     bool check_version();
