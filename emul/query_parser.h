@@ -8,12 +8,12 @@
 
 
 #define API_PATH "/api/3/"
+#define TAPI_PATH "/tapi/"
 
 class QueryParser
 {
-    QUrl url;
-    QStringList splittedPath;
 public:
+    enum Scope {Public, Private};
     QueryParser(const QString& scheme, const QString& addr, const QString& port, const QString& path, const QString& query)
     {
         url.setScheme(scheme);
@@ -24,7 +24,17 @@ public:
 
         QString p = url.path();
         if (p.startsWith(API_PATH))
+        {
+            scope = Scope::Public;
             p = p.remove(API_PATH);
+        }
+        else if(p.startsWith(TAPI_PATH))
+        {
+            scope = Scope::Private;
+            p = p.remove(TAPI_PATH);
+        }
+        else
+            std::cerr << "bad url path" << std::endl;
         splittedPath = p.split('/');
     }
 
@@ -39,9 +49,21 @@ public:
     QueryParser(const QString& str)
     {
         url.setUrl(str);
+
         QString p = url.path();
         if (p.startsWith(API_PATH))
+        {
+            scope = Scope::Public;
             p = p.remove(API_PATH);
+        }
+        else if(p.startsWith(TAPI_PATH))
+        {
+            scope = Scope::Private;
+            p = p.remove(TAPI_PATH);
+        }
+        else
+            std::cerr << "bad url path" << std::endl;
+
         splittedPath = p.split('/');
     }
 
@@ -83,5 +105,13 @@ public:
             return 5000;
         return l;
     }
+    Scope apiScope() const
+    {
+        return scope;
+    }
+private:
+    QUrl url;
+    QStringList splittedPath;
+    Scope scope;
 };
 #endif // QUERY_PARSER_H

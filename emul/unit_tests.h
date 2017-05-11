@@ -16,7 +16,7 @@ private slots:
     void tst_stringParse()
     {
         QueryParser parser("http://localhost:81/api/3/ticker/btc_usd?");
-        QVERIFY(parser.method() == "ticker");
+        QCOMPARE(parser.method(), QString("ticker"));
         QVERIFY(parser.pairs().length() == 1);
     }
 
@@ -29,7 +29,7 @@ private slots:
     void tst_pairs_1()
     {
         QueryParser parser("http", "localhost", "81", "/api/3/ticker/btc_usd-btc_usd", "ignore_invalid=0");
-        QVERIFY(parser.pairs().length() == 2);
+        QCOMPARE(parser.pairs().length(), 2);
         QVERIFY(parser.pairs().contains("btc_usd"));
         QVERIFY(!parser.pairs().contains("usd-btc"));
     }
@@ -37,7 +37,7 @@ private slots:
     void tst_pairs_2()
     {
         QueryParser parser("http", "localhost", "81", "/api/3/ticker/btc_usd-btc_eur", "ignore_invalid=0");
-        QVERIFY(parser.pairs().length() == 2);
+        QCOMPARE(parser.pairs().length(), 2);
         QVERIFY(parser.pairs().contains("btc_usd"));
         QVERIFY(parser.pairs().contains("btc_eur"));
     }
@@ -55,8 +55,8 @@ private slots:
     {
         // In:    https://btc-e.com/api/3/ticker
         // Out:   {"success":0, "error":"Empty pair list"}
-        QueryParser parser("http", "localhost", "81", "/api/3/ticker", "");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost:81/api/3/ticker", method);
         QVERIFY(!responce.isEmpty());
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
@@ -67,8 +67,8 @@ private slots:
     {
         // In:   https://btc-e.com/api/3/ticker?ignore_invalid=1
         // Out:  {"success":0, "error":"Empty pair list"}
-        QueryParser parser("http", "localhost", "81", "/api/3/ticker", "ignore_invalid=1");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost:81/api/3/ticker?ignore_invalid=1", method);
         QVERIFY(!responce.isEmpty());
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
@@ -79,8 +79,8 @@ private slots:
     {
         // In:   https://btc-e.com/api/3/ticker/btc_usd-
         // Out:  VALID json
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd-");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd-", method);
         QVERIFY(!responce.contains("success"));
         QVERIFY(responce.size() == 1);
         QVERIFY(responce.contains("btc_usd"));
@@ -92,8 +92,8 @@ private slots:
     {
         // In:   https://btc-e.com/api/3/ticker/btc_usd
         // Out:  VALID json
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd", method);
         QVERIFY(!responce.contains("success"));
         QVERIFY(responce.size() == 1);
         QVERIFY(responce.contains("btc_usd"));
@@ -105,8 +105,8 @@ private slots:
     {
         // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_eur
         // Out:  VALID json
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd-btc_eur");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd-btc_eur", method);
         QVERIFY(!responce.contains("success"));
         QVERIFY(responce.size() == 2);
         QVERIFY(responce.contains("btc_usd"));
@@ -119,8 +119,8 @@ private slots:
     {
         // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=1
         // Out:  VALID json
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=1");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=1", method);
         QVERIFY(!responce.contains("success"));
         QVERIFY(responce.size() == 1);
         QVERIFY(responce.contains("btc_usd"));
@@ -133,8 +133,8 @@ private slots:
     {
         // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid
         // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid", method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -145,8 +145,8 @@ private slots:
     {
         // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=0
         // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=0");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=0", method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -157,8 +157,8 @@ private slots:
     {
         // In:   https://btc-e.com/api/3/ticker/btc_usd-non_ext
         // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        QueryParser parser("http://localhost/api/3/ticker/btc_usd-non_ext");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, "http://localhost/api/3/ticker/btc_usd-non_ext", method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -170,7 +170,8 @@ private slots:
         // In:   https://btc-e.com/api/3/ticker/non_ext-non_ext
         // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
         QueryParser parser("http://localhost/api/3/ticker/non_ext-non_ext");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -182,7 +183,8 @@ private slots:
         // In:   https://btc-e.com/api/3/ticker/usd_btc
         // Out:  {"success":0, "error":"Invalid pair name: usd_btc"}
         QueryParser parser("http://localhost/api/3/ticker/usd_btc");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -194,7 +196,8 @@ private slots:
         // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd
         // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
         QueryParser parser("http://localhost/api/3/ticker/btc_usd-btc_usd");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -206,7 +209,8 @@ private slots:
         // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1
         // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
         QueryParser parser("http://localhost/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1");
-        QVariantMap responce = getTickerResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVERIFY(responce.contains("success"));
         QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
@@ -217,19 +221,23 @@ private slots:
 class InfoTest : public QObject
 {
     Q_OBJECT
-    QSqlDatabase& database;
+    QSqlDatabase& db;
 public:
-    InfoTest(QSqlDatabase& db):database(db){}
+    InfoTest(QSqlDatabase& database):db(database){}
 private slots:
     void tst_serverTime()
     {
-        QVariantMap responce = getInfoResponce(database);
+        QueryParser parser("http://loclahost:81/api/3/info");
+        Method method;
+        QVariantMap responce = getResponce(db, parser, method);
         QVERIFY(responce.contains("server_time"));
         QVERIFY(QDateTime::fromTime_t(responce["server_time"].toInt()).date() == QDate::currentDate());
     }
     void tst_Pairs()
     {
-        QVariantMap responce = getInfoResponce(database);
+        QueryParser parser("http://loclahost:81/api/3/info");
+        Method method;
+        QVariantMap responce = getResponce(db, parser, method);
         QVERIFY(responce.contains("pairs"));
         QVERIFY(responce["pairs"].canConvert(QVariant::Map));
         QVariantMap pairs = responce["pairs"].toMap();
@@ -281,6 +289,32 @@ private slots:
         QVariantMap responce = getResponce(db, parser, method);
         QCOMPARE(method, Method::PublicDepth);
     }
+    void tst_tradesMethod()
+    {
+        QueryParser parser("http://localhost:81/api/3/trades");
+        Method method;
+        QVariantMap responce = getResponce(db, parser, method);
+        QCOMPARE(method, Method::PublicTrades);
+    }
+    void tst_privateMethodsAuth()
+    {
+        QueryParser parser("http://localhost:81/tapi/getInfo");
+        Method method;
+        QVariantMap responce = getResponce(db, parser, method);
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QCOMPARE(responce["error"].toString(), QString("api key not specified"));
+    }
+
+    void tst_privateGetInfoMethod()
+    {
+        QueryParser parser("http://localhost:81/tapi/getInfo");
+        Method method;
+        QVariantMap responce = getResponce(db, parser, method);
+        QCOMPARE(method, Method::PrivateGetInfo);
+    }
+
 };
 
 
@@ -297,7 +331,8 @@ private slots:
         // In:   https://btc-e.com/api/3/depth
         // Out:  {"success":0, "error":"Empty pair list"}
         QueryParser parser("http://localhost:81/api/3/depth");
-        QVariantMap responce = getDepthResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVERIFY(!responce.isEmpty());
         QVERIFY(responce.contains("success"));
         QCOMPARE(responce["success"].toInt(), 0);
@@ -309,7 +344,8 @@ private slots:
         // In:   https://btc-e.com/api/3/depth/btc_usd
         // Out:  VALID json
         QueryParser parser("http://localhost:81/api/3/depth/btc_usd");
-        QVariantMap responce = getDepthResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVERIFY(!responce.isEmpty());
         QVERIFY(!responce.contains("success"));
         QCOMPARE(responce.size(), 1);
@@ -321,7 +357,8 @@ private slots:
     void tst_validRateSorted()
     {
         QueryParser parser("http://localhost:81/api/3/depth/btc_usd");
-        QVariantMap responce = getDepthResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVariantMap btc_usd = responce["btc_usd"].toMap();
         QVariantList asks = btc_usd["asks"].toList();
         QVariantList bids = btc_usd["bids"].toList();
@@ -333,7 +370,8 @@ private slots:
     void tst_validDecimalDigits()
     {
         QueryParser parser("http://localhost:81/api/3/depth/btc_usd");
-        QVariantMap responce = getDepthResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVariantMap btc_usd = responce["btc_usd"].toMap();
         QVariantList asks = btc_usd["asks"].toList();
         QVariantList bids = btc_usd["bids"].toList();
@@ -348,12 +386,95 @@ private slots:
     void tst_limit()
     {
         QueryParser parser("http://localhost:81/api/3/depth/btc_usd?limit=10");
-        QVariantMap responce = getDepthResponce(database, parser);
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
         QVariantMap btc_usd = responce["btc_usd"].toMap();
         QVariantList asks = btc_usd["asks"].toList();
         QVariantList bids = btc_usd["bids"].toList();
         QVERIFY(asks.size() <= 10);
         QVERIFY(bids.size() <= 10);
+    }
+};
+
+class TradesTest : public QObject
+{
+    Q_OBJECT
+    QSqlDatabase& database;
+public:
+    TradesTest(QSqlDatabase& db):database(db)
+    {}
+private slots:
+    void tst_emptyList()
+    {
+        // In:   https://btc-e.com/api/3/trades
+        // Out:  {"success":0, "error":"Empty pair list"}
+        QueryParser parser("http://localhost:81/api/3/trades");
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
+        QVERIFY(!responce.isEmpty());
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QCOMPARE(responce["error"].toString(), QString("Empty pair list"));
+    }
+    void tst_valid()
+    {
+        // In:   https://btc-e.com/api/3/trades/btc_usd
+        // Out:  VALID json
+        QueryParser parser("http://localhost:81/api/3/trades/btc_usd");
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
+        QVERIFY(!responce.isEmpty());
+        QVERIFY(!responce.contains("success"));
+        QCOMPARE(responce.size(), 1);
+        QVERIFY(responce.contains("btc_usd"));
+        QVERIFY(responce["btc_usd"].canConvert(QVariant::List));
+        QVariantList btc_usd = responce["btc_usd"].toList();
+        QVERIFY(btc_usd.size() > 0);
+        for (const QVariant& v: btc_usd)
+        {
+            QVERIFY(v.canConvert(QVariant::Map));
+            QVariantMap trade = v.toMap();
+            QVERIFY(trade.contains("type") && (trade["type"].toString() == "bid" || trade["type"].toString() == "ask"));
+            QVERIFY(trade.contains("price") && trade["price"].toFloat() > 0 );
+            QVERIFY(trade.contains("amount") && trade["amount"].toFloat() > 0 );
+            QVERIFY(trade.contains("tid") && trade["tid"].toUInt() > 0 );
+            QVERIFY(trade.contains("timestamp") && trade["timestamp"].toUInt() > 0 );
+        }
+    }
+    void tst_limit()
+    {
+        QueryParser parser("http://localhost:81/api/3/trades/btc_usd?limit=10");
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
+        QVariantList btc_usd = responce["btc_usd"].toList();
+        QVERIFY(btc_usd.size() <= 10);
+    }
+    void tst_validTimestampSorted()
+    {
+        QueryParser parser("http://localhost:81/api/3/trades/btc_usd");
+        Method method;
+        QVariantMap responce = getResponce(database, parser, method);
+        QVariantList btc_usd = responce["btc_usd"].toList();
+        for (int i=0; i<btc_usd.size()-1;i++)
+        {
+            QVariantMap a = btc_usd[i].toMap();
+            QVariantMap b = btc_usd[i+1].toMap();
+            QVERIFY ( a["tid"].toUInt() > b["tid"].toUInt());
+        }
+    }
+};
+
+class PrivateGetInfoTest:public QObject
+{
+    Q_OBJECT
+    QSqlDatabase& database;
+public:
+    PrivateGetInfoTest(QSqlDatabase& db):database(db){}
+private slots:
+    void tst_noAuth()
+    {
+
     }
 };
 

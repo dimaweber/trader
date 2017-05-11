@@ -9,7 +9,8 @@ SUBDIRS += common \
 		   add_order \
 	bitfinex_client \
 	tests \
-    emul
+	emul
+
 !win32:!linux-* {
 SUBDIRS += tgbot-cpp \
 		   infobot \
@@ -24,6 +25,7 @@ db_check.depends =  database
 add_order.depends = database btce
 bitfinex_client.depends = common
 tests.depends = common
+emul.depends = database btce
 
 OTHER_FILES += \
 			   sql/deposits_for_every_day.sql \
