@@ -333,7 +333,7 @@ void disableTradeLog()
     tradeLogFile.reset();
 }
 
-quint32 Api::_nonce = QDateTime::currentDateTime().toTime_t();
+QAtomicInteger<quint32> Api::_nonce = QDateTime::currentDateTime().toTime_t();
 
 bool TransHistory::parseSuccess(const QVariantMap& returnMap)
 {
@@ -409,7 +409,12 @@ bool Api::parse(const QByteArray& serverAnswer)
 
     try {
         QJsonDocument jsonResponce;
-        jsonResponce = QJsonDocument::fromJson(serverAnswer);
+        QJsonParseError error;
+        jsonResponce = QJsonDocument::fromJson(serverAnswer, &error);
+        if (jsonResponce.isNull())
+        {
+            throw BrokenJson(QString("json parse error [offset: %2]: %1").arg(error.errorString()).arg(error.offset));
+        }
         QVariant json = jsonResponce.toVariant();
 
         if (!json.canConvert<QVariantMap>())

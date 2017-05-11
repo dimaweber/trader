@@ -14,6 +14,8 @@
 #include "key_storage.h"
 #include "curl_wrapper.h"
 
+class CommonTest;
+
 namespace BtcObjects {
 
 struct ExchangeObject
@@ -168,7 +170,7 @@ class Depth : public Api
 {
     int _limit;
 public:
-    Depth(int limit=100);
+    explicit Depth(int limit=100);
 
 protected:
     virtual QString path() const override;
@@ -188,7 +190,7 @@ void disableTradeLog();
 class Api : public HttpQuery
 {
     IKeyStorage& storage;
-    static quint32 _nonce;
+    static QAtomicInteger<quint32> _nonce;
     static QString nonce() { return QString::number(++_nonce);}
     QByteArray postParams;
 protected:
@@ -203,7 +205,7 @@ protected:
     virtual void showSuccess() const = 0;
 
 public:
-    Api(IKeyStorage& storage)
+    explicit Api(IKeyStorage& storage)
         : HttpQuery(), storage(storage),
           success(false), errorMsg("Not executed")
     {}
@@ -214,6 +216,8 @@ public:
     bool isSuccess() const {return isValid() && success;}
     QString error() const {return errorMsg;}
     virtual QString methodName() const = 0;
+
+    friend class ::CommonTest;
 };
 
 class Info : public Api
@@ -247,7 +251,7 @@ class TransHistory : public Api
 public:
     QMap<BtcObjects::Transaction::Id, BtcObjects::Transaction> trans;
 
-    TransHistory(IKeyStorage& storage)
+    explicit TransHistory(IKeyStorage& storage)
         :Api(storage), _from(-1), _count(-1), _from_id(-1), _end_id(-1),
           _order(true), _since(-1), _end(-1)
     {}
@@ -283,7 +287,7 @@ public:
     Trade(IKeyStorage& storage, BtcObjects::Funds& funds,
           const QString& pair, BtcObjects::Order::Type type, double rate, double amount)
         :Api(storage), pair(pair), type(type), rate(rate), amount(amount),
-          funds(funds)
+          received(0), remains(0), funds(funds)
     {}
 };
 
@@ -309,7 +313,7 @@ class ActiveOrders : public Api
     virtual bool parseSuccess(const QVariantMap& returnMap) override;
     virtual QString methodName() const  override {return "ActiveOrders";}
 public:
-    ActiveOrders(IKeyStorage& storage):Api(storage){}
+    explicit ActiveOrders(IKeyStorage& storage):Api(storage){}
     QMap<BtcObjects::Order::Id, BtcObjects::Order> orders;
 
     virtual void showSuccess() const override;
@@ -328,7 +332,9 @@ public:
         :Api(storage), order_id(id) {}
     virtual void showSuccess() const override;
 };
+
 }
 
 bool performTradeRequest(const QString& message, BtcTradeApi::Api& req, bool silent=false);
+
 #endif // BTCE_H

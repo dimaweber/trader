@@ -9,9 +9,15 @@ CONFIG -= app_bundle
 
 TEMPLATE = app
 
-LIBS += -L../lib -lcommon -ldatabase -lmailer -lssl -lcrypto
+LIBS += -L../lib -lcommon -ldatabase -lmailer
 INCLUDEPATH += ../common ../database ../mailer
-
+win32: {
+    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/include
+    INCLUDEPATH += C:/OpenSSL-Win64/include
+         LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/lib
+         LIBS += -LC:/OpenSSL-Win64/lib
+}
+LIBS += -lssl -lcrypto -lcurl
 
 SOURCES += \
     add_order.cpp

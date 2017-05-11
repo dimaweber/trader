@@ -13,7 +13,11 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 
-#include <unistd.h>
+#ifndef Q_OS_WIN
+# include <unistd.h>
+#else
+# include <Windows.h>
+#endif
 
 class SqlKeyStorage : public KeyStorage
 {
@@ -148,7 +152,7 @@ bool Database::init()
     catch (const QSqlQuery& e)
     {
         std::cerr << "Fail to perform " << e.lastQuery() << " : " << e.lastError().text() << std::endl;
-        throw e;
+        throw;
     }
 
     return true;
@@ -230,7 +234,11 @@ bool Database::connect()
         if (!db->open())
         {
             std::clog << " FAIL. " << db->lastError().text() << std::endl;
+#ifndef Q_OS_WIN
             usleep(1000 * 1000 * 5);
+#else
+            Sleep(1000);
+#endif
         }
         else
         {
@@ -308,7 +316,7 @@ bool Database::prepare()
     prepareSql("update rounds set income=:income, c_in=:c_in, c_out=:c_out, g_in=:g_in, g_out=:g_out "
                " where round_id=:round_id", updateRound);
 
-    prepareSql("update rounds set end_time=now(), reason='done' "
+    prepareSql("update rounds set reason='done' "
                " where round_id=:round_id", closeRound);
 
     prepareSql("update rounds set end_time=now(), reason='archive' "
@@ -537,7 +545,7 @@ bool Database::execute_upgrade_sql(int& major, int& minor)
     catch (std::runtime_error& e)
     {
         rollback();
-        throw e;
+        throw;
     }
     commit();
 

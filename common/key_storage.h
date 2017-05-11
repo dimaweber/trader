@@ -6,9 +6,6 @@
 #include <QFile>
 #include <QDataStream>
 
-#include <openssl/sha.h>
-#include <openssl/hmac.h>
-#include <openssl/aes.h>
 
 class QSqlDatabase;
 
@@ -38,7 +35,7 @@ protected:
     int currentPair;
 
     virtual QByteArray getPassword(bool needConfirmation = false);
-    void read_input(const QString& prompt, QByteArray& ba) const;
+    static void read_input(const QString& prompt, QByteArray& ba);
 
     static void encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
     static void decrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec);
@@ -46,7 +43,7 @@ protected:
     virtual void load()  =0;
     virtual void store() =0;
 public:
-    KeyStorage(){}
+    KeyStorage():currentPair(-1){}
 
     virtual void setPassword(const QByteArray& pwd) override;
     virtual bool setCurrent(int id) override final;
@@ -66,6 +63,6 @@ protected:
     virtual void load() override;
     virtual void store() override;
 public:
-    FileKeyStorage(const QString& fileName);
+    explicit FileKeyStorage(const QString& fileName);
 };
 #endif // KEY_STORAGE_H

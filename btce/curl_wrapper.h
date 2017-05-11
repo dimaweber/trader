@@ -10,8 +10,9 @@
 
 class HttpError : public std::runtime_error
 {
-public : HttpError(const QString& msg): std::runtime_error(msg.toStdString()){}
-    HttpError(CURLcode code): HttpError(curl_easy_strerror(code)){}
+public :
+    explicit HttpError(const QString& msg): std::runtime_error(msg.toStdString()){}
+    explicit HttpError(CURLcode code): HttpError(curl_easy_strerror(code)){}
 };
 
 class CurlHandleWrapper

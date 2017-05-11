@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="3f21a751-321a-4a14-a6fe-9864f2faad34" xsi:noNamespaceSchemaLocation="http://www.jetbrains.com/teamcity/schemas/10.0/project-config.xsd">
+  <name>Windows x64 Build</name>
+  <description />
+  <settings>
+    <options>
+      <option name="artifactRules" value="bin =&gt; bin&#xA;lib =&gt; lib&#xA;data =&gt; data" />
+    </options>
+    <parameters />
+    <build-runners>
+      <runner id="RUNNER_6" name="configure" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="%system.agent.qt.dir%/bin/qmake" />
+          <param name="command.parameters" value="CONFIG+=release -spec win32-msvc2013 -tp vc -recursive" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+      <runner id="RUNNER_7" name="build" type="VS.Solution">
+        <parameters>
+          <param name="build-file-path" value="trader.sln" />
+          <param name="msbuild_version" value="12.0" />
+          <param name="run-platform" value="x86" />
+          <param name="targets" value="Rebuild" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="toolsVersion" value="12.0" />
+          <param name="vs.version" value="vs2013" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <vcs-settings>
+      <vcs-entry-ref root-id="Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster" />
+    </vcs-settings>
+    <requirements>
+      <no-less-than id="RQ_4" name="system.agent.qt.version" value="5.6" />
+      <equals id="RQ_5" name="teamcity.agent.jvm.os.name" value="Windows 7" />
+      <equals id="RQ_6" name="teamcity.agent.jvm.os.arch" value="x86" />
+    </requirements>
+    <build-triggers>
+      <build-trigger id="vcsTrigger" type="vcsTrigger">
+        <parameters>
+          <param name="perCheckinTriggering" value="true" />
+          <param name="quietPeriodMode" value="DO_NOT_USE" />
+          <param name="triggerRules" value="-:comment=NO BUILD:**" />
+        </parameters>
+      </build-trigger>
+    </build-triggers>
+    <build-extensions>
+      <extension id="BUILD_EXT_2" type="VcsLabeling">
+        <parameters>
+          <param name="labelingPattern" value="build-%teamcity.agent.jvm.os.name%-%teamcity.agent.jvm.os.arch%-%system.build.number%" />
+          <param name="successfulOnly" value="true" />
+          <param name="vcsRootId" value="Trader_HttpsGithubComDimaweberTraderRefsHeadsMaster" />
+        </parameters>
+      </extension>
+    </build-extensions>
+    <cleanup />
+  </settings>
+</build-type>
+

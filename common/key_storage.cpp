@@ -1,8 +1,15 @@
 #include "key_storage.h"
 #include "utils.h"
 
-#include <readline/readline.h>
+#ifdef USE_READLINE
+#  include <readline/readline.h>
+#else
+#  include <iostream>
+#endif
 
+#include <openssl/sha.h>
+#include <openssl/hmac.h>
+#include <openssl/aes.h>
 
 QByteArray KeyStorage::getPassword(bool needConfirmation)
 {
@@ -34,19 +41,28 @@ void KeyStorage::setPassword(const QByteArray& pwd)
     _hashPwd = hash;
 }
 
-void KeyStorage::read_input(const QString& prompt, QByteArray& ba) const
+void KeyStorage::read_input(const QString& prompt, QByteArray& ba)
 {
-    char* line;
+#ifdef USE_READLINE
+    char* line = nullptr;
     line = readline((prompt + ": ").toUtf8());
+#else
+    const char* line = nullptr;
+    std::string input;
+    std::cout << prompt << ": ";
+    std::cin >> input;
+    line = input.c_str();
+#endif
 
     ba.clear();
     ba.append(line, strlen(line));
+#ifdef USE_READLINE
     free(line);
+#endif
 }
 
 void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)
 {
-    const unsigned char* inbuf;
     unsigned char outbuf[AES_BLOCK_SIZE];
 
     AES_KEY key;
@@ -57,7 +73,7 @@ void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArra
     while (ptr < data.length())
     {
         int num =0;
-        inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
+        const unsigned char* inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
         int size = qMin(AES_BLOCK_SIZE, data.length() - ptr);
         AES_cfb128_encrypt(inbuf, outbuf, size, &key, reinterpret_cast<unsigned char*>(ivec.data()), &num, AES_ENCRYPT);
         memcpy(data.data()+ptr, outbuf, size);
@@ -67,7 +83,6 @@ void KeyStorage::encrypt(QByteArray& data, const QByteArray& password, QByteArra
 
 void KeyStorage::decrypt(QByteArray& data, const QByteArray& password, QByteArray& ivec)
 {
-    const unsigned char* inbuf;
     unsigned char outbuf[AES_BLOCK_SIZE];
 
     AES_KEY key;
@@ -78,7 +93,7 @@ void KeyStorage::decrypt(QByteArray& data, const QByteArray& password, QByteArra
     while (ptr < data.length())
     {
         int num =0;
-        inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
+        const unsigned char* inbuf = reinterpret_cast<const unsigned char*>(data.constData()) + ptr;
         int size = qMin(AES_BLOCK_SIZE, data.length() - ptr);
         AES_cfb128_encrypt(inbuf, outbuf, size, &key, reinterpret_cast<unsigned char*>(ivec.data()), &num, AES_DECRYPT);
         memcpy(data.data()+ptr, outbuf, size);

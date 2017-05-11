@@ -87,7 +87,6 @@ int main(int argc, char* argv[])
         QString answer;
         QVariantMap params;
 
-        int id = -1;
         QString verb;
         QString goods;
         QString currency;
@@ -108,7 +107,7 @@ int main(int argc, char* argv[])
             if (idRx.indexIn(idStr) > -1)
             {
                 pairName = idRx.cap(0);
-                id = pairName.toInt(&isId);
+                int id = pairName.toInt(&isId);
                 goods = idRx.cap(1);
                 currency = idRx.cap(2);
 

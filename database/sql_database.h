@@ -14,7 +14,7 @@
 #define ORDER_STATUS_DONE "1"
 #define ORDER_STATUS_CANCEL "2"
 #define ORDER_STATUS_PARTIAL "3"
-#define ORDER_STATUS_INSTANT "3"
+#define ORDER_STATUS_INSTANT "4"
 
 class QSqlQuery;
 class QSqlDatabase;
@@ -26,7 +26,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bo
 class Database : public IKeyStorage
 {
 public:
-    Database(QSettings& settings);
+    explicit Database(QSettings& settings);
     virtual ~Database();
 
     bool connect();

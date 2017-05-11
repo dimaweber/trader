@@ -14,7 +14,10 @@
 
 #include <iostream>
 
-#include <unistd.h>
+#ifndef Q_OS_WIN
+# include <unistd.h>
+#else
+#endif
 
 /// TODO: sanity check to xml
 /*
@@ -137,7 +140,7 @@ int main(int argc, char *argv[])
                             catch(std::runtime_error& e)
                             {
                                 database.rollback();
-                                throw e;
+                                throw;
                             }
                         }
                     }

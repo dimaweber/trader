@@ -22,8 +22,15 @@
 
 #include <iostream>
 
-#include <unistd.h>
-#include <signal.h>
+#ifndef Q_OS_WIN
+# include <unistd.h>
+# include <signal.h>
+# define sleep(ms) usleep((ms)*1000)
+#else
+# define sleep(ms) ::Sleep(ms)
+#endif
+
+
 
 /// TODO: dep / rates to separate db
 /// TODO: transactions this db, but separate process
@@ -34,18 +41,20 @@
 
 
 static bool exit_asked = false;
-
+#ifndef Q_OS_WIN
 void sig_handler(int signum)
 {
     if (signum == SIGINT)
         exit_asked = true;
 }
-
+#endif
 
 
 int main(int argc, char *argv[])
 {
+#ifndef Q_OS_WIN
     signal(SIGINT, sig_handler);
+#endif
 
     QCoreApplication app(argc, argv);
 
@@ -182,7 +191,7 @@ int main(int argc, char *argv[])
                         // no orders yet - just ignore
                     }
                     else
-                        throw e;
+                        throw;
                 }
 
                 BtcObjects::Funds& funds = allFunds[id];
@@ -250,7 +259,7 @@ int main(int argc, char *argv[])
             if (!performSql("get settings list", *database.selectSettings, QVariantMap(), silent_sql))
             {
                 std::clog << "Sleep for 10 seconds" << std::endl;
-                usleep(1000 * 1000 * 10);
+                sleep(1000 * 10);
                 continue;
             }
 
@@ -558,7 +567,7 @@ int main(int argc, char *argv[])
                     QVariantMap transParams;
                     transParams[":settings_id"] = settings_id;
                     transParams[":round_id_to"] = round_id;
-                    transParams[":prev_round_from"] = prev_round_id;
+                    transParams[":round_id_from"] = prev_round_id;
                     performSql("transit orders from previous round", *database.transitOrders, transParams, silent_sql);
                 }
                 else
@@ -628,28 +637,28 @@ int main(int argc, char *argv[])
             std::clog << QString("iteration done in %1 ms").arg(t) << std::endl << std::endl << std::endl;
             qint64 ms_sleep = 10 * 1000;
             if (t < ms_sleep)
-                usleep(1000 * (ms_sleep-t));
+                sleep(ms_sleep-t);
         }
         catch(const QSqlQuery& e)
         {
             std::cerr << "Fail sql query: " << e.executedQuery() << " [" << e.lastError().number() << "] " << e.lastError().text() << std::endl;
             database.init();
-            usleep(1000 * 1000 * 30);
+            sleep(1000 * 30);
         }
         catch (const BtcTradeApi::Api& e)
         {
             std::cerr << "Fail http query: " << e.error() << std::endl;
-            usleep(1000 * 1000 * 60);
+            sleep(1000 * 60);
         }
         catch (const HttpError& e)
         {
             std::cerr << "Http error: " << e.what() << std::endl;
-            usleep(1000 * 1000 * 60);
+            sleep(1000 * 60);
         }
         catch (const std::runtime_error& e)
         {
             std::cerr << "Runtime error: " << e.what() << std::endl;
-            usleep(1000 * 1000 * 60);
+            sleep(1000 * 60);
         }
     }
     return 0;

@@ -13,7 +13,14 @@ SOURCES += main.cpp \
 	client.cpp
 
 LIBS += -L../lib -lcommon -lcrypto -lbtce
-INCLUDEPATH += ../common ../btce
+INCLUDEPATH += ../common ../btce -lcurl
+
+win32: {
+    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/include
+    INCLUDEPATH += C:/OpenSSL-Win64/include
+         LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/lib
+         LIBS += -LC:/OpenSSL-Win64/lib
+}
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
@@ -27,4 +34,11 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 HEADERS += \
-	client.h
+    client.h
+
+DESTDIR = ../bin
+
+
+OBJECTS_DIR = .obj
+UI_DIR = .ui
+MOC_DIR = .moc
