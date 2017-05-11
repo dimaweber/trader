@@ -125,10 +125,10 @@ void Trader::process()
                         params[":rate"] = order.rate;
                         performSql(QString("Order %1 still active, mark it").arg(order.order_id), *database.updateActiveOrder, params, silent_sql);
 
-                        if (order.type == BtcObjects::Order::Buy)
-                            onOrders[order.currency()] += order.amount * order.rate;
-                        else
+                        if (order.type == BtcObjects::Order::Type::Sell)
                             onOrders[order.goods()] += order.amount;
+                        else
+                            onOrders[order.currency()] += order.amount * order.rate;
                     }
                     database.commit();
                 }
@@ -274,7 +274,7 @@ void Trader::process()
                 QString status = "";
                 try
                 {
-                    if (create_order(database, round_id, pair.name, BtcObjects::Order::Buy, rate, amount, funds, silent_http, silent_sql))
+                    if (create_order(database, round_id, pair.name, BtcObjects::Order::Type::Buy, rate, amount, funds, silent_http, silent_sql))
                         status = "success";
                 }
                 catch (const QSqlQuery& e)
@@ -328,7 +328,7 @@ void Trader::process()
 
                     // orders are sorted by type field, so sell orders come first
                     // if  buy order is changed and sell orders have changed also -- we translate buy order to next round
-                    if (info.order.type == BtcObjects::Order::Sell)
+                    if (info.order.type == BtcObjects::Order::Type::Sell)
                     {
                         std::clog << QString("sell order changed status to %1").arg(info.order.status) << std::endl;
                         sell_order_executed = true;
@@ -498,7 +498,7 @@ void Trader::process()
                     }
                     else
                     {
-                        if (create_order(database, round_id, pair.name, BtcObjects::Order::Buy, rate, amount, funds, silent_http, silent_sql))
+                        if (create_order(database, round_id, pair.name, BtcObjects::Order::Type::Buy, rate, amount, funds, silent_http, silent_sql))
                         {
                             total_currency_spent += amount * rate;
                             std::clog << QString("%1 bid: %2@%3").arg(j+1).arg(amount).arg(rate) << std::endl;
@@ -572,7 +572,7 @@ void Trader::process()
 
                     if (amount_gain > pair.min_amount)
                     {
-                        create_order(database, round_id, pair.name, BtcObjects::Order::Sell, sell_rate, amount_gain, funds, silent_http, silent_sql);
+                        create_order(database, round_id, pair.name, BtcObjects::Order::Type::Sell, sell_rate, amount_gain, funds, silent_http, silent_sql);
                     }
                 }
             }

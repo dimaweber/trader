@@ -19,21 +19,19 @@ namespace BtcObjects {
 
 struct ExchangeObject
 {
-public:
     virtual bool parse(const QVariantMap& objMap) =0;
     virtual void display() const =0;
+    virtual ~ExchangeObject(){}
 };
 
 struct Funds : public QMap<QString, double>, ExchangeObject
 {
-public:
     bool parse(const QVariantMap& fundsMap) override;
     void display() const override;
 };
 
-struct Ticker : public ExchangeObject
+struct Ticker : ExchangeObject
 {
-public:
     QString name;
     double high, low, avg, vol, vol_cur, last, buy, sell;
     QDateTime updated;
@@ -43,9 +41,8 @@ public:
     void display() const override;
 };
 
-struct Depth : public ExchangeObject
+struct Depth : ExchangeObject
 {
-public:
     struct Position
     {
         double amount;
@@ -61,9 +58,23 @@ public:
     void display() const override;
 };
 
-struct Pair : public ExchangeObject
+struct Trade :  ExchangeObject
 {
-public:
+    typedef qint64 Id;
+    enum class Type {Invalid = -1, Ask, Bid};
+
+    Type type;
+    float price;
+    float amount;
+    Id id;
+    QDateTime timestamp;
+
+    bool parse(const QVariantMap& map) override;
+    void display() const override;
+};
+
+struct Pair :  ExchangeObject
+{
     QString name;
     int decimal_places;
     double min_price;
@@ -74,6 +85,7 @@ public:
 
     Ticker ticker;
     Depth depth;
+    QList<Trade> trades;
 
     virtual ~Pair();
 
@@ -93,9 +105,9 @@ struct Pairs: public QMap<QString, Pair>, ExchangeObject
     void display() const override;
 };
 
-struct Order  : public ExchangeObject
+struct Order  : ExchangeObject
 {
-    enum Type {Buy, Sell, Invalid};
+    enum class Type {Buy, Sell, Invalid};
     enum Status {Active=0, Done=1, Canceled=2, CanceledPartiallyDone=3, Unknonwn};
     typedef quint64 Id;
 
@@ -121,7 +133,7 @@ struct Order  : public ExchangeObject
     QString currency() const;
 };
 
-struct Transaction : public ExchangeObject
+struct Transaction : ExchangeObject
 {
     typedef qint64 Id;
 
@@ -169,7 +181,18 @@ class Depth : public Api
 {
     int _limit;
 public:
-    explicit Depth(int limit=100);
+    explicit Depth(int limit=150);
+
+protected:
+    virtual QString path() const override;
+    virtual bool parseSuccess(const QVariantMap& returnMap) final override;
+};
+
+class Trades : public Api
+{
+    int _limit;
+public:
+    explicit Trades(int limit=150);
 
 protected:
     virtual QString path() const override;

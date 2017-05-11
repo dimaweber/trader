@@ -106,7 +106,7 @@ void Order::display() const
     std::cout << order_id
               << QString("   status : %1\n").arg(sStatus)
               << QString("   pair   : %1\n").arg(pair)
-              << QString("   type   : %1\n").arg((type==Sell)?"sell":"buy")
+              << QString("   type   : %1\n").arg((type==Order::Type::Sell)?"sell":"buy")
               << QString("   amount : %1 (%2)").arg(amount).arg(start_amount)
               << QString("   rate   : %1").arg(rate)
               << QString("   created: %1").arg(timestamp_created.toString());
@@ -118,9 +118,9 @@ bool Order::parse(const QVariantMap& map)
     pair = read_string(map, "pair");
     QString sType = read_string(map, "type");
     if (sType == "sell")
-        type = Order::Sell;
+        type = Order::Type::Sell;
     else if (sType == "buy")
-        type = Order::Buy;
+        type = Order::Type::Buy;
     else
         throw BadFieldValue("type", sType);
 
@@ -235,6 +235,29 @@ bool Transaction::parse(const QVariantMap& map)
     return true;
 }
 
+bool Trade::parse(const QVariantMap& map)
+{
+    QString sType = read_string(map, "type");
+    if (sType == "ask")
+        type = Trade::Type::Ask;
+    else if (Q_LIKELY(sType == "bid"))
+        type = Trade::Type::Bid;
+    else
+        type = Trade::Type::Invalid;
+
+    price = read_double(map, "price");
+    amount = read_double(map, "amount");
+    id = read_ulong(map, "tid");
+    timestamp = read_timestamp(map, "timestamp");
+
+    return true;
+}
+
+void Trade::display() const
+{
+
+}
+
 }
 
 namespace BtcPublicApi
@@ -299,6 +322,32 @@ QString Api::path() const
 bool Api::parse(const QByteArray& serverAnswer)
 {
     return parseSuccess(HttpQuery::convertReplyToMap(serverAnswer));
+}
+
+Trades::Trades(int limit):_limit(limit){}
+
+QString Trades::path() const
+{
+    QString p;
+    for(const QString& pairName : BtcObjects::Pairs::ref().keys())
+        p += pairName + "-";
+    p.chop(1);
+    return QString("%1trades/%2?limit=%3").arg(Api::path()).arg(p).arg(_limit);
+}
+
+bool Trades::parseSuccess(const QVariantMap& returnMap)
+{
+    for (const QString& pairName: returnMap.keys())
+    {
+        QVariantList lst = read_list(returnMap, pairName);
+        BtcObjects::Trade trade;
+        for (const QVariant& t: lst)
+        {
+            trade.parse(t.toMap());
+            BtcObjects::Pairs::ref(pairName).trades.append(trade);
+        }
+    }
+    return true;
 }
 
 }
@@ -504,7 +553,7 @@ bool OrderInfo::parseSuccess(const QVariantMap& returnMap)
                         << QString("[?]   id: %3   type: %4   pair: %5   status: %6   rate: %7   amount: %8   start_amount: %9 (diff: %1)")
                            .arg(order.start_amount - order.amount)
                            .arg(QString::number(order_id).leftJustified(10))
-                           .arg(QString((order.type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
+                           .arg(QString((order.type==BtcObjects::Order::Type::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(order.pair.toUpper())
                            .arg(status.leftJustified(6))
                            .arg(QString::number(order.rate, 'f', BtcObjects::Pairs::ref(order.pair).decimal_places).leftJustified(10))
@@ -546,7 +595,7 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
                            .arg(QString(order_id?"CREATE":"I-DONE").leftJustified(6))
                            .arg(QString::number(order_id).leftJustified(10))
-                           .arg(QString((type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
+                           .arg(QString((type==BtcObjects::Order::Type::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(pair.toUpper())
                            .arg(QString::number(rate, 'f', BtcObjects::Pairs::ref(pair).decimal_places).leftJustified(10))
                            .arg(QString::number(amount, 'f', 8).leftJustified(10))
@@ -562,7 +611,7 @@ QVariantMap Trade::extraQueryParams()
 {
     QVariantMap params = Api::extraQueryParams();
     params["pair"] = pair;
-    params["type"] = (type==BtcObjects::Order::Sell)?"sell":"buy";
+    params["type"] = (type==BtcObjects::Order::Type::Sell)?"sell":"buy";
     params["amount"] = QString::number(amount, 'f', 8);
     params["rate"] = QString::number(rate, 'f', BtcObjects::Pairs::ref(pair).decimal_places);
 
