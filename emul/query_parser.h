@@ -16,26 +16,14 @@ public:
     enum Scope {Public, Private};
     QueryParser(const QString& scheme, const QString& addr, const QString& port, const QString& path, const QString& query)
     {
-        url.setScheme(scheme);
-        url.setHost(addr);
-        url.setPort(port.toInt());
-        url.setPath(path);
-        url.setQuery(query);
+        QUrl u;
+        u.setScheme(scheme);
+        u.setHost(addr);
+        u.setPort(port.toInt());
+        u.setPath(path);
+        u.setQuery(query);
 
-        QString p = url.path();
-        if (p.startsWith(API_PATH))
-        {
-            scope = Scope::Public;
-            p = p.remove(API_PATH);
-        }
-        else if(p.startsWith(TAPI_PATH))
-        {
-            scope = Scope::Private;
-            p = p.remove(TAPI_PATH);
-        }
-        else
-            std::cerr << "bad url path" << std::endl;
-        splittedPath = p.split('/');
+        setUrl(std::move(u));
     }
 
     QueryParser(const FCGI_Request& request)
@@ -48,7 +36,17 @@ public:
     }
     QueryParser(const QString& str)
     {
-        url.setUrl(str);
+        setUrl(str);
+    }
+
+    void setUrl(const QString& str)
+    {
+        setUrl(QUrl(str));
+    }
+
+    void setUrl(const QUrl& u)
+    {
+        url = u;
 
         QString p = url.path();
         if (p.startsWith(API_PATH))

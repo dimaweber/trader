@@ -5,6 +5,8 @@
 #include <fcgio.h>
 #include <fcgi_config.h>
 
+#include <QString>
+
 #include <memory>
 
 class FCGI_Request

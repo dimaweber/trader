@@ -41,6 +41,18 @@ private slots:
         QVERIFY(parser.pairs().contains("btc_usd"));
         QVERIFY(parser.pairs().contains("btc_eur"));
     }
+
+    void tst_limit()
+    {
+        QueryParser parser_10("http://localhost:81/tapi/method?param1=value1&limit=10");
+        QCOMPARE(parser_10.limit(), 10);
+
+        QueryParser parser_default("http://localhost:81/tapi/method?param1=value1");
+        QCOMPARE(parser_default.limit(), 150);
+
+        QueryParser parser_9000("http://localhost:81/tapi/method?param1=value1&limit=9000");
+        QCOMPARE(parser_9000.limit(), 5000);
+    }
 };
 
 class TickerTest : public QObject
