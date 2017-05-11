@@ -2,19 +2,22 @@
 #define QUERY_PARSER_H
 
 #include "fcgi_request.h"
+#include "authentificator.h"
 
 #include <QUrl>
 #include <QUrlQuery>
 
 
 #define API_PATH "/api/3/"
-#define TAPI_PATH "/tapi/"
+#define TAPI_PATH "/tapi"
+
 
 class QueryParser
 {
 public:
     enum Scope {Public, Private};
-    QueryParser(const QString& scheme, const QString& addr, const QString& port, const QString& path, const QString& query)
+    QueryParser(const QString& scheme, const QString& addr, const QString& port, const QString& path, const QString& query,
+                const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
     {
         QUrl u;
         u.setScheme(scheme);
@@ -23,7 +26,7 @@ public:
         u.setPath(path);
         u.setQuery(query);
 
-        setUrl(std::move(u));
+        setUrl(std::move(u), headers, postData);
     }
 
     QueryParser(const FCGI_Request& request)
@@ -31,38 +34,46 @@ public:
                      request.getParam("SERVER_ADDR"),
                      request.getParam("SERVER_PORT"),
                      request.getParam("DOCUMENT_URI"),
-                     request.getParam("QUERY_STRING"))
+                     request.getParam("QUERY_STRING"),
+                     request.authHeaders(),
+                     request.postData())
     {
     }
-    QueryParser(const QString& str)
+    QueryParser(const QString& str, const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
     {
-        setUrl(str);
+        setUrl(str, headers, postData);
+    }
+    void setUrl(const QString& str, const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
+    {
+        setUrl(QUrl(str), headers, postData);
     }
 
-    void setUrl(const QString& str)
-    {
-        setUrl(QUrl(str));
-    }
-
-    void setUrl(const QUrl& u)
+    void setUrl(const QUrl& u, const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
     {
         url = u;
 
         QString p = url.path();
+
         if (p.startsWith(API_PATH))
         {
             scope = Scope::Public;
             p = p.remove(API_PATH);
+            splittedPath = p.split('/');
         }
         else if(p.startsWith(TAPI_PATH))
         {
             scope = Scope::Private;
-            p = p.remove(TAPI_PATH);
+            splittedPath.clear();
         }
         else
             std::cerr << "bad url path" << std::endl;
 
-        splittedPath = p.split('/');
+
+        this->headers = headers;
+
+        rawPostData = postData;
+        QString str = QString::fromUtf8(postData);
+        postParams.setQuery(str);
     }
 
     QString toString() const
@@ -72,8 +83,15 @@ public:
     QString method() const
     {
         QString ret;
-        if (splittedPath.length() > 0)
-            ret = splittedPath[0];
+        if (apiScope() == Scope::Public)
+        {
+            if (splittedPath.length() > 0)
+                ret = splittedPath[0];
+        }
+        else
+        {
+            ret = postParams.queryItemValue("method");
+        }
         return ret;
     }
     QStringList pairs() const
@@ -107,9 +125,28 @@ public:
     {
         return scope;
     }
+    QString key() const
+    {
+        return headers["Key"];
+    }
+    QByteArray sign() const
+    {
+        return headers["Sign"].toUtf8();
+    }
+    QString nonce() const
+    {
+        return postParams.queryItemValue("nonce");
+    }
+    QByteArray signedData() const
+    {
+        return rawPostData;
+    }
 private:
     QUrl url;
     QStringList splittedPath;
     Scope scope;
+    QMap<QString, QString> headers;
+    QUrlQuery postParams;
+    QByteArray rawPostData;
 };
 #endif // QUERY_PARSER_H

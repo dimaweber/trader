@@ -83,9 +83,28 @@ public:
     {
         return *_stream_err;
     }
-    QString request_uri()
+    QString request_uri() const
     {
         return getParam("REQUEST_URI");
+    }
+    QMap<QString,QString> authHeaders() const
+    {
+        QMap<QString, QString> map;
+        map["Key"] = getParam("KEY");
+        map["Sign"] = getParam("SIGN");
+        return map;
+    }
+    QByteArray postData() const
+    {
+        QString httpMethod = getParam("REQUEST_METHOD");
+        if (httpMethod == "POST")
+        {
+            size_t len = getParam("CONTENT_LENGTH").toUInt();
+            QByteArray buffer(len, 0);
+            FCGX_GetStr(buffer.data(), len, request.in);
+            return buffer;
+        }
+        return QByteArray();
     }
 };
 #endif // FCGX_REQUEST_H

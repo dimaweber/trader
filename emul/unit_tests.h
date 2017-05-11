@@ -3,11 +3,15 @@
 
 #include "responce.h"
 #include "query_parser.h"
+#include "utils.h"
 
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QtTest>
+
+#define VALID_KEY "3WTYG4ZB-I32T5T2V-S7UOKP61-9H8AMAAZ-R5H0BIVL"
+#define VALID_SECRET "rarjtfm024i4axtfxqufhwjiqc2d9zle0m0yf6tbvzyzb87a2rnpvy3bvawlcrlo"
 
 class QueryParserTest : public QObject
 {
@@ -44,14 +48,14 @@ private slots:
 
     void tst_limit()
     {
-        QueryParser parser_10("http://localhost:81/tapi/method?param1=value1&limit=10");
-        QCOMPARE(parser_10.limit(), 10);
+        QueryParser parser("http://localhost:81/tapi/method?param1=value1&limit=10");
+        QCOMPARE(parser.limit(), 10);
 
-        QueryParser parser_default("http://localhost:81/tapi/method?param1=value1");
-        QCOMPARE(parser_default.limit(), 150);
+        parser.setUrl("http://localhost:81/tapi/method?param1=value1");
+        QCOMPARE(parser.limit(), 150);
 
-        QueryParser parser_9000("http://localhost:81/tapi/method?param1=value1&limit=9000");
-        QCOMPARE(parser_9000.limit(), 5000);
+        parser.setUrl("http://localhost:81/tapi/method?param1=value1&limit=9000");
+        QCOMPARE(parser.limit(), 5000);
     }
 };
 
@@ -274,6 +278,7 @@ private slots:
         QueryParser parser("http://loclahost:81/api/3/invalid");
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
+
         QCOMPARE(method, Method::Invalid);
         QVERIFY(responce.contains("success"));
         QCOMPARE(responce["success"].toInt(), 0);
@@ -285,6 +290,7 @@ private slots:
         QueryParser parser("http://localhost:81/api/3/info");
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
+
         QCOMPARE(method, Method::PublicInfo);
     }
     void tst_tickerMethod()
@@ -292,6 +298,7 @@ private slots:
         QueryParser parser("http://localhost:81/api/3/ticker");
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
+
         QCOMPARE(method, Method::PublicTicker);
     }
     void tst_depthMethod()
@@ -299,6 +306,7 @@ private slots:
         QueryParser parser("http://localhost:81/api/3/depth");
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
+
         QCOMPARE(method, Method::PublicDepth);
     }
     void tst_tradesMethod()
@@ -306,24 +314,117 @@ private slots:
         QueryParser parser("http://localhost:81/api/3/trades");
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
+
         QCOMPARE(method, Method::PublicTrades);
     }
-    void tst_privateMethodsAuth()
+    void tst_authNoKey()
     {
-        QueryParser parser("http://localhost:81/tapi/getInfo");
         Method method;
+        QByteArray postParams = "method=getInfo&nonce=1";
+        QMap<QString, QString> headers;
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
         QVariantMap responce = getResponce(db, parser, method);
+
         QVERIFY(responce.contains("success"));
         QCOMPARE(responce["success"].toInt(), 0);
         QVERIFY(responce.contains("error"));
         QCOMPARE(responce["error"].toString(), QString("api key not specified"));
     }
 
+    void tst_authInvalidKey()
+    {
+        Method method;
+        QMap<QString, QString> headers;
+        headers["Key"] = "KKKK-EEEE-YYYY";
+        QByteArray postParams = "method=getInfo&nonce=1";
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
+        QVariantMap responce = getResponce(db, parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QCOMPARE(responce["error"].toString(), QString("invalid api key"));
+    }
+
+    void tst_NoSign()
+    {
+        Method method;
+        QMap<QString, QString> headers;
+        headers["Key"] = VALID_KEY;
+        QByteArray postParams = "method=getInfo&nonce=1";
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
+        QVariantMap responce = getResponce(db, parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QCOMPARE(responce["error"].toString(), QString("invalid sign"));
+    }
+
+    void tst_InvalidSign()
+    {
+        Method method;
+        QMap<QString, QString> headers;
+        headers["Key"] = VALID_KEY;
+        headers["Sign"] = "SSSiiiGGGnnn";
+        QByteArray postParams = "method=getInfo&nonce=0";
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
+        QVariantMap responce = getResponce(db, parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QCOMPARE(responce["error"].toString(), QString("invalid sign"));
+    }
+
+    void tst_noNonce()
+    {
+        Method method;
+        QMap<QString, QString> headers;
+        QByteArray postParams = "method=getInfo";
+        headers["Key"] = VALID_KEY;
+        headers["Sign"] = hmac_sha512(postParams, VALID_SECRET).toHex();
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
+        QVariantMap responce = getResponce(db, parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QRegExp rx("invalid nonce parameter; on key:[0-9]*, you sent:'', you should send:[0-9]*");
+        int pos = rx.indexIn(responce["error"].toString());
+        QCOMPARE(pos, 0);
+    }
+
+    void tst_invalidNonce()
+    {
+        Method method;
+        QMap<QString, QString> headers;
+        QByteArray postParams = "method=getInfo&nonce=1";
+        headers["Key"] = VALID_KEY;
+        headers["Sign"] = hmac_sha512(postParams, VALID_SECRET).toHex();
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
+        QVariantMap responce = getResponce(db, parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error"));
+        QRegExp rx("invalid nonce parameter; on key:[0-9]*, you sent:'[0-9]+', you should send:[0-9]*");
+        int pos = rx.indexIn(responce["error"].toString());
+        QCOMPARE(pos, 0);
+    }
+
     void tst_privateGetInfoMethod()
     {
-        QueryParser parser("http://localhost:81/tapi/getInfo");
         Method method;
+        QMap<QString, QString> headers;
+        QByteArray postParams = QString("method=getInfo&nonce=%1").arg(QDateTime::currentDateTime().toTime_t()).toUtf8();
+        headers["Key"] = VALID_KEY;
+        headers["Sign"] = hmac_sha512(postParams, VALID_SECRET).toHex();
+        QueryParser parser("http://localhost:81/tapi", headers, postParams);
         QVariantMap responce = getResponce(db, parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 1);
         QCOMPARE(method, Method::PrivateGetInfo);
     }
 

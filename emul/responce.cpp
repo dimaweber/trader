@@ -5,17 +5,13 @@
 #include <QSqlQuery>
 #include <QDateTime>
 
-bool authOk()
-{
-    return false;
-}
-
 QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& method)
 {
     QString methodName = parser.method();
     QVariantMap var;
 
-    if (parser.apiScope() == QueryParser::Scope::Public)
+    QueryParser::Scope scope = parser.apiScope();
+    if (scope == QueryParser::Scope::Public)
     {
         if (methodName == "info")
         {
@@ -38,18 +34,29 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
             method = PublicTrades;
         }
     }
-    else if (parser.apiScope() == QueryParser::Scope::Private)
+    else if (scope == QueryParser::Scope::Private)
     {
-        if (!authOk())
+        static Authentificator auth(db);
+        QString authErrMsg;
+        QString key = parser.key();
+        if (!auth.authOk(key, parser.sign(), parser.nonce(), parser.signedData(), authErrMsg))
         {
             var["success"] = 0;
-            var["error"] = "api key not specified";
+            var["error"] = authErrMsg;
             method = Invalid;
         }
-        if (methodName == "getInfo")
+        else if (methodName == "getInfo")
         {
-            var = getPrivateInfoResponce(db, parser);
-            method = PrivateGetInfo;
+            if (auth.hasInfo(key))
+            {
+                var = getPrivateInfoResponce(db, parser);
+                method = PrivateGetInfo;
+            }
+            else
+            {
+                var["success"] = 0;
+                var["error"] = "api key dont have info permission";
+            }
         }
     }
 
@@ -272,10 +279,68 @@ QVariantMap getResponce(QSqlDatabase &db, const QString &url, Method &method)
 QVariantMap getPrivateInfoResponce(QSqlDatabase &database, const QueryParser &httpQuery)
 {
     QVariantMap var;
+    QVariantMap funds;
+    QVariantMap rights;
+    static std::unique_ptr<QSqlQuery> getFundsInfoQuery;
+    static std::unique_ptr<QSqlQuery> getRightsInfoQuery;
+    static std::unique_ptr<QSqlQuery> getActiveOrdersCountQuery;
+
+    if (!getFundsInfoQuery)
+    {
+        getFundsInfoQuery.reset(new QSqlQuery(database));
+        getFundsInfoQuery->prepare("select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key");
+    }
+    if (!getRightsInfoQuery)
+    {
+        getRightsInfoQuery.reset(new QSqlQuery(database));
+        getRightsInfoQuery->prepare("select info,trade,withdraw from apikeys where apikey=:key");
+    }
+    if (!getActiveOrdersCountQuery)
+    {
+        getActiveOrdersCountQuery.reset(new QSqlQuery(database));
+        getActiveOrdersCountQuery->prepare("select count(*) from apikeys a left join orders o on o.owner_id=a.owner_id where a.apikey=:key and o.status = 0");
+    }
+
+    QVariantMap params;
+    params[":key"] = httpQuery.key();
+    if (performSql("get funds", *getFundsInfoQuery, params, true))
+    {
+        while(getFundsInfoQuery->next())
+        {
+            QString currency = getFundsInfoQuery->value(0).toString();
+            funds[currency] = getFundsInfoQuery->value(1);
+        }
+        var["funds"] = funds;
+    }
+    if (performSql("get rights", *getRightsInfoQuery, params))
+    {
+        if (getRightsInfoQuery->next())
+        {
+            rights["info"] = getRightsInfoQuery->value(0).toInt();
+            rights["trade"] = getRightsInfoQuery->value(1).toInt();
+            rights["withdraw"] = getRightsInfoQuery->value(2).toInt();
+        }
+        var["rights"] = rights;
+    }
+    if (performSql("get orders count", *getActiveOrdersCountQuery, params))
+    {
+        if (getActiveOrdersCountQuery->next())
+            var["open_orders"] = getActiveOrdersCountQuery->value(0).toUInt();
+    }
+    if (var.contains("rights") && var.contains("funds") && var.contains("open_orders"))
+    {
+        var["success"] = 1;
+        var["transaction_count"] = 0;
+        var["server_time"] = QDateTime::currentDateTime().toTime_t();
+    }
+    else
+        var.clear();
+
+
     if (var.isEmpty())
     {
         var["success"] = 0;
-        var["error"] = "Empty pair list";
+        var["error"] = "Fail to provide info";
     }
     return var;
 }

@@ -15,13 +15,15 @@ TEMPLATE = app
 
 SOURCES += \
 	responce.cpp \
-	emul.cpp
+	emul.cpp \
+    authentificator.cpp
 
 HEADERS += \
 	query_parser.h \
 	unit_tests.h \
 	responce.h \
-	fcgi_request.h
+	fcgi_request.h \
+    authentificator.h
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings

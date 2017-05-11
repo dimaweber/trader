@@ -57,6 +57,7 @@ void prepareDatabase(QSqlDatabase& db)
             << TableField("secret", TableField::Char, 128).notNull()
             << TableField("info", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("trade", TableField::Boolean).notNull().defaultValue("FALSE")
+            << TableField("widthdraw", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("nonce", TableField::Integer).notNull().defaultValue(1).check("nonce > 0")
             << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
                ;
