@@ -11,19 +11,23 @@ LIBS += -lfcgi -lfcgi++
 INCLUDEPATH += ../common ../database ../btce
 LIBS += -L../lib -lcommon -ldatabase -lbtce
 
+LIBS += -lgcov
+QMAKE_CXXFLAGS += -fprofile-arcs -ftest-coverage
+QMAKE_CFLAGS += -fprofile-arcs -ftest-coverage
+
 TEMPLATE = app
 
 SOURCES += \
 	responce.cpp \
 	emul.cpp \
-    authentificator.cpp
+	authentificator.cpp
 
 HEADERS += \
 	query_parser.h \
 	unit_tests.h \
 	responce.h \
 	fcgi_request.h \
-    authentificator.h
+	authentificator.h
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings

@@ -1,10 +1,11 @@
 #!/bin/sh
-KEY="JV0VAXWU-JCEJ0GI0-XDCK9T06-4LKSSIIK-9X8BJWQN"
-SECRET="f43e3a423c8a0b8ac4acd4ce316e121bc17ee06014543ea1a5c172f208cddaf9"
+KEY="3WTYG4ZB-I32T5T2V-S7UOKP61-9H8AMAAZ-R5H0BIVL"
+SECRET="rarjtfm024i4axtfxqufhwjiqc2d9zle0m0yf6tbvzyzb87a2rnpvy3bvawlcrlo"
 
-PARAMS=`date +method=geetInfo\&nonce=%s`
-HOST="btc-e.com"
-SCHEMA="https"
+METHOD=ActiveOrders
+PARAMS=`date +method=$METHOD\&nonce=%s`
+HOST="localhost:81"
+SCHEMA="http"
 
 SIGN=`echo  -n "$PARAMS" | openssl dgst -sha512 -hmac $SECRET | sed "s/(stdin)= //"`
 

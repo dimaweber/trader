@@ -12,15 +12,20 @@
 
 #include <memory>
 
-extern "C"
-{
-extern char** environ;
-}
-
 class FCGI_Request
 {
     FCGX_Request request;
     bool emulatedRequest;
+    QVector<char*> env;
+
+    void addParam(const QByteArray& param, const QByteArray& value)
+    {
+        QByteArray buff(param);
+        buff.append('=').append(value);
+        char* p = new char [buff.length()+1];
+        memcpy(p, buff.constData(), buff.size()+1);
+        env.append(p);
+    }
 
 public:
     FCGI_Request(int socket)
@@ -75,15 +80,25 @@ public:
         request.err->data = nullptr;
 
         for (const QString& key : httpHeaders.keys())
-            qputenv(key.toUtf8(), httpHeaders[key].toUtf8());
+            addParam(key.toUtf8(), httpHeaders[key].toUtf8());
 
-        qputenv("REQUEST_SCHEME", url.scheme().toUtf8());
-        qputenv("SERVER_ADDR", url.host().toUtf8());
-        qputenv("SERVER_PORT", QString::number(url.port()).toUtf8());
-        qputenv("DOCUMENT_URI", url.path().toUtf8());
-        qputenv("QUERY_STRING", url.query().toUtf8());
+        if (in.isEmpty())
+            addParam("REQUEST_METHOD", "GET");
+        else
+        {
+            addParam("REQUEST_METHOD", "POST");
+            addParam("CONTENT_LENGTH", QString::number(in.length()).toUtf8());
+        }
 
-        request.envp = environ;
+        addParam("REQUEST_SCHEME", url.scheme().toUtf8());
+        addParam("SERVER_ADDR", url.host().toUtf8());
+        addParam("SERVER_PORT", QString::number(url.port()).toUtf8());
+        addParam("DOCUMENT_URI", url.path().toUtf8());
+        addParam("QUERY_STRING", url.query().toUtf8());
+
+        env.append(nullptr);
+
+        request.envp = env.data();
     }
 
     ~FCGI_Request()
@@ -95,6 +110,11 @@ public:
             delete request.in;
             delete request.out;
             delete request.err;
+            for(char*& p: env)
+            {
+                delete [] p;
+                p = nullptr;
+            }
         }
     }
 

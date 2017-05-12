@@ -14,8 +14,6 @@
 
 class QueryParser
 {
-public:
-    enum Scope {Public, Private};
     QueryParser(const QString& scheme, const QString& addr, const QString& port, const QString& path, const QString& query,
                 const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
     {
@@ -27,25 +25,6 @@ public:
         u.setQuery(query);
 
         setUrl(std::move(u), headers, postData);
-    }
-
-    QueryParser(const FCGI_Request& request)
-        :QueryParser(request.getParam("REQUEST_SCHEME"),
-                     request.getParam("SERVER_ADDR"),
-                     request.getParam("SERVER_PORT"),
-                     request.getParam("DOCUMENT_URI"),
-                     request.getParam("QUERY_STRING"),
-                     request.authHeaders(),
-                     request.postData())
-    {
-    }
-    QueryParser(const QString& str, const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
-    {
-        setUrl(str, headers, postData);
-    }
-    void setUrl(const QString& str, const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
-    {
-        setUrl(QUrl(str), headers, postData);
     }
 
     void setUrl(const QUrl& u, const QMap<QString, QString>& headers = QMap<QString,QString>(), const QByteArray& postData = QByteArray())
@@ -74,6 +53,19 @@ public:
         rawPostData = postData;
         QString str = QString::fromUtf8(postData);
         postParams.setQuery(str);
+    }
+public:
+    enum Scope {Public, Private};
+
+    QueryParser(const FCGI_Request& request)
+        :QueryParser(request.getParam("REQUEST_SCHEME"),
+                     request.getParam("SERVER_ADDR"),
+                     request.getParam("SERVER_PORT"),
+                     request.getParam("DOCUMENT_URI"),
+                     request.getParam("QUERY_STRING"),
+                     request.authHeaders(),
+                     request.postData())
+    {
     }
 
     QString toString() const
@@ -140,6 +132,10 @@ public:
     QByteArray signedData() const
     {
         return rawPostData;
+    }
+    QString order_id() const
+    {
+        return postParams.queryItemValue("order_id");
     }
 private:
     QUrl url;

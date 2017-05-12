@@ -2,16 +2,108 @@
 #include "query_parser.h"
 #include "sql_database.h"
 
-#include <QSqlQuery>
 #include <QDateTime>
+#include <QSqlQuery>
 
-QVariantMap getResponce(QSqlDatabase &db, const QString &url, Method &method)
+static QVariantMap getInfoResponce(Method& method);
+static QVariantMap getTickerResponce(const QueryParser& httpQuery, Method& method);
+static QVariantMap getDepthResponce(const QueryParser& httpQuery, Method& method);
+static QVariantMap getTradesResponce(const QueryParser& httpQuery, Method& method);
+
+static QVariantMap getPrivateInfoResponce(const QueryParser& httpQuery, Method &method);
+static QVariantMap getPrivateActiveOrdersResponce(const QueryParser& httpQuery, Method &method);
+static QVariantMap getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& method);
+
+static std::unique_ptr<Authentificator> auth;
+static std::unique_ptr<QSqlQuery> selectTickerInfoQuery;
+static std::unique_ptr<QSqlQuery> selectOrderInfoQuery;
+static std::unique_ptr<QSqlQuery> selectActiveOrdersQuery;
+static std::unique_ptr<QSqlQuery> selectPairInfoQuery;
+static std::unique_ptr<QSqlQuery> selectBidsQuery;
+static std::unique_ptr<QSqlQuery> selectAsksQuery;
+static std::unique_ptr<QSqlQuery> selectAllTradesInfo;
+static std::unique_ptr<QSqlQuery> selectFundsInfoQuery;
+static std::unique_ptr<QSqlQuery> selectRightsInfoQuery;
+static std::unique_ptr<QSqlQuery> selectActiveOrdersCountQuery;
+static std::unique_ptr<QSqlQuery> selectCurrencyVolumeQuery;
+
+bool initialiazeResponce(QSqlDatabase& db)
 {
-    QueryParser parser(url);
-    return getResponce(db, parser, method);
+    auth = std::make_unique<Authentificator>(db);
+
+    selectTickerInfoQuery.reset( new QSqlQuery(db));
+    selectOrderInfoQuery.reset(new QSqlQuery(db));
+    selectActiveOrdersQuery.reset(new QSqlQuery(db));
+    selectPairInfoQuery.reset( new QSqlQuery(db));
+    selectBidsQuery.reset( new QSqlQuery(db));
+    selectAsksQuery.reset( new QSqlQuery(db));
+    selectAllTradesInfo.reset(new QSqlQuery(db));
+    selectFundsInfoQuery.reset(new QSqlQuery(db));
+    selectRightsInfoQuery.reset(new QSqlQuery(db));
+    selectActiveOrdersCountQuery.reset(new QSqlQuery(db));
+    selectCurrencyVolumeQuery.reset(new QSqlQuery(db));
+
+    bool ok =
+        selectTickerInfoQuery->prepare("select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name")
+    &&  selectPairInfoQuery->prepare("select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs")
+    &&  selectOrderInfoQuery->prepare("select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id")
+    &&  selectActiveOrdersQuery->prepare("select o.order_id, p.pair, o.type, o.amount, o.rate, o.created, 0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:key and o.status = 'active'")
+    &&  selectBidsQuery->prepare("select type, rate, sum(amount), decimal_places from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='bids' and p.pair=:name group by pair, type, rate order by pair, type, rate desc")
+    &&  selectAsksQuery->prepare("select type, rate, sum(amount), decimal_places from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='asks' and p.pair=:name group by pair, type, rate order by pair, type, rate asc")
+    &&  selectAllTradesInfo->prepare("select o.type, o.rate, t.amount, t.trade_id, t.created from trades t left join orders o on o.order_id=t.order_id left join pairs p on o.pair_id=p.pair_id where p.pair=:name  order by t.trade_id desc")
+    &&  selectFundsInfoQuery->prepare("select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key")
+    &&  selectRightsInfoQuery->prepare("select info,trade,withdraw from apikeys where apikey=:key")
+    &&  selectActiveOrdersCountQuery->prepare("select count(*) from apikeys a left join orders o on o.owner_id=a.owner_id where a.apikey=:key and o.status = 0")
+    &&  selectCurrencyVolumeQuery->prepare("select d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key and c.currency=:currency")
+        ;
+
+    return ok;
 }
 
-QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& method)
+bool createTrade(const QString& key, const QString& pair, const QString& type, const QString& rate, const QString& amount)
+{
+    QVariantMap fundsInfoParams;
+    fundsInfoParams[":key"] = key;
+    bool isSell = false;
+    if (type.toLower() == "buy")
+        fundsInfoParams[":currency"] = pair.right(3).toLower();
+    else if (type.toLower() == "sell")
+    {
+        isSell = true;
+        fundsInfoParams[":currency"] = pair.left(3).toLower();
+    }
+    else
+        return false;
+
+    if (!performSql("get funds info", *selectCurrencyVolumeQuery, fundsInfoParams, true))
+        return false;
+
+    if (!selectFundsInfoQuery->next())
+        return false;
+
+    bool ok;
+    float currencyAvailable = selectCurrencyVolumeQuery->value(0).toFloat(&ok);
+    if (!ok)
+        return false;
+
+    float amnt = amount.toFloat(&ok);
+    if (!ok)
+        return false;
+
+    float rt = rate.toFloat(&ok);
+    if (!ok)
+        return false;
+
+    if (    isSell && currencyAvailable < amnt
+        || !isSell && currencyAvailable < amnt * rt)
+        return false;
+
+
+
+    return false;
+}
+
+QVariantMap getResponce(const QueryParser& parser, Method& method)
 {
     QString methodName = parser.method();
     QVariantMap var;
@@ -21,31 +113,27 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
     {
         if (methodName == "info")
         {
-            var = getInfoResponce(db, method);
-            return var;
+            return getInfoResponce( method);
         }
 
         if (methodName == "ticker" )
         {
-            var = getTickerResponce(db, parser, method);
-            return var;
+            return getTickerResponce(parser, method);
         }
 
         if (methodName == "depth")
         {
-            var = getDepthResponce(db, parser, method);
-            return var;
+            return getDepthResponce(parser, method);
         }
 
         if (methodName == "trades")
         {
-            var = getTradesResponce(db, parser, method);
-            return var;
+            return getTradesResponce(parser, method);
         }
     }
     else if (scope == QueryParser::Scope::Private)
     {
-        static Authentificator auth(db);
+
         QString authErrMsg;
         QString key = parser.key();
 
@@ -53,7 +141,7 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         QStringList methodsRequresTrade = {"Trade", "CancelOrder"};
         QStringList methodsRequresWithdraw = {"WithdrawCoin", "CreateCupon",  "RedeemCupon"};
 
-        if (!auth.authOk(key, parser.sign(), parser.nonce(), parser.signedData(), authErrMsg))
+        if (!auth->authOk(key, parser.sign(), parser.nonce(), parser.signedData(), authErrMsg))
         {
             var["success"] = 0;
             var["error"] = authErrMsg;
@@ -61,21 +149,21 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
             return var;
         }
 
-        if (methodsRequresInfo.contains(methodName) && !auth.hasInfo(key))
+        if (methodsRequresInfo.contains(methodName) && !auth->hasInfo(key))
         {
             var["success"] = 0;
             var["error"] = "api key dont have info permission";
             method = Invalid;
             return var;
         }
-        else if (methodsRequresTrade.contains(methodName) && !auth.hasTrade(key))
+        else if (methodsRequresTrade.contains(methodName) && !auth->hasTrade(key))
         {
             var["success"] = 0;
             var["error"] = "api key dont have trade permission";
             method = Invalid;
             return var;
         }
-        else if (methodsRequresWithdraw.contains(methodName) && !auth.hasWithdraw(key))
+        else if (methodsRequresWithdraw.contains(methodName) && !auth->hasWithdraw(key))
         {
             var["success"] = 0;
             var["error"] = "api key dont have withdraw permission";
@@ -85,39 +173,30 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
 
         if (methodName == "getInfo")
         {
-            var = getPrivateInfoResponce(db, parser, method);
-            return var;
+            return getPrivateInfoResponce(parser, method);
         }
 
         if (methodName == "ActiveOrders")
         {
-            var["success"] = 0;
-            var["error"] = "not implemented yet";
-            method = PrivateGetInfo;
-            return var;
+            return getPrivateActiveOrdersResponce(parser, method);
         }
 
         if (methodName == "PrivateTrade")
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateTrade;
             return var;
         }
 
         if (methodName == "PrivateOrderInfo")
         {
-            var["success"] = 0;
-            var["error"] = "not implemented yet";
-            method = PrivateOrderInfo;
-            return var;
+            return getPrivateOrderInfoResponce( parser, method);
         }
 
         if (methodName == "PrivateCanelOrder")
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateCanelOrder;
             return var;
         }
 
@@ -125,7 +204,6 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateTradeHistory;
             return var;
         }
 
@@ -133,7 +211,6 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateTransHistory;
             return var;
         }
 
@@ -141,7 +218,6 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateCoinDepositAddress;
             return var;
         }
 
@@ -149,7 +225,6 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateWithdrawCoin;
             return var;
         }
 
@@ -157,7 +232,6 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateCreateCupon;
             return var;
         }
 
@@ -165,7 +239,6 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         {
             var["success"] = 0;
             var["error"] = "not implemented yet";
-            method = PrivateRedeemCupon;
             return var;
         }
     }
@@ -180,39 +253,38 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
     return var;
 }
 
-QVariantMap getInfoResponce(QSqlDatabase& database, Method &method)
+QVariantMap getInfoResponce(Method &method)
 {
     method = Method::PublicInfo;
     QVariantMap var;
     QVariantMap pairs;
-    QSqlQuery query(database);
+
     var["server_time"] = QDateTime::currentDateTime().toTime_t();
-    if (performSql("get info", query, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs", true))
+    if (performSql("get info", *selectPairInfoQuery, QVariantMap(), true))
     {
-        while (query.next())
+        while (selectPairInfoQuery->next())
         {
             QVariantMap pair;
-            pair["decimal_places"] = query.value(1).toInt();
-            pair["min_price"] = query.value(2).toFloat();
-            pair["max_price"] = query.value(3).toFloat();
-            pair["min_amount"] = query.value(4).toFloat();
-            pair["hidden"] = query.value(5).toInt();
-            pair["fee"] = query.value(6).toFloat();
+            pair["decimal_places"] = selectPairInfoQuery->value(1).toInt();
+            pair["min_price"] = selectPairInfoQuery->value(2).toFloat();
+            pair["max_price"] = selectPairInfoQuery->value(3).toFloat();
+            pair["min_amount"] = selectPairInfoQuery->value(4).toFloat();
+            pair["hidden"] = selectPairInfoQuery->value(5).toInt();
+            pair["fee"] = selectPairInfoQuery->value(6).toFloat();
 
-            pairs[query.value(0).toString()] = pair;
+            pairs[selectPairInfoQuery->value(0).toString()] = pair;
         }
     }
     var["pairs"] = pairs;
     return var;
 }
 
-QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQuery, Method& method)
+QVariantMap getTickerResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PublicTicker;
     QVariantMap var;
-    QSqlQuery query(database);
     QVariantMap tickerParams;
-    query.prepare("select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name");
+
     for (const QString& pairName: httpQuery.pairs())
     {
         if (pairName.isEmpty())
@@ -225,20 +297,20 @@ QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQue
             break;
         }
         tickerParams[":name"] = pairName;
-        if (performSql("get ticker", query, tickerParams, true))
+        if (performSql("get ticker", *selectTickerInfoQuery, tickerParams, true))
         {
-            if (query.next())
+            if (selectTickerInfoQuery->next())
             {
                 QVariantMap pair;
-                pair["high"] = query.value(0);
-                pair["low"] = query.value(1);
-                pair["avg"] = query.value(2);
-                pair["vol"] = query.value(3);
-                pair["vol_cur"] = query.value(4);
-                pair["last"] = query.value(5);
-                pair["buy"] = query.value(6);
-                pair["sell"] = query.value(7);
-                pair["updated"] = query.value(8);
+                pair["high"] = selectTickerInfoQuery->value(0);
+                pair["low"] = selectTickerInfoQuery->value(1);
+                pair["avg"] = selectTickerInfoQuery->value(2);
+                pair["vol"] = selectTickerInfoQuery->value(3);
+                pair["vol_cur"] = selectTickerInfoQuery->value(4);
+                pair["last"] = selectTickerInfoQuery->value(5);
+                pair["buy"] = selectTickerInfoQuery->value(6);
+                pair["sell"] = selectTickerInfoQuery->value(7);
+                pair["updated"] = selectTickerInfoQuery->value(8);
 
                 var[pairName] = pair;
             }
@@ -262,7 +334,7 @@ QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQue
     return var;
 }
 
-void appendDepthToMap(QVariantMap& var, QSqlQuery& query, const QString& pairName, int limit)
+static void appendDepthToMap(QVariantMap& var, QSqlQuery& query, const QString& pairName, int limit)
 {
     QVariantMap params;
     params[":name"] = pairName;
@@ -290,15 +362,11 @@ void appendDepthToMap(QVariantMap& var, QSqlQuery& query, const QString& pairNam
     }
 }
 
-QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuery, Method& method)
+QVariantMap getDepthResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PublicDepth;
     QVariantMap var;
     int limit = httpQuery.limit();
-    QSqlQuery bidsQuery(database);
-    QSqlQuery asksQuery(database);
-    bidsQuery.prepare("select type, rate, sum(amount), decimal_places from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='bids' and p.pair=:name group by pair, type, rate order by pair, type, rate desc");
-    asksQuery.prepare("select type, rate, sum(amount), decimal_places from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='asks' and p.pair=:name group by pair, type, rate order by pair, type, rate asc");
     for (const QString& pairName: httpQuery.pairs())
     {
         if (pairName.isEmpty())
@@ -310,8 +378,8 @@ QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuer
             var["error"] = "Duplicated pair name: " + pairName;
             break;
         }
-        appendDepthToMap(var, bidsQuery, pairName, limit);
-        appendDepthToMap(var, asksQuery, pairName, limit);
+        appendDepthToMap(var, *selectBidsQuery, pairName, limit);
+        appendDepthToMap(var, *selectAsksQuery, pairName, limit);
     }
     if (var.isEmpty())
     {
@@ -321,13 +389,11 @@ QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuer
     return var;
 }
 
-QVariantMap getTradesResponce(QSqlDatabase &database, const QueryParser &httpQuery, Method &method)
+QVariantMap getTradesResponce(const QueryParser &httpQuery, Method &method)
 {
     method = Method::PublicTrades;
     QVariantMap var;
     int limit = httpQuery.limit();
-    QSqlQuery query(database);
-    query.prepare("select o.type, o.rate, t.amount, t.trade_id, t.created from trades t left join orders o on o.order_id=t.order_id left join pairs p on o.pair_id=p.pair_id where p.pair=:name  order by t.trade_id desc");
     for (const QString& pairName: httpQuery.pairs())
     {
         if (pairName.isEmpty())
@@ -341,27 +407,27 @@ QVariantMap getTradesResponce(QSqlDatabase &database, const QueryParser &httpQue
         }
         QVariantMap tradesParams;
         tradesParams[":name"] = pairName;
-        if (performSql("select trades", query, tradesParams, true))
+        if (performSql("select trades", *selectAllTradesInfo, tradesParams, true))
         {
             QVariantList list;
             QVariantMap tr;
             QString type;
-            while(query.next())
+            while(selectAllTradesInfo->next())
             {
 
                 if (list.size() >= limit)
                     break;
 
-                if (query.value(0).toString() == "asks")
+                if (selectAllTradesInfo->value(0).toString() == "asks")
                     type = "bid";
                 else
                     type = "ask";
 
                 tr["type"] = type;
-                tr["price"] = query.value(1);
-                tr["amount"] = query.value(2);
-                tr["tid"] = query.value(3);
-                tr["timestamp"] = query.value(4).toDateTime().toTime_t();
+                tr["price"] = selectAllTradesInfo->value(1);
+                tr["amount"] = selectAllTradesInfo->value(2);
+                tr["tid"] = selectAllTradesInfo->value(3);
+                tr["timestamp"] = selectAllTradesInfo->value(4).toDateTime().toTime_t();
 
                 list << tr;
             }
@@ -374,77 +440,125 @@ QVariantMap getTradesResponce(QSqlDatabase &database, const QueryParser &httpQue
         var["error"] = "Empty pair list";
     }
     return var;
-
-    if (var.isEmpty())
-    {
-        var["success"] = 0;
-        var["error"] = "Empty pair list";
-    }
-    return var;
-
 }
 
-QVariantMap getPrivateInfoResponce(QSqlDatabase &database, const QueryParser &httpQuery, Method& method)
+QVariantMap getPrivateInfoResponce(const QueryParser &httpQuery, Method& method)
 {
     method = Method::PrivateGetInfo;
     QVariantMap var;
     QVariantMap funds;
     QVariantMap rights;
-    static std::unique_ptr<QSqlQuery> getFundsInfoQuery;
-    static std::unique_ptr<QSqlQuery> getRightsInfoQuery;
-    static std::unique_ptr<QSqlQuery> getActiveOrdersCountQuery;
+    QVariantMap result;
 
-    if (!getFundsInfoQuery)
-    {
-        getFundsInfoQuery.reset(new QSqlQuery(database));
-        getFundsInfoQuery->prepare("select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key");
-    }
-    if (!getRightsInfoQuery)
-    {
-        getRightsInfoQuery.reset(new QSqlQuery(database));
-        getRightsInfoQuery->prepare("select info,trade,withdraw from apikeys where apikey=:key");
-    }
-    if (!getActiveOrdersCountQuery)
-    {
-        getActiveOrdersCountQuery.reset(new QSqlQuery(database));
-        getActiveOrdersCountQuery->prepare("select count(*) from apikeys a left join orders o on o.owner_id=a.owner_id where a.apikey=:key and o.status = 0");
-    }
 
     QVariantMap params;
     params[":key"] = httpQuery.key();
-    if (performSql("get funds", *getFundsInfoQuery, params, true))
+    if (performSql("get funds", *selectFundsInfoQuery, params, true))
     {
-        while(getFundsInfoQuery->next())
+        while(selectFundsInfoQuery->next())
         {
-            QString currency = getFundsInfoQuery->value(0).toString();
-            funds[currency] = getFundsInfoQuery->value(1);
+            QString currency = selectFundsInfoQuery->value(0).toString();
+            funds[currency] = selectFundsInfoQuery->value(1);
         }
-        var["funds"] = funds;
+        result["funds"] = funds;
     }
-    if (performSql("get rights", *getRightsInfoQuery, params))
+    if (performSql("get rights", *selectRightsInfoQuery, params, true))
     {
-        if (getRightsInfoQuery->next())
+        if (selectRightsInfoQuery->next())
         {
-            rights["info"] = getRightsInfoQuery->value(0).toInt();
-            rights["trade"] = getRightsInfoQuery->value(1).toInt();
-            rights["withdraw"] = getRightsInfoQuery->value(2).toInt();
+            rights["info"] = selectRightsInfoQuery->value(0).toInt();
+            rights["trade"] = selectRightsInfoQuery->value(1).toInt();
+            rights["withdraw"] = selectRightsInfoQuery->value(2).toInt();
         }
-        var["rights"] = rights;
+        result["rights"] = rights;
     }
-    if (performSql("get orders count", *getActiveOrdersCountQuery, params))
+    if (performSql("get orders count", *selectActiveOrdersCountQuery, params, true))
     {
-        if (getActiveOrdersCountQuery->next())
-            var["open_orders"] = getActiveOrdersCountQuery->value(0).toUInt();
+        if (selectActiveOrdersCountQuery->next())
+            result["open_orders"] = selectActiveOrdersCountQuery->value(0).toUInt();
     }
-    if (var.contains("rights") && var.contains("funds") && var.contains("open_orders"))
+    if (result.contains("rights") && result.contains("funds") && result.contains("open_orders"))
     {
+        result["transaction_count"] = 0;
+        result["server_time"] = QDateTime::currentDateTime().toTime_t();
+        var["result"] = result;
         var["success"] = 1;
-        var["transaction_count"] = 0;
-        var["server_time"] = QDateTime::currentDateTime().toTime_t();
     }
     else
         var.clear();
 
+
+    if (var.isEmpty())
+    {
+        var["success"] = 0;
+        var["error"] = "Fail to provide info";
+    }
+    return var;
+}
+
+QVariantMap getPrivateActiveOrdersResponce(const QueryParser &httpQuery, Method& method)
+{
+    method = Method::PrivateActiveOrders;
+    QVariantMap var;
+
+    QVariantMap params;
+    params[":key"] = httpQuery.key();
+    QVariantMap result;
+    if (performSql("get active orders", *selectActiveOrdersQuery, params, true))
+    {
+        while(selectActiveOrdersQuery->next())
+        {
+            QString order_id = selectActiveOrdersQuery->value(0).toString();
+            QVariantMap order;
+            order["pair"] = selectActiveOrdersQuery->value(1);
+            QString type = selectActiveOrdersQuery->value(2).toString();
+            order["type"] = (type=="bids")?"buy":"sell";
+            order["amount"] = selectActiveOrdersQuery->value(3);
+            order["rate"] = selectActiveOrdersQuery->value(4);
+            order["timestamp_created"] = selectActiveOrdersQuery->value(5).toDateTime().toTime_t();
+            order["status"] = selectActiveOrdersQuery->value(6);
+
+            result[order_id] = order;
+        }
+        var["result"] = result;
+        var["success"] = 1;
+    }
+
+    if (var.isEmpty())
+    {
+        var["success"] = 0;
+        var["error"] = "Fail to provide info";
+    }
+    return var;
+}
+
+QVariantMap getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& method)
+{
+    method = Method::PrivateActiveOrders;
+    QVariantMap var;
+
+    QVariantMap params;
+    QString order_id = httpQuery.order_id();
+    params[":order_id"] = order_id;
+    QVariantMap result;
+    if (performSql("get order info", *selectOrderInfoQuery, params, true))
+    {
+        if(selectOrderInfoQuery->next())
+        {
+            QVariantMap order;
+            order["pair"] = selectOrderInfoQuery->value(0);
+            QString type = selectOrderInfoQuery->value(1).toString();
+            order["type"] = (type=="bids")?"buy":"sell";
+            order["amount"] = selectOrderInfoQuery->value(2);
+            order["rate"] = selectOrderInfoQuery->value(3);
+            order["timestamp_created"] = selectOrderInfoQuery->value(4).toDateTime().toTime_t();
+            order["status"] = selectOrderInfoQuery->value(5);
+
+            result[order_id] = order;
+        }
+        var["result"] = result;
+        var["success"] = 1;
+    }
 
     if (var.isEmpty())
     {

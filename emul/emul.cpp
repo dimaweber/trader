@@ -571,16 +571,24 @@ int main(int argc, char *argv[])
         populateDatabase(db, trades_limit, depth_limit); //TODO: run this in thread
     }
 
+    if (!initialiazeResponce(db))
+    {
+        std::cerr << "fail to initialaze responce subsystem. stop" << std::endl;
+        return 3;
+    }
+
     if (runTests)
     {
         std::vector<std::unique_ptr<QObject>> tests;
+        tests.emplace(tests.end(), new FCGI_RequestTest);
         tests.emplace(tests.end(), new QueryParserTest);
-        tests.emplace(tests.end(), new ResponceTest(db));
-        tests.emplace(tests.end(), new InfoTest(db));
-        tests.emplace(tests.end(), new  TickerTest(db));
-        tests.emplace(tests.end(), new  DepthTest(db));
-        tests.emplace(tests.end(), new  TradesTest(db));
-        tests.emplace(tests.end(), new PrivateGetInfoTest(db));
+        tests.emplace(tests.end(), new ResponceTest);
+        tests.emplace(tests.end(), new InfoTest);
+        tests.emplace(tests.end(), new  TickerTest);
+        tests.emplace(tests.end(), new  DepthTest);
+        tests.emplace(tests.end(), new  TradesTest);
+        tests.emplace(tests.end(), new PrivateGetInfoTest);
+        tests.emplace(tests.end(), new PrivateActiveOrdersTest);
         for(std::unique_ptr<QObject>& ptr: tests)
         {
             int testReturnCode = QTest::qExec(ptr.get(), argc, argv);
@@ -589,6 +597,8 @@ int main(int argc, char *argv[])
                 return testReturnCode;
         }
     }
+
+    return 0;
 
     int ret;
     int sock;
@@ -622,7 +632,7 @@ int main(int argc, char *argv[])
         Method method;
         QElapsedTimer timer;
         timer.start();
-        var = getResponce(db, httpQuery, method);
+        var = getResponce(httpQuery, method);
         QJsonDocument doc = QJsonDocument::fromVariant(var);
         json = doc.toJson().constData();
         quint32 elapsed = timer.elapsed();
