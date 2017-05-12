@@ -5,6 +5,12 @@
 #include <QSqlQuery>
 #include <QDateTime>
 
+QVariantMap getResponce(QSqlDatabase &db, const QString &url, Method &method)
+{
+    QueryParser parser(url);
+    return getResponce(db, parser, method);
+}
+
 QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& method)
 {
     QString methodName = parser.method();
@@ -15,23 +21,26 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
     {
         if (methodName == "info")
         {
-            var = getInfoResponce(db);
-            method = PublicInfo;
+            var = getInfoResponce(db, method);
+            return var;
         }
-        else if (methodName == "ticker" )
+
+        if (methodName == "ticker" )
         {
-            var = getTickerResponce(db, parser);
-            method = PublicTicker;
+            var = getTickerResponce(db, parser, method);
+            return var;
         }
-        else if (methodName == "depth")
+
+        if (methodName == "depth")
         {
-            var = getDepthResponce(db, parser);
-            method = PublicDepth;
+            var = getDepthResponce(db, parser, method);
+            return var;
         }
-        else if (methodName == "trades")
+
+        if (methodName == "trades")
         {
-            var = getTradesResponce(db, parser);
-            method = PublicTrades;
+            var = getTradesResponce(db, parser, method);
+            return var;
         }
     }
     else if (scope == QueryParser::Scope::Private)
@@ -39,24 +48,125 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
         static Authentificator auth(db);
         QString authErrMsg;
         QString key = parser.key();
+
+        QStringList methodsRequresInfo = {"getInfo", "ActiveOrders", "OrderInfo", "TradeHistory", "TransHistory", "CoinDepositAddress",};
+        QStringList methodsRequresTrade = {"Trade", "CancelOrder"};
+        QStringList methodsRequresWithdraw = {"WithdrawCoin", "CreateCupon",  "RedeemCupon"};
+
         if (!auth.authOk(key, parser.sign(), parser.nonce(), parser.signedData(), authErrMsg))
         {
             var["success"] = 0;
             var["error"] = authErrMsg;
             method = Invalid;
+            return var;
         }
-        else if (methodName == "getInfo")
+
+        if (methodsRequresInfo.contains(methodName) && !auth.hasInfo(key))
         {
-            if (auth.hasInfo(key))
-            {
-                var = getPrivateInfoResponce(db, parser);
-                method = PrivateGetInfo;
-            }
-            else
-            {
-                var["success"] = 0;
-                var["error"] = "api key dont have info permission";
-            }
+            var["success"] = 0;
+            var["error"] = "api key dont have info permission";
+            method = Invalid;
+            return var;
+        }
+        else if (methodsRequresTrade.contains(methodName) && !auth.hasTrade(key))
+        {
+            var["success"] = 0;
+            var["error"] = "api key dont have trade permission";
+            method = Invalid;
+            return var;
+        }
+        else if (methodsRequresWithdraw.contains(methodName) && !auth.hasWithdraw(key))
+        {
+            var["success"] = 0;
+            var["error"] = "api key dont have withdraw permission";
+            method = Invalid;
+            return var;
+        }
+
+        if (methodName == "getInfo")
+        {
+            var = getPrivateInfoResponce(db, parser, method);
+            return var;
+        }
+
+        if (methodName == "ActiveOrders")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateGetInfo;
+            return var;
+        }
+
+        if (methodName == "PrivateTrade")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateTrade;
+            return var;
+        }
+
+        if (methodName == "PrivateOrderInfo")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateOrderInfo;
+            return var;
+        }
+
+        if (methodName == "PrivateCanelOrder")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateCanelOrder;
+            return var;
+        }
+
+        if (methodName == "PrivateTradeHistory")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateTradeHistory;
+            return var;
+        }
+
+        if (methodName == "PrivateTransHistory")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateTransHistory;
+            return var;
+        }
+
+        if (methodName == "PrivateCoinDepositAddress")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateCoinDepositAddress;
+            return var;
+        }
+
+        if (methodName == "PrivateWithdrawCoin")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateWithdrawCoin;
+            return var;
+        }
+
+        if (methodName == "PrivateCreateCupon")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateCreateCupon;
+            return var;
+        }
+
+        if (methodName == "PrivateRedeemCupon")
+        {
+            var["success"] = 0;
+            var["error"] = "not implemented yet";
+            method = PrivateRedeemCupon;
+            return var;
         }
     }
 
@@ -70,8 +180,9 @@ QVariantMap getResponce(QSqlDatabase& db, const QueryParser& parser, Method& met
     return var;
 }
 
-QVariantMap getInfoResponce(QSqlDatabase& database)
+QVariantMap getInfoResponce(QSqlDatabase& database, Method &method)
 {
+    method = Method::PublicInfo;
     QVariantMap var;
     QVariantMap pairs;
     QSqlQuery query(database);
@@ -95,8 +206,9 @@ QVariantMap getInfoResponce(QSqlDatabase& database)
     return var;
 }
 
-QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQuery)
+QVariantMap getTickerResponce(QSqlDatabase& database, const QueryParser& httpQuery, Method& method)
 {
+    method = Method::PublicTicker;
     QVariantMap var;
     QSqlQuery query(database);
     QVariantMap tickerParams;
@@ -178,8 +290,9 @@ void appendDepthToMap(QVariantMap& var, QSqlQuery& query, const QString& pairNam
     }
 }
 
-QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuery)
+QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuery, Method& method)
 {
+    method = Method::PublicDepth;
     QVariantMap var;
     int limit = httpQuery.limit();
     QSqlQuery bidsQuery(database);
@@ -208,8 +321,9 @@ QVariantMap getDepthResponce(QSqlDatabase& database, const QueryParser& httpQuer
     return var;
 }
 
-QVariantMap getTradesResponce(QSqlDatabase &database, const QueryParser &httpQuery)
+QVariantMap getTradesResponce(QSqlDatabase &database, const QueryParser &httpQuery, Method &method)
 {
+    method = Method::PublicTrades;
     QVariantMap var;
     int limit = httpQuery.limit();
     QSqlQuery query(database);
@@ -270,14 +384,9 @@ QVariantMap getTradesResponce(QSqlDatabase &database, const QueryParser &httpQue
 
 }
 
-QVariantMap getResponce(QSqlDatabase &db, const QString &url, Method &method)
+QVariantMap getPrivateInfoResponce(QSqlDatabase &database, const QueryParser &httpQuery, Method& method)
 {
-    QueryParser parser(url);
-    return getResponce(db, parser, method);
-}
-
-QVariantMap getPrivateInfoResponce(QSqlDatabase &database, const QueryParser &httpQuery)
-{
+    method = Method::PrivateGetInfo;
     QVariantMap var;
     QVariantMap funds;
     QVariantMap rights;

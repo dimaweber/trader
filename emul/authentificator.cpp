@@ -63,6 +63,13 @@ bool Authentificator::hasInfo(const QString& key)
     return cache[key]->info;
 }
 
+bool Authentificator::hasTrade(const QString &key)
+{
+    if (!validateKey(key))
+        return false;
+    return cache[key]->trade;
+}
+
 bool Authentificator::hasWithdraw(const QString& key)
 {
     if (!validateKey(key))

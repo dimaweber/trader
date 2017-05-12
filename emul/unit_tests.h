@@ -1,6 +1,7 @@
 #ifndef UNIT_TESTS_H
 #define UNIT_TESTS_H
 
+#include "fcgi_request.h"
 #include "responce.h"
 #include "query_parser.h"
 #include "utils.h"
@@ -275,7 +276,13 @@ public:
 private slots:
     void tst_invalidMethod()
     {
-        QueryParser parser("http://loclahost:81/api/3/invalid");
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/api/3/invalid";
+
+        FCGI_Request request(url , headers, in);
+        QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
 
@@ -287,7 +294,13 @@ private slots:
     }
     void tst_infoMethod()
     {
-        QueryParser parser("http://localhost:81/api/3/info");
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/api/3/info";
+
+        FCGI_Request request(url , headers, in);
+        QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
 
@@ -295,7 +308,13 @@ private slots:
     }
     void tst_tickerMethod()
     {
-        QueryParser parser("http://localhost:81/api/3/ticker");
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/api/3/ticker";
+
+        FCGI_Request request(url , headers, in);
+        QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(db, parser, method);
 
