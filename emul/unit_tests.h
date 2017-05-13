@@ -14,18 +14,24 @@
 #define VALID_KEY "3WTYG4ZB-I32T5T2V-S7UOKP61-9H8AMAAZ-R5H0BIVL"
 #define VALID_SECRET "rarjtfm024i4axtfxqufhwjiqc2d9zle0m0yf6tbvzyzb87a2rnpvy3bvawlcrlo"
 
-class FCGI_RequestTest : public QObject
+class BtceEmulator_Test : public QObject
 {
     Q_OBJECT
+    quint32 nonce()
+    {
+        static quint32 value = QDateTime::currentDateTime().toTime_t();
+        return value++;
+    }
+
 private slots:
-    void tst_GetQuery()
+    void FcgiRequest_httpGetQuery()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/ticker/btc_usd?param1=value1&param2=value2";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QCOMPARE(request.getParam("REQUEST_METHOD"), QString("GET"));
         QCOMPARE(request.getParam("REQUEST_SCHEME"), QString("http"));
         QCOMPARE(request.getParam("SERVER_ADDR"), QString("localhost"));
@@ -34,7 +40,7 @@ private slots:
         QCOMPARE(request.getParam("QUERY_STRING"), QString("param1=value1&param2=value2"));
         QCOMPARE(request.postData().length(), 0);
     }
-    void tst_PostQuery()
+    void FcgiRequest_httpPostQuery()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -44,7 +50,7 @@ private slots:
         url = "http://localhost:81/api/3/ticker/btc_usd?param1=value1&param2=value2";
         in = "method=method&param=value";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QCOMPARE(request.getParam("REQUEST_METHOD"), QString("POST"));
         QCOMPARE(request.getParam("REQUEST_SCHEME"), QString("http"));
         QCOMPARE(request.getParam("SERVER_ADDR"), QString("localhost"));
@@ -54,47 +60,42 @@ private slots:
         QCOMPARE(request.authHeaders()["Sign"], QString(VALID_SECRET));
         QCOMPARE(request.postData().length(), in.length());
     }
-};
 
-class QueryParserTest : public QObject
-{
-    Q_OBJECT
-private slots:
-    void tst_stringParse()
+    void QueryParser_urlParse()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/ticker/btc_usd?";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QCOMPARE(parser.method(), QString("ticker"));
         QVERIFY(parser.pairs().length() == 1);
     }
 
-    void tst_method()
+    void QueryParser_methodNameRetrieving()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/ticker/btc_usd-btc_usd?ignore_invalid=0";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QVERIFY (parser.method() == "ticker");
     }
 
-    void tst_pairs_1()
+    void QueryParser_duplicatingPairsRetrieving()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/ticker/btc_usd-btc_usd?ignore_invalid=0";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QCOMPARE(parser.pairs().length(), 2);
@@ -102,14 +103,14 @@ private slots:
         QVERIFY(!parser.pairs().contains("usd-btc"));
     }
 
-    void tst_pairs_2()
+    void QueryParser_pairsRetrieving()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/ticker/btc_usd-btc_eur?ignore_invalid=0";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QCOMPARE(parser.pairs().length(), 2);
@@ -117,335 +118,120 @@ private slots:
         QVERIFY(parser.pairs().contains("btc_eur"));
     }
 
-    void tst_limit()
+    void QueryParser_limitParameterRetrieving()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/tapi/method?param1=value1&limit=10";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QCOMPARE(parser.limit(), 10);
     }
-    void tst_defaultLimit()
+    void QueryParser_defaultLimitValue()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/tapi/method?param1=value1";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QCOMPARE(parser.limit(), 150);
     }
 
-    void tst_limitOverflow()
+    void QueryParser_limitOverflow()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/tapi/method?param1=value1&limit=9000";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QCOMPARE(parser.limit(), 5000);
     }
 
-};
-
-class TickerTest : public QObject
-{
-    Q_OBJECT
-private slots:
-    void tst_emptyList()
+    void Methods_invalidMethod()
     {
-        // In:    https://btc-e.com/api/3/ticker
-        // Out:   {"success":0, "error":"Empty pair list"}
-        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://localhost:81/api/3/ticker";
+        url = "http://loclahost:81/api/3/invalid";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(!responce.isEmpty());
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Empty pair list");
-    }
-    void tst_emptyList_withIgnore()
-    {
-        // In:   https://btc-e.com/api/3/ticker?ignore_invalid=1
-        // Out:  {"success":0, "error":"Empty pair list"}
         Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost:81/api/3/ticker?ignore_invalid=1";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(!responce.isEmpty());
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Empty pair list");
-    }
-    void tst_valid_1()
-    {
-        // In:   https://btc-e.com/api/3/ticker/btc_usd-
-        // Out:  VALID json
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(!responce.contains("success"));
-        QVERIFY(responce.size() == 1);
-        QVERIFY(responce.contains("btc_usd"));
-        QVERIFY(responce["btc_usd"].toMap().contains("high"));
-        QVERIFY(responce["btc_usd"].toMap().contains("low"));
-        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
-    }
-    void tst_valid_2()
-    {
-        // In:   https://btc-e.com/api/3/ticker/btc_usd
-        // Out:  VALID json
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(!responce.contains("success"));
-        QVERIFY(responce.size() == 1);
-        QVERIFY(responce.contains("btc_usd"));
-        QVERIFY(responce["btc_usd"].toMap().contains("high"));
-        QVERIFY(responce["btc_usd"].toMap().contains("low"));
-        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
-    }
-    void tst_valid_3()
-    {
-        // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_eur
-        // Out:  VALID json
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-btc_eur";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(!responce.contains("success"));
-        QVERIFY(responce.size() == 2);
-        QVERIFY(responce.contains("btc_usd"));
-        QVERIFY(responce.contains("btc_eur"));
-        QVERIFY(responce["btc_usd"].toMap().contains("high"));
-        QVERIFY(responce["btc_usd"].toMap().contains("low"));
-        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
-    }
-    void tst_valid_4()
-    {
-        // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=1
-        // Out:  VALID json
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=1";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(!responce.contains("success"));
-        QVERIFY(responce.size() == 1);
-        QVERIFY(responce.contains("btc_usd"));
-        QVERIFY(responce["btc_usd"].toMap().contains("high"));
-        QVERIFY(responce["btc_usd"].toMap().contains("low"));
-        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
-    }
-
-    void tst_invalidPair_1()
-    {
-        // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid
-        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
-    }
-
-    void tst_invalidPair_2()
-    {
-        // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=0
-        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=0";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce(parser, method);
-
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
-    }
-
-    void tst_invalidPair_3()
-    {
-        // In:   https://btc-e.com/api/3/ticker/btc_usd-non_ext
-        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-non_ext";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
         QVariantMap responce = getResponce( parser, method);
 
+        QCOMPARE(method, Method::Invalid);
         QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
+        QCOMPARE(responce["success"].toInt(), 0);
         QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
+        QCOMPARE(responce["error"].toString(), QString("Invalid method"));
     }
-
-    void tst_InvalidPairPrevailOnDoublePair()
+    void Methods_publicInfo()
     {
-        // In:   https://btc-e.com/api/3/ticker/non_ext-non_ext
-        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://localhost/api/3/ticker/non_ext-non_ext";
+        url = "http://loclahost:81/api/3/info";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-
+        Method method;
         QVariantMap responce = getResponce( parser, method);
 
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
+        QCOMPARE(method, Method::PublicInfo);
     }
-
-    void tst_invalidPair_4()
+    void Methods_publicTicker()
     {
-        // In:   https://btc-e.com/api/3/ticker/usd_btc
-        // Out:  {"success":0, "error":"Invalid pair name: usd_btc"}
-        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "https://btc-e.com/api/3/ticker/usd_btc";
+        url = "http://loclahost:81/api/3/ticker";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-
-        QVariantMap responce = getResponce( parser, method);
-
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Invalid pair name: usd_btc");
-    }
-
-    void tst_duplicatePair_1()
-    {
-        // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd
-        // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
         Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-btc_usd";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
-        QVariantMap responce = getResponce( parser, method);
-
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Duplicated pair name: btc_usd");
-    }
-
-    void tst_duplicatePair_2()
-    {
-        // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1
-        // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
-        Method method;
-        QByteArray in;
-        QMap<QString, QString> headers;
-        QUrl url;
-        url = "http://localhost/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1";
-
-        FCGI_Request request(url , headers, in);
-        QueryParser parser(request);
-
         QVariantMap responce = getResponce(parser, method);
 
-        QVERIFY(responce.contains("success"));
-        QVERIFY(responce["success"].toInt() == 0);
-        QVERIFY(responce.contains("error"));
-        QVERIFY(responce["error"] == "Duplicated pair name: btc_usd");
+        QCOMPARE(method, Method::PublicTicker);
     }
-};
+    void Methods_publicDepth()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/api/3/depth";
 
-class InfoTest : public QObject
-{
-    Q_OBJECT
-private slots:
-    void tst_serverTime()
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(method, Method::PublicDepth);
+    }
+    void Methods_publicTrades()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/api/3/trades";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(method, Method::PublicTrades);
+    }
+
+    void Info_serverTimePresent()
     {
         Method method;
         QByteArray in;
@@ -453,7 +239,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/api/3/info";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QVariantMap responce = getResponce(parser, method);
@@ -461,7 +247,7 @@ private slots:
         QVERIFY(responce.contains("server_time"));
         QVERIFY(QDateTime::fromTime_t(responce["server_time"].toInt()).date() == QDate::currentDate());
     }
-    void tst_Pairs()
+    void Info_pairsPresent()
     {
         Method method;
         QByteArray in;
@@ -469,7 +255,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/api/3/info";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
 
         QVariantMap responce = getResponce( parser, method);
@@ -482,88 +268,287 @@ private slots:
         QVariantMap btc_usd = pairs["btc_usd"].toMap();
         QVERIFY(btc_usd.contains("decimal_places"));
     }
-};
 
-
-class ResponceTest : public QObject
-{
-    Q_OBJECT
-private slots:
-    void tst_invalidMethod()
+    void Ticker_emptyList()
     {
+        // In:    https://btc-e.com/api/3/ticker
+        // Out:   {"success":0, "error":"Empty pair list"}
+        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://loclahost:81/api/3/invalid";
+        url = "http://localhost:81/api/3/ticker";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-        Method method;
-        QVariantMap responce = getResponce( parser, method);
 
-        QCOMPARE(method, Method::Invalid);
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(!responce.isEmpty());
         QVERIFY(responce.contains("success"));
-        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce["success"].toInt() == 0);
         QVERIFY(responce.contains("error"));
-        QCOMPARE(responce["error"].toString(), QString("Invalid method"));
+        QVERIFY(responce["error"] == "Empty pair list");
     }
-    void tst_infoMethod()
+    void Ticker_emptyList_withIgnore()
     {
+        // In:   https://btc-e.com/api/3/ticker?ignore_invalid=1
+        // Out:  {"success":0, "error":"Empty pair list"}
+        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://loclahost:81/api/3/info";
+        url = "http://localhost:81/api/3/ticker?ignore_invalid=1";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(!responce.isEmpty());
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Empty pair list");
+    }
+    void Ticker_emptyPairnameHandle()
+    {
+        // In:   https://btc-e.com/api/3/ticker/btc_usd-
+        // Out:  VALID json
         Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(!responce.contains("success"));
+        QVERIFY(responce.size() == 1);
+        QVERIFY(responce.contains("btc_usd"));
+        QVERIFY(responce["btc_usd"].toMap().contains("high"));
+        QVERIFY(responce["btc_usd"].toMap().contains("low"));
+        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
+    }
+    void Ticker_onePair()
+    {
+        // In:   https://btc-e.com/api/3/ticker/btc_usd
+        // Out:  VALID json
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(!responce.contains("success"));
+        QVERIFY(responce.size() == 1);
+        QVERIFY(responce.contains("btc_usd"));
+        QVERIFY(responce["btc_usd"].toMap().contains("high"));
+        QVERIFY(responce["btc_usd"].toMap().contains("low"));
+        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
+    }
+    void Ticker_twoPairs()
+    {
+        // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_eur
+        // Out:  VALID json
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-btc_eur";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(!responce.contains("success"));
+        QVERIFY(responce.size() == 2);
+        QVERIFY(responce.contains("btc_usd"));
+        QVERIFY(responce.contains("btc_eur"));
+        QVERIFY(responce["btc_usd"].toMap().contains("high"));
+        QVERIFY(responce["btc_usd"].toMap().contains("low"));
+        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
+    }
+    void Ticker_ignoreInvalid()
+    {
+        // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=1
+        // Out:  VALID json
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=1";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(!responce.contains("success"));
+        QVERIFY(responce.size() == 1);
+        QVERIFY(responce.contains("btc_usd"));
+        QVERIFY(responce["btc_usd"].toMap().contains("high"));
+        QVERIFY(responce["btc_usd"].toMap().contains("low"));
+        QVERIFY(responce["btc_usd"].toMap()["high"].toFloat() >= responce["btc_usd"].toMap()["low"].toFloat());
+    }
+
+    void Ticker_ignoreInvalidWithouValue()
+    {
+        // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid
+        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
+    }
+
+    void Ticker_ignoreInvalidInvalidSetToZero()
+    {
+        // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=0
+        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-non_ext?ignore_invalid=0";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
+    }
+
+    void Ticker_invalidPair()
+    {
+        // In:   https://btc-e.com/api/3/ticker/btc_usd-non_ext
+        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-non_ext";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
         QVariantMap responce = getResponce( parser, method);
 
-        QCOMPARE(method, Method::PublicInfo);
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
     }
-    void tst_tickerMethod()
+
+    void Ticker_InvalidPairPrevailOnDoublePair()
     {
+        // In:   https://btc-e.com/api/3/ticker/non_ext-non_ext
+        // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
+        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://loclahost:81/api/3/ticker";
+        url = "http://localhost/api/3/ticker/non_ext-non_ext";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-        Method method;
-        QVariantMap responce = getResponce(parser, method);
 
-        QCOMPARE(method, Method::PublicTicker);
+        QVariantMap responce = getResponce( parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Invalid pair name: non_ext");
     }
-    void tst_depthMethod()
+
+    void Ticker_reversePairName()
     {
+        // In:   https://btc-e.com/api/3/ticker/usd_btc
+        // Out:  {"success":0, "error":"Invalid pair name: usd_btc"}
+        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://loclahost:81/api/3/depth";
+        url = "https://btc-e.com/api/3/ticker/usd_btc";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-        Method method;
-        QVariantMap responce = getResponce(parser, method);
 
-        QCOMPARE(method, Method::PublicDepth);
+        QVariantMap responce = getResponce( parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Invalid pair name: usd_btc");
     }
-    void tst_tradesMethod()
+
+    void Ticker_duplicatePair()
     {
+        // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd
+        // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
+        Method method;
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
-        url = "http://loclahost:81/api/3/trades";
+        url = "http://localhost/api/3/ticker/btc_usd-btc_usd";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
+
+        QVariantMap responce = getResponce( parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Duplicated pair name: btc_usd");
+    }
+
+    void Ticker_ignoreInvalidForDuplicatePair()
+    {
+        // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1
+        // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
         Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
         QVariantMap responce = getResponce(parser, method);
 
-        QCOMPARE(method, Method::PublicTrades);
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 0);
+        QVERIFY(responce.contains("error"));
+        QVERIFY(responce["error"] == "Duplicated pair name: btc_usd");
     }
-    void tst_authNoKey()
+
+    void Authentication_noKey()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -571,7 +556,7 @@ private slots:
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -582,7 +567,7 @@ private slots:
         QCOMPARE(responce["error"].toString(), QString("api key not specified"));
     }
 
-    void tst_authInvalidKey()
+    void Authentication_invalidKey()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -591,7 +576,7 @@ private slots:
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -602,7 +587,7 @@ private slots:
         QCOMPARE(responce["error"].toString(), QString("invalid api key"));
     }
 
-    void tst_NoSign()
+    void Authentication_noSign()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -611,7 +596,7 @@ private slots:
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -622,7 +607,7 @@ private slots:
         QCOMPARE(responce["error"].toString(), QString("invalid sign"));
     }
 
-    void tst_InvalidSign()
+    void Authentication_invalidSign()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -632,7 +617,7 @@ private slots:
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -643,7 +628,7 @@ private slots:
         QCOMPARE(responce["error"].toString(), QString("invalid sign"));
     }
 
-    void tst_noNonce()
+    void Authentication_noNonce()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -653,7 +638,7 @@ private slots:
         headers["KEY"] = VALID_KEY;
         headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -666,7 +651,7 @@ private slots:
         QCOMPARE(pos, 0);
     }
 
-    void tst_invalidNonce()
+    void Authentication_invalidNonce()
     {
         QByteArray in;
         QMap<QString, QString> headers;
@@ -676,7 +661,7 @@ private slots:
         headers["KEY"] = VALID_KEY;
         headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -689,18 +674,17 @@ private slots:
         QCOMPARE(pos, 0);
     }
 
-    void tst_privateGetInfoMethod()
+    void Method_privateGetInfo()
     {
-        QTest::qSleep(1000); // sleep for 1 sec for nonce update
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://loclahost:81/tapi";
-        in = QString("method=getInfo&nonce=%1").arg(QDateTime::currentDateTime().toTime_t()).toUtf8();
+        in = QString("method=getInfo&nonce=%1").arg(nonce()).toUtf8();
         headers["KEY"] = VALID_KEY;
         headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -708,32 +692,59 @@ private slots:
         QCOMPARE(method, Method::PrivateGetInfo);
     }
 
-    void tst_privateActiveOrdersMethod()
+    void Method_privateActiveOrders()
     {
-        QTest::qSleep(1000); // sleep for 1 sec for nonce update
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://loclahost:81/tapi";
-        in = QString("method=ActiveOrders&nonce=%1").arg(QDateTime::currentDateTime().toTime_t()).toUtf8();
+        in = QString("method=ActiveOrders&nonce=%1").arg(nonce()).toUtf8();
         headers["KEY"] = VALID_KEY;
         headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
 
         QCOMPARE(method, Method::PrivateActiveOrders);
     }
-};
+    void Method_privateOrderInfo()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=OrderInfo&nonce=%1").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
 
-class DepthTest : public QObject
-{
-    Q_OBJECT
-private slots:
-    void tst_emptyList()
+        QCOMPARE(method, Method::PrivateOrderInfo);
+    }
+    void Method_privateTrade()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=Trade&nonce=%1").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(method, Method::PrivateTrade);
+    }
+
+    void Depth_emptyList()
     {
         // In:   https://btc-e.com/api/3/depth
         // Out:  {"success":0, "error":"Empty pair list"}
@@ -742,7 +753,7 @@ private slots:
         QUrl url;
         url = "http://localhost:81/api/3/depth";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -753,7 +764,7 @@ private slots:
         QVERIFY(responce.contains("error"));
         QCOMPARE(responce["error"].toString(), QString("Empty pair list"));
     }
-    void tst_valid()
+    void Depth_valid()
     {
         // In:   https://btc-e.com/api/3/depth/btc_usd
         // Out:  VALID json
@@ -763,7 +774,7 @@ private slots:
         QUrl url;
         url = "http://localhost:81/api/3/depth/btc_usd";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -776,14 +787,14 @@ private slots:
         QVERIFY(btc_usd.contains("asks"));
         QVERIFY(btc_usd.contains("bids"));
     }
-    void tst_validRateSorted()
+    void Depth_sortedByRate()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/depth/btc_usd";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -796,14 +807,14 @@ private slots:
         QVERIFY(bids[0].toList()[0].toFloat() > bids[1].toList()[0].toFloat());
         QVERIFY(bids[0].toList()[0].toFloat() < asks[0].toList()[0].toFloat());
     }
-    void tst_validDecimalDigits()
+    void Depth_ratesDecimalDigits()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/depth/btc_usd";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -819,14 +830,14 @@ private slots:
                 QVERIFY(sRate.length() - dotPosition <= 4);
         }
     }
-    void tst_limit()
+    void Depth_limit()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/depth/btc_usd?limit=10";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -837,13 +848,7 @@ private slots:
         QVERIFY(asks.size() <= 10);
         QVERIFY(bids.size() <= 10);
     }
-};
-
-class TradesTest : public QObject
-{
-    Q_OBJECT
-private slots:
-    void tst_emptyList()
+    void Trades_emptyList()
     {
         // In:   https://btc-e.com/api/3/trades
         // Out:  {"success":0, "error":"Empty pair list"}
@@ -852,7 +857,7 @@ private slots:
         QUrl url;
         url = "http://localhost:81/api/3/trades";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -863,7 +868,7 @@ private slots:
         QVERIFY(responce.contains("error"));
         QCOMPARE(responce["error"].toString(), QString("Empty pair list"));
     }
-    void tst_valid()
+    void Trades_valid()
     {
         // In:   https://btc-e.com/api/3/trades/btc_usd
         // Out:  VALID json
@@ -872,7 +877,7 @@ private slots:
         QUrl url;
         url = "http://localhost:81/api/3/trades/btc_usd";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -895,14 +900,14 @@ private slots:
             QVERIFY(trade.contains("timestamp") && trade["timestamp"].toUInt() > 0 );
         }
     }
-    void tst_limit()
+    void Trades_limit()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/trades/btc_usd?limit=10";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -910,14 +915,14 @@ private slots:
         QVariantList btc_usd = responce["btc_usd"].toList();
         QVERIFY(btc_usd.size() <= 10);
     }
-    void tst_validTimestampSorted()
+    void Trades_sortedByTimestamp()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://localhost:81/api/3/trades/btc_usd";
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -930,28 +935,17 @@ private slots:
             QVERIFY ( a["tid"].toUInt() > b["tid"].toUInt());
         }
     }
-};
-
-class PrivateGetInfoTest:public QObject
-{
-    Q_OBJECT
-private slots:
-    void init()
-    {
-        QTest::qSleep(1000); // sleep for 1 sec for nonce update
-    }
-
-    void tst_no()
+    void GetInfo_valid()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://loclahost:81/tapi";
-        in = QString("method=getInfo&nonce=%1").arg(QDateTime::currentDateTime().toTime_t()).toUtf8();
+        in = QString("method=getInfo&nonce=%1").arg(nonce()).toUtf8();
         headers["KEY"] = VALID_KEY;
         headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -965,28 +959,17 @@ private slots:
         QVERIFY(result.contains("open_orders"));
         QVERIFY(result.contains("server_time"));
     }
-};
-
-class PrivateActiveOrdersTest:public QObject
-{
-    Q_OBJECT
-private slots:
-    void init()
-    {
-        QTest::qSleep(1000); // sleep for 1 sec for nonce update
-    }
-
-    void tst_no()
+    void ActiveOrders_valid()
     {
         QByteArray in;
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://loclahost:81/tapi";
-        in = QString("method=ActiveOrders&nonce=%1").arg(QDateTime::currentDateTime().toTime_t()).toUtf8();
+        in = QString("method=ActiveOrders&nonce=%1").arg(nonce()).toUtf8();
         headers["KEY"] = VALID_KEY;
         headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
-        FCGI_Request request(url , headers, in);
+        FcgiRequest request(url , headers, in);
         QueryParser parser(request);
         Method method;
         QVariantMap responce = getResponce(parser, method);
@@ -1001,6 +984,170 @@ private slots:
         QVERIFY(order.contains("amount") && order["amount"].canConvert(QVariant::Double) && order["amount"].toDouble() > 0);
         QVERIFY(order.contains("status") && order["status"].canConvert(QVariant::Int) && order["status"].toInt() == 0);
     }
-};
+    void OrderInfo_missingOrderId()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=OrderInfo&nonce=%1").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
 
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error") && responce["error"].canConvert(QVariant::String));
+        QString error = responce["error"].toString();
+        QCOMPARE(error, QString("invalid parameter: order_id"));
+    }
+    void OrderInfo_wrongOrderId()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=OrderInfo&nonce=%1&order_id=6553600").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 0);
+        QVERIFY(responce.contains("error") && responce["error"].canConvert(QVariant::String));
+        QString error = responce["error"].toString();
+        QCOMPARE(error, QString("invalid order"));
+    }
+    void OrderInfo_valid()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=OrderInfo&nonce=%1&order_id=345").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QCOMPARE(responce["success"].toInt(), 1);
+        QVERIFY(responce.contains("result") && responce["result"].canConvert(QVariant::Map));
+        QVariantMap result = responce["result"].toMap();
+        QVERIFY(result.size() > 0);
+        QVERIFY(result.first().canConvert(QVariant::Map));
+        QVariantMap order = result.first().toMap();
+        QVERIFY(order.contains("amount") && order["amount"].canConvert(QVariant::Double) && order["amount"].toDouble() > 0);
+        QVERIFY(order.contains("start_amount") && order["start_amount"].canConvert(QVariant::Double) && order["start_amount"].toDouble() > 0);
+        QVERIFY(order.contains("status") && order["status"].canConvert(QVariant::Int));
+        QVERIFY(order["start_amount"].toDouble() >= order["start_amount"].toDouble());
+    }
+
+    void Trade_parameterPairPresenceCheck()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=Trade&nonce=%1&rate=100&amount=100&type=buy").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(responce["error"].toString(), QString("You incorrectly entered one of fields."));
+    }
+    void Trade_parameterPairValidityCheck()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=Trade&nonce=%1&rate=100&amount=100&type=sell&pair=usd_btc").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(responce["error"].toString(), QString("You incorrectly entered one of fields."));
+    }
+    void Trade_parameterTypeCheck()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=Trade&nonce=%1&rate=100&amount=0.00001&type=bid&pair=btc_usd").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+        if (responce["success"].toInt() == 0)
+            std::clog << responce["error"].toString() << std::endl;
+
+        QCOMPARE(responce["success"].toInt(), 0);
+        QCOMPARE(responce["error"].toString(), QString("You incorrectly entered one of fields."));
+    }
+
+    void Trade_parameterAmountMinValueCheck()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=Trade&nonce=%1&rate=100&amount=0.00001&type=buy&pair=btc_usd").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+        if (responce["success"].toInt() == 0)
+            std::clog << responce["error"].toString() << std::endl;
+
+        QCOMPARE(responce["success"].toInt(), 0);
+        QCOMPARE(responce["error"].toString(), QString("Value USD must be greater than 0.001 USD."));
+    }
+    void Trade_parameterRateMinValueCheck()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=Trade&nonce=%1&rate=0.000001&amount=1&type=sell&pair=btc_usd").arg(nonce()).toUtf8();
+        headers["KEY"] = VALID_KEY;
+        headers["SIGN"] = hmac_sha512(in, VALID_SECRET).toHex();
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+        if (responce["success"].toInt() == 0)
+            std::clog << responce["error"].toString() << std::endl;
+
+        QCOMPARE(responce["success"].toInt(), 0);
+        QCOMPARE(responce["error"].toString(), QString("Price per BTC must be greater than 0.1 USD."));
+    }
+};
 #endif // UNIT_TESTS_H

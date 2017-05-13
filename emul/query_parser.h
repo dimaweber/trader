@@ -57,7 +57,7 @@ class QueryParser
 public:
     enum Scope {Public, Private};
 
-    QueryParser(const FCGI_Request& request)
+    QueryParser(const FcgiRequest& request)
         :QueryParser(request.getParam("REQUEST_SCHEME"),
                      request.getParam("SERVER_ADDR"),
                      request.getParam("SERVER_PORT"),
@@ -137,6 +137,23 @@ public:
     {
         return postParams.queryItemValue("order_id");
     }
+    QString amount() const
+    {
+        return postParams.queryItemValue("amount");
+    }
+    QString pair() const
+    {
+        return postParams.queryItemValue("pair");
+    }
+    QString rate() const
+    {
+        return postParams.queryItemValue("rate");
+    }
+    QString orderType() const
+    {
+        return postParams.queryItemValue("type");
+    }
+
 private:
     QUrl url;
     QStringList splittedPath;

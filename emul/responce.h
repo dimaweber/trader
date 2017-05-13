@@ -7,7 +7,8 @@ class QueryParser;
 class QSqlDatabase;
 class QSqlQuery;
 
-enum Method {Invalid, PublicInfo, PublicTicker, PublicDepth, PublicTrades,
+enum Method {Invalid, AuthIssue, AccessIssue,
+             PublicInfo, PublicTicker, PublicDepth, PublicTrades,
              PrivateGetInfo, PrivateTrade, PrivateActiveOrders, PrivateOrderInfo,
              PrivateCanelOrder, PrivateTradeHistory, PrivateTransHistory,
              PrivateCoinDepositAddress,

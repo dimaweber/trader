@@ -579,26 +579,12 @@ int main(int argc, char *argv[])
 
     if (runTests)
     {
-        std::vector<std::unique_ptr<QObject>> tests;
-        tests.emplace(tests.end(), new FCGI_RequestTest);
-        tests.emplace(tests.end(), new QueryParserTest);
-        tests.emplace(tests.end(), new ResponceTest);
-        tests.emplace(tests.end(), new InfoTest);
-        tests.emplace(tests.end(), new  TickerTest);
-        tests.emplace(tests.end(), new  DepthTest);
-        tests.emplace(tests.end(), new  TradesTest);
-        tests.emplace(tests.end(), new PrivateGetInfoTest);
-        tests.emplace(tests.end(), new PrivateActiveOrdersTest);
-        for(std::unique_ptr<QObject>& ptr: tests)
-        {
-            int testReturnCode = QTest::qExec(ptr.get(), argc, argv);
+        BtceEmulator_Test test;
+        int testReturnCode = QTest::qExec(&test, argc, argv);
 
-            if (failTestExit && testReturnCode)
-                return testReturnCode;
-        }
+        if (failTestExit && testReturnCode)
+            return testReturnCode;
     }
-
-    return 0;
 
     int ret;
     int sock;
@@ -618,7 +604,7 @@ int main(int argc, char *argv[])
     }
     std::clog << "[FastCGI]  Socket opened" << std::endl;
 
-    FCGI_Request request(sock);
+    FcgiRequest request(sock);
     std::clog << "[FastCGI] Request initialized, ready to work" << std::endl;
 
     while (request.accept() >= 0)

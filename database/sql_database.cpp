@@ -98,6 +98,7 @@ bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& bin
     return performSql(message, query, QString(), silent);
 }
 
+
 Database::Database(QSettings& settings)
     :settings(settings), db_upgraded(false)
 {

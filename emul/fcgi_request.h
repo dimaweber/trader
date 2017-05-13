@@ -12,7 +12,7 @@
 
 #include <memory>
 
-class FCGI_Request
+class FcgiRequest
 {
     FCGX_Request request;
     bool emulatedRequest;
@@ -28,7 +28,7 @@ class FCGI_Request
     }
 
 public:
-    FCGI_Request(int socket)
+    FcgiRequest(int socket)
         :emulatedRequest(false)
     {
         int ret;
@@ -37,7 +37,7 @@ public:
             throw std::runtime_error("Fail to initialize request");
     }
 
-    FCGI_Request(const QUrl& url, const QMap<QString, QString>& httpHeaders, QByteArray& in)
+    FcgiRequest(const QUrl& url, const QMap<QString, QString>& httpHeaders, QByteArray& in)
         :emulatedRequest(true)
     {
         request.in = new FCGX_Stream;
@@ -101,7 +101,7 @@ public:
         request.envp = env.data();
     }
 
-    ~FCGI_Request()
+    ~FcgiRequest()
     {
         if (!emulatedRequest)
             FCGX_Free(&request, true);
