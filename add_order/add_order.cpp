@@ -1,6 +1,7 @@
 #include "sql_database.h"
 #include "optionparser.h"
 #include "mailer.h"
+#include "utils.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/qglobal.h>

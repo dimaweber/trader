@@ -159,9 +159,13 @@ namespace BtcPublicApi {
 
 class Api : public HttpQuery
 {
+public:
+    static void setServer(const QString& server);
 protected:
     virtual QString path() const override;
     virtual bool parse(const QByteArray& serverAnswer) final override;
+private:
+    static QString server;
 };
 
 class Ticker : public Api
@@ -217,6 +221,7 @@ class Api : public HttpQuery
     static QAtomicInteger<quint32> _nonce;
     static QString nonce() { return QString::number(++_nonce);}
     QByteArray postParams;
+    static QString server;
 protected:
     bool success;
     QString errorMsg;
@@ -234,7 +239,8 @@ public:
           success(false), errorMsg("Not executed")
     {}
 
-    virtual QString path() const override { return BTCE_SERVER "tapi";}
+    static void setServer(const QString& server);
+    virtual QString path() const override;
     virtual void setHeaders(CurlListWrapper& headers) override final;
     void display() const;
     bool isSuccess() const {return isValid() && success;}

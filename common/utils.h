@@ -28,4 +28,11 @@ QByteArray hmac_sha384(const QByteArray& message, const QByteArray& key);
 
 std::ostream& operator << (std::ostream& stream, const QString& str);
 
+class QSqlQuery;
+
+bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
+bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
+bool prepareSql(QSqlQuery& query, const QString& sql);
+
+
 #endif // UTILS_H

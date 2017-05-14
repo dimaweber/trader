@@ -599,6 +599,71 @@ void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
       //  performSql("manual transaction commit", query, "COMMIT", true);
 }
 
+struct FcgiThreadData
+{
+    int id;
+    int sock;
+    QSqlDatabase* pDb;
+};
+
+static pthread_mutex_t acceptAccessMutex = PTHREAD_MUTEX_INITIALIZER;
+static void* fcgiThread(void* data)
+{
+    FcgiThreadData* pData = static_cast<FcgiThreadData*>(data);
+    QString threadName = QString("fcgi-thread-%1").arg(pData->id);
+    QString dbConnectionName = QString("fcgi-db-%1").arg(pData->id);
+    FcgiRequest request(pData->sock);
+    std::clog << "[FastCGI " << threadName << "] Request initialized, ready to work" << std::endl;
+
+    std::unique_ptr<QSqlDatabase> db = std::make_unique<QSqlDatabase>(QSqlDatabase::cloneDatabase(*pData->pDb, dbConnectionName));
+    db->open();
+    std::unique_ptr<Responce> responce = std::make_unique<Responce>(*db);
+
+    delete pData;
+
+    while(true)
+    {
+        pthread_mutex_lock(&acceptAccessMutex);
+        int rc = request.accept();
+        pthread_mutex_unlock(&acceptAccessMutex);
+
+        if (rc < 0)
+            break;
+
+
+        std::clog << "[FastCGI " << threadName << "] New request accepted. Processing" << std::endl;
+
+        QueryParser httpQuery(request);
+
+        QString json;
+        QVariantMap var;
+        Responce::Method method;
+        QElapsedTimer timer;
+        timer.start();
+        var = responce->getResponce(httpQuery, method);
+        QJsonDocument doc = QJsonDocument::fromVariant(var);
+        json = doc.toJson().constData();
+        quint32 elapsed = timer.elapsed();
+
+        request.put ( "Content-type: application/json\r\n");
+        request.put ( "XXX-Emulator: true\r\n");
+        request.put ( QString("XXX-Emulator-DbTime: %1\r\n").arg(elapsed));
+        request.put ("\r\n");
+        request.put ( json);
+
+        request.finish();
+        std::clog << "[FastCGI " << threadName << "] Request finished" << std::endl;
+    }
+
+    responce.reset();
+    db->close();
+    db.reset();
+
+    QSqlDatabase::removeDatabase(dbConnectionName);
+
+    return NULL;
+}
+
 int main(int argc, char *argv[])
 {
     bool recreateDatabase = false;
@@ -625,6 +690,9 @@ int main(int argc, char *argv[])
     depth_limit = settings.value("btce/depth_limit", 150).toInt();
     trades_limit = settings.value("btce/trades_limit", 150).toInt();
 
+    BtcPublicApi::Api::setServer("https://btc-e.com");
+    BtcTradeApi::Api::setServer("https://btc-e.com");
+
     QSqlDatabase db;
     connectDatabase(db, settings);
     if (recreateDatabase)
@@ -633,15 +701,9 @@ int main(int argc, char *argv[])
         populateDatabase(db, trades_limit, depth_limit);
     }
 
-    if (!initialiazeResponce(db))
-    {
-        std::cerr << "fail to initialaze responce subsystem. stop" << std::endl;
-        return 3;
-    }
-
     if (runTests)
     {
-        BtceEmulator_Test test;
+        BtceEmulator_Test test(db);
         int testReturnCode = QTest::qExec(&test, argc, argv);
 
         if (failTestExit && testReturnCode)
@@ -668,34 +730,26 @@ int main(int argc, char *argv[])
     }
     std::clog << "[FastCGI]  Socket opened" << std::endl;
 
-    FcgiRequest request(sock);
-    std::clog << "[FastCGI] Request initialized, ready to work" << std::endl;
+    const int THREAD_COUNT = 7;
+    pthread_t id[THREAD_COUNT];
 
-    while (request.accept() >= 0)
+    for (int i=0; i<THREAD_COUNT; i++)
     {
-        std::clog << "[FastCGI] New request accepted. Processing" << std::endl;
-
-        QueryParser httpQuery(request);
-
-        QString json;
-        QVariantMap var;
-        Method method;
-        QElapsedTimer timer;
-        timer.start();
-        var = getResponce(httpQuery, method);
-        QJsonDocument doc = QJsonDocument::fromVariant(var);
-        json = doc.toJson().constData();
-        quint32 elapsed = timer.elapsed();
-
-        request.put ( "Content-type: application/json\r\n");
-        request.put ( "XXX-Emulator: true\r\n");
-        request.put ( QString("XXX-Emulator-DbTime: %1\r\n").arg(elapsed));
-        request.put ("\r\n");
-        request.put ( json);
-
-        request.finish();
-        std::clog << "[FastCGI] Request finished" << std::endl;
+        FcgiThreadData* pData = new FcgiThreadData;
+        pData->sock = sock;
+        pData->pDb = &db;
+        pData->id=i;
+        pthread_create(&id[i], nullptr, fcgiThread, pData);
     }
+
+    FcgiThreadData* pData = new FcgiThreadData;
+    pData->sock = sock;
+    pData->pDb = &db;
+    pData->id=THREAD_COUNT;
+    fcgiThread(pData);
+
+    for (int i=0; i<THREAD_COUNT; i++)
+        pthread_join(id[i], nullptr);
 
     return 0;
 }

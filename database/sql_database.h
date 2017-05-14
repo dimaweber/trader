@@ -20,9 +20,6 @@ class QSqlQuery;
 class QSqlDatabase;
 class QSettings;
 
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
-bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
-
 class Database : public IKeyStorage
 {
 public:

@@ -1,4 +1,3 @@
-#include "decimal.h"
 #include "responce.h"
 #include "query_parser.h"
 #include "sql_database.h"
@@ -8,64 +7,10 @@
 #include <QSqlError>
 #include <QSqlQuery>
 
-QVariantMap getInfoResponce(Method& method);
-QVariantMap getTickerResponce(const QueryParser& httpQuery, Method& method);
-QVariantMap getDepthResponce(const QueryParser& httpQuery, Method& method);
-QVariantMap getTradesResponce(const QueryParser& httpQuery, Method& method);
+QAtomicInt Responce::counter = 0;
 
-QVariantMap getPrivateInfoResponce(const QueryParser& httpQuery, Method &method);
-QVariantMap getPrivateActiveOrdersResponce(const QueryParser& httpQuery, Method &method);
-QVariantMap getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& method);
-
-QVariantMap getPrivateTradeResponce(const QueryParser& httpQuery, Method& method);
-QVariantMap getPrivateCalcelOrderResponce(const QueryParser& httpQuery, Method& method);
-
-static std::unique_ptr<Authentificator> auth;
-static std::unique_ptr<QSqlQuery> selectTickerInfoQuery;
-static std::unique_ptr<QSqlQuery> selectOrderInfoQuery;
-static std::unique_ptr<QSqlQuery> selectActiveOrdersQuery;
-static std::unique_ptr<QSqlQuery> selectPairsInfoQuery;
-static std::unique_ptr<QSqlQuery> selectPairInfoQuery;
-static std::unique_ptr<QSqlQuery> selectBuyOrdersQuery;
-static std::unique_ptr<QSqlQuery> selectSellOrdersQuery;
-static std::unique_ptr<QSqlQuery> selectAllTradesInfo;
-static std::unique_ptr<QSqlQuery> selectFundsInfoQuery;
-static std::unique_ptr<QSqlQuery> selectFundsInfoQueryByOwnerId;
-static std::unique_ptr<QSqlQuery> selectRightsInfoQuery;
-static std::unique_ptr<QSqlQuery> selectActiveOrdersCountQuery;
-static std::unique_ptr<QSqlQuery> selectCurrencyVolumeQuery;
-static std::unique_ptr<QSqlQuery> selectOrdersForSellTrade;
-static std::unique_ptr<QSqlQuery> selectOrdersForBuyTrade;
-std::unique_ptr<QSqlQuery> selectOwnerForKeyQuery;
-std::unique_ptr<QSqlQuery> updateDepositQuery;
-std::unique_ptr<QSqlQuery> updateOrderAmount;
-std::unique_ptr<QSqlQuery> updateOrderDone;
-std::unique_ptr<QSqlQuery> createTradeQuery;
-std::unique_ptr<QSqlQuery> createOrderQuery;
-std::unique_ptr<QSqlQuery> cancelOrderQuery;
-std::unique_ptr<QSqlQuery> startTransaction;
-std::unique_ptr<QSqlQuery> commitTransaction;
-std::unique_ptr<QSqlQuery> rollbackTransaction;
-std::unique_ptr<QSqlQuery> getRandomKey;
-std::unique_ptr<QSqlQuery> getRandomKeyWithBalance;
-std::unique_ptr<QSqlQuery> getKeySecret;
-std::unique_ptr<QSqlQuery> totalBalance;
-
-using Amount = dec::decimal<7>;
-using Fee    = dec::decimal<7>;
-using Rate   = dec::decimal<7>;
-
-bool prepareSql(std::unique_ptr<QSqlQuery>& query, const QString& sql)
-{
-    if (!query->prepare(sql))
-    {
-        std::cerr << query->lastError().text() << std::endl;
-        return false;
-    }
-    return true;
-}
-
-bool initialiazeResponce(QSqlDatabase& db)
+Responce::Responce(QSqlDatabase& database)
+    :db(database)
 {
     auth.reset(new Authentificator(db));
 
@@ -94,38 +39,32 @@ bool initialiazeResponce(QSqlDatabase& db)
     startTransaction.reset(new QSqlQuery("start transaction", db));
     commitTransaction.reset(new QSqlQuery("commit", db));
     rollbackTransaction.reset(new QSqlQuery("rollback", db));
-    getRandomKey.reset(new QSqlQuery(db));
-    getRandomKeyWithBalance.reset(new QSqlQuery(db));
-    getKeySecret.reset(new QSqlQuery(db));
     totalBalance.reset(new QSqlQuery(db));
 
     bool ok =true
-    &&  prepareSql(selectTickerInfoQuery, "select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name")
-    &&  prepareSql(selectPairsInfoQuery, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs")
-    &&  prepareSql(selectPairInfoQuery, "select min_price, max_price, min_amount, fee, pair_id from pairs where pair=:pair")
-    &&  prepareSql(selectOrderInfoQuery, "select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0, o.owner_id from orders o left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id")
-    &&  prepareSql(selectActiveOrdersQuery, "select o.order_id, p.pair, o.type, o.amount, o.rate, o.created, 0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:key and o.status = 'active'")
-    &&  prepareSql(selectBuyOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='buy' and p.pair=:name group by rate order by  rate desc")
-    &&  prepareSql(selectSellOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='sell' and p.pair=:name group by rate order by  rate asc")
-    &&  prepareSql(selectAllTradesInfo, "select o.type, o.rate, t.amount, t.trade_id, t.created from trades t left join orders o on o.order_id=t.order_id left join pairs p on o.pair_id=p.pair_id where p.pair=:name  order by t.trade_id desc")
-    &&  prepareSql(selectFundsInfoQuery, "select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key")
-    &&  prepareSql(selectFundsInfoQueryByOwnerId, "select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id where owner_id=:owner_id")
-    &&  prepareSql(selectRightsInfoQuery, "select info,trade,withdraw from apikeys where apikey=:key")
-    &&  prepareSql(selectActiveOrdersCountQuery, "select count(*) from apikeys a left join orders o on o.owner_id=a.owner_id where a.apikey=:key and o.status = 'active'")
-    &&  prepareSql(selectCurrencyVolumeQuery, "select d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key and c.currency=:currency")
-    &&  prepareSql(selectOrdersForSellTrade, "select order_id, amount, rate, o.owner_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join owners w on w.owner_id=o.owner_id where type='buy' and status='active' and pair=:pair and o.owner_id<>:owner_id and rate >= :rate order by rate desc, order_id asc")
-    &&  prepareSql(selectOrdersForBuyTrade, "select order_id, amount, rate, o.owner_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join owners w on w.owner_id=o.owner_id where type='sell' and status='active' and pair=:pair and o.owner_id<>:owner_id and rate <= :rate order by rate asc, order_id asc")
-    &&  prepareSql(selectOwnerForKeyQuery, "select a.owner_id, o.name from apikeys a left join owners o on o.owner_id=a.owner_id where a.apikey=:key")
-    &&  prepareSql(updateDepositQuery, "update deposits d left join currencies c on c.currency_id=d.currency_id set d.volume = volume + :diff where owner_id=:owner_id and c.currency=:currency")
-    &&  prepareSql(updateOrderAmount, "update orders set amount=amount-:diff where order_id=:order_id")
-    &&  prepareSql(updateOrderDone, "update orders set amount=0, status='done' where order_id=:order_id")
-    &&  prepareSql(createTradeQuery, "insert into trades (owner_id, order_id, amount, created) values (:owner_id, :order_id, :amount, :created)")
-    &&  prepareSql(createOrderQuery, "insert into orders (pair_id, owner_id, type, rate, start_amount, amount, created, status) values (:pair_id, :owner_id, :type, :rate, :start_amount, :amount, :created, 'active')")
-    && prepareSql(cancelOrderQuery, "update orders set status=case when start_amount=amount then 'cancelled' else 'part_done' end where order_id=:order_id")
-    &&  prepareSql(getRandomKey, "select apikey from apikeys a left join owners o on o.owner_id = a.owner_id where o.user_type=1 and a.info=:info and a.trade=:trade and a.withdraw = :withdraw order by rand() limit 1")
-    &&  prepareSql(getRandomKeyWithBalance, "select apikey from apikeys a left join deposits d  on d.owner_id = a.owner_id left join currencies c on d.currency_id = c.currency_id  left join owners o on o.owner_id = a.owner_id where o.user_type = 1 and a.trade=true  and c.currency=:currency and d.volume>:amount order by rand() limit 1")
-    &&  prepareSql(getKeySecret, "select secret from apikeys where apikey=:key")
-    &&  prepareSql(totalBalance, "SELECT cur, sum(vol) from ("
+    &&  prepareSql(*selectTickerInfoQuery, "select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name")
+    &&  prepareSql(*selectPairsInfoQuery, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs")
+    &&  prepareSql(*selectPairInfoQuery, "select min_price, max_price, min_amount, fee, pair_id from pairs where pair=:pair")
+    &&  prepareSql(*selectOrderInfoQuery, "select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0, o.owner_id from orders o left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id")
+    &&  prepareSql(*selectActiveOrdersQuery, "select o.order_id, p.pair, o.type, o.amount, o.rate, o.created, 0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:key and o.status = 'active'")
+    &&  prepareSql(*selectBuyOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='buy' and p.pair=:name group by rate order by  rate desc")
+    &&  prepareSql(*selectSellOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='sell' and p.pair=:name group by rate order by  rate asc")
+    &&  prepareSql(*selectAllTradesInfo, "select o.type, o.rate, t.amount, t.trade_id, t.created from trades t left join orders o on o.order_id=t.order_id left join pairs p on o.pair_id=p.pair_id where p.pair=:name  order by t.trade_id desc")
+    &&  prepareSql(*selectFundsInfoQuery, "select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key")
+    &&  prepareSql(*selectFundsInfoQueryByOwnerId, "select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id where owner_id=:owner_id")
+    &&  prepareSql(*selectRightsInfoQuery, "select info,trade,withdraw from apikeys where apikey=:key")
+    &&  prepareSql(*selectActiveOrdersCountQuery, "select count(*) from apikeys a left join orders o on o.owner_id=a.owner_id where a.apikey=:key and o.status = 'active'")
+    &&  prepareSql(*selectCurrencyVolumeQuery, "select d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key and c.currency=:currency")
+    &&  prepareSql(*selectOrdersForSellTrade, "select order_id, amount, rate, o.owner_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join owners w on w.owner_id=o.owner_id where type='buy' and status='active' and pair=:pair and o.owner_id<>:owner_id and rate >= :rate order by rate desc, order_id asc")
+    &&  prepareSql(*selectOrdersForBuyTrade, "select order_id, amount, rate, o.owner_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join owners w on w.owner_id=o.owner_id where type='sell' and status='active' and pair=:pair and o.owner_id<>:owner_id and rate <= :rate order by rate asc, order_id asc")
+    &&  prepareSql(*selectOwnerForKeyQuery, "select a.owner_id, o.name from apikeys a left join owners o on o.owner_id=a.owner_id where a.apikey=:key")
+    &&  prepareSql(*updateDepositQuery, "update deposits d left join currencies c on c.currency_id=d.currency_id set d.volume = volume + :diff where owner_id=:owner_id and c.currency=:currency")
+    &&  prepareSql(*updateOrderAmount, "update orders set amount=amount-:diff where order_id=:order_id")
+    &&  prepareSql(*updateOrderDone, "update orders set amount=0, status='done' where order_id=:order_id")
+    &&  prepareSql(*createTradeQuery, "insert into trades (owner_id, order_id, amount, created) values (:owner_id, :order_id, :amount, :created)")
+    &&  prepareSql(*createOrderQuery, "insert into orders (pair_id, owner_id, type, rate, start_amount, amount, created, status) values (:pair_id, :owner_id, :type, :rate, :start_amount, :amount, :created, 'active')")
+    &&  prepareSql(*cancelOrderQuery, "update orders set status=case when start_amount=amount then 'cancelled' else 'part_done' end where order_id=:order_id")
+    &&  prepareSql(*totalBalance, "SELECT cur, sum(vol) from ("
                    "select c.currency as cur, sum(volume) as vol from deposits d left join currencies c on c.currency_id = d.currency_id group by d.currency_id  "
                    " UNION "
                    "select right(p.pair,3) as cur, sum(amount*rate) as vol  from orders o left join pairs p on p.pair_id = o.pair_id where status='active' and type='buy'  group by right(p.pair, 3) "
@@ -134,10 +73,10 @@ bool initialiazeResponce(QSqlDatabase& db)
                    ") A group by cur")
             ;
 
-    return ok;
+    //return ok;
 }
 
-bool tradeUpdateDeposit(const QVariant& owner_id, const QString& currency, Amount diff, const QString& ownerName)
+bool Responce::tradeUpdateDeposit(const QVariant& owner_id, const QString& currency, Amount diff, const QString& ownerName)
 {
     QVariantMap updateDepParams;
     updateDepParams[":owner_id"] = owner_id;
@@ -155,21 +94,7 @@ bool tradeUpdateDeposit(const QVariant& owner_id, const QString& currency, Amoun
     return ok;
 }
 
-struct TradeCurrencyVolume
-{
-    QString goods;
-    QString currency;
-    QString trader_currency_in;
-    Amount   trader_volume_in;
-    QString trader_currency_out;
-    Amount trader_volume_out;
-    QString parter_currency_in;
-    Amount partner_volume_in;
-    Amount exchange_currency_in;
-    Amount exchange_goods_in;
-};
-
-TradeCurrencyVolume trade_volumes (const QString& type, const QString& pair, Fee fee,
+Responce::TradeCurrencyVolume Responce::trade_volumes (const QString& type, const QString& pair, Fee fee,
                                  Amount trade_amount, Rate matched_order_rate)
 {
     TradeCurrencyVolume ret;
@@ -201,13 +126,7 @@ TradeCurrencyVolume trade_volumes (const QString& type, const QString& pair, Fee
     return ret;
 }
 
-struct NewOrderVolume
-{
-    QString currency;
-    Amount volume;
-};
-
-NewOrderVolume new_order_currency_volume (const QString& type, const QString& pair, Amount amount, Rate rate)
+Responce::NewOrderVolume Responce::new_order_currency_volume (const QString& type, const QString& pair, Amount amount, Rate rate)
 {
     NewOrderVolume ret;
     if (type == "sell")
@@ -223,14 +142,14 @@ NewOrderVolume new_order_currency_volume (const QString& type, const QString& pa
     return ret;
 }
 
-QString oppositOrderType(const QString& type)
+QString Responce::oppositOrderType(const QString& type)
 {
     if (type=="buy")
         return "sell";
     return "buy";
 }
 
-quint32 doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, const QString& type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams)
+quint32 Responce::doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, const QString& type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams)
 {
     quint32 ret = 0;
     if (!performSql(QString("get %1 orders").arg(oppositOrderType(type)), query, orderCreateParams, true))
@@ -314,16 +233,7 @@ quint32 doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume v
     return ret;
 }
 
-struct OrderCreateResult
-{
-    QString errMsg;
-    Amount recieved;
-    Amount remains;
-    quint32 order_id;
-    bool ok;
-};
-
-OrderCreateResult createTrade(const QString& key, const QString& pair, const QString& type, const QString& rate, const QString& amount)
+Responce::OrderCreateResult Responce::createTrade(const QString& key, const QString& pair, const QString& type, const QString& rate, const QString& amount)
 {
     OrderCreateResult ret;
     ret.recieved = 0;
@@ -465,7 +375,7 @@ OrderCreateResult createTrade(const QString& key, const QString& pair, const QSt
     return ret;
 }
 
-QVariantMap getResponce(const QueryParser& parser, Method& method)
+QVariantMap Responce::getResponce(const QueryParser& parser, Method& method)
 {
     method = Method::Invalid;
     QString methodName = parser.method();
@@ -595,7 +505,7 @@ QVariantMap getResponce(const QueryParser& parser, Method& method)
     return var;
 }
 
-QVariantMap getInfoResponce(Method &method)
+QVariantMap Responce::getInfoResponce(Method &method)
 {
     method = Method::PublicInfo;
     QVariantMap var;
@@ -621,7 +531,7 @@ QVariantMap getInfoResponce(Method &method)
     return var;
 }
 
-QVariantMap getTickerResponce(const QueryParser& httpQuery, Method& method)
+QVariantMap Responce::getTickerResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PublicTicker;
     QVariantMap var;
@@ -676,7 +586,7 @@ QVariantMap getTickerResponce(const QueryParser& httpQuery, Method& method)
     return var;
 }
 
-static QVariantList appendDepthToMap(QSqlQuery& query, const QString& pairName, int limit)
+QVariantList Responce::appendDepthToMap(QSqlQuery& query, const QString& pairName, int limit)
 {
     QVariantList ret;
     QVariantMap params;
@@ -696,7 +606,7 @@ static QVariantList appendDepthToMap(QSqlQuery& query, const QString& pairName, 
     return ret;
 }
 
-QVariantMap getDepthResponce(const QueryParser& httpQuery, Method& method)
+QVariantMap Responce::getDepthResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PublicDepth;
     QVariantMap var;
@@ -725,7 +635,7 @@ QVariantMap getDepthResponce(const QueryParser& httpQuery, Method& method)
     return var;
 }
 
-QVariantMap getTradesResponce(const QueryParser &httpQuery, Method &method)
+QVariantMap Responce::getTradesResponce(const QueryParser &httpQuery, Method &method)
 {
     method = Method::PublicTrades;
     QVariantMap var;
@@ -778,7 +688,7 @@ QVariantMap getTradesResponce(const QueryParser &httpQuery, Method &method)
     return var;
 }
 
-QVariantMap getPrivateInfoResponce(const QueryParser &httpQuery, Method& method)
+QVariantMap Responce::getPrivateInfoResponce(const QueryParser &httpQuery, Method& method)
 {
     method = Method::PrivateGetInfo;
     QVariantMap var;
@@ -826,7 +736,7 @@ QVariantMap getPrivateInfoResponce(const QueryParser &httpQuery, Method& method)
     return var;
 }
 
-QVariantMap getPrivateActiveOrdersResponce(const QueryParser &httpQuery, Method& method)
+QVariantMap Responce::getPrivateActiveOrdersResponce(const QueryParser &httpQuery, Method& method)
 {
     method = Method::PrivateActiveOrders;
     QVariantMap var;
@@ -857,7 +767,7 @@ QVariantMap getPrivateActiveOrdersResponce(const QueryParser &httpQuery, Method&
     return var;
 }
 
-QVariantMap getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& method)
+QVariantMap Responce::getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& method)
 {
     method = Method::PrivateOrderInfo;
     QVariantMap var;
@@ -901,47 +811,64 @@ QVariantMap getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& me
     return var;
 }
 
-QVariantMap getPrivateTradeResponce(const QueryParser& httpQuery, Method& method)
+QVariantMap Responce::getPrivateTradeResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PrivateTrade;
     QVariantMap var;
 
-    startTransaction->exec();
-    OrderCreateResult ret = createTrade(httpQuery.key(), httpQuery.pair(), httpQuery.orderType(), httpQuery.rate(), httpQuery.amount());
-    if (!ret.ok)
+    bool done = false;
+    do
     {
-        rollbackTransaction->exec();
-        var["success"] = 0;
-        var["error"] = ret.errMsg;
-    }
-    else
-    {
-        commitTransaction->exec();
-        var["success"] = 1;
-        QVariantMap res;
-        res["remains"] = ret.remains.getAsDouble();
-        res["received"] = ret.recieved.getAsDouble();
-        res["order_id"] = ret.order_id;
-
-        QVariantMap funds;
-        QVariantMap params;
-        params[":key"] = httpQuery.key();
-        if (performSql("get funds", *selectFundsInfoQuery, params, true))
+        try
         {
-            while(selectFundsInfoQuery->next())
+            startTransaction->exec();
+            OrderCreateResult ret = createTrade(httpQuery.key(), httpQuery.pair(), httpQuery.orderType(), httpQuery.rate(), httpQuery.amount());
+            if (!ret.ok)
             {
-                QString currency = selectFundsInfoQuery->value(0).toString();
-                funds[currency] = selectFundsInfoQuery->value(1);
+                rollbackTransaction->exec();
+                var["success"] = 0;
+                var["error"] = ret.errMsg;
             }
-            res["funds"] = funds;
-        }
-        var["return"] = res;
-    }
+            else
+            {
+                commitTransaction->exec();
+                done = true;
+                var["success"] = 1;
+                QVariantMap res;
+                res["remains"] = ret.remains.getAsDouble();
+                res["received"] = ret.recieved.getAsDouble();
+                res["order_id"] = ret.order_id;
 
+                QVariantMap funds;
+                QVariantMap params;
+                params[":key"] = httpQuery.key();
+                if (performSql("get funds", *selectFundsInfoQuery, params, true))
+                {
+                    while(selectFundsInfoQuery->next())
+                    {
+                        QString currency = selectFundsInfoQuery->value(0).toString();
+                        funds[currency] = selectFundsInfoQuery->value(1);
+                    }
+                    res["funds"] = funds;
+                }
+                var["return"] = res;
+            }
+        }
+        catch(std::runtime_error& e)
+        {
+            std::cerr << e.what();
+            rollbackTransaction->exec();
+        }
+        catch (const QSqlQuery& q)
+        {
+            std::cerr << q.lastError().text() << std::endl;
+            rollbackTransaction->exec();
+        }
+    }  while (!done);
     return var;
 }
 
-QVariantMap getPrivateCalcelOrderResponce(const QueryParser& httpQuery, Method& method)
+QVariantMap Responce::getPrivateCalcelOrderResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PrivateCanelOrder;
     QVariantMap var;
@@ -956,94 +883,69 @@ QVariantMap getPrivateCalcelOrderResponce(const QueryParser& httpQuery, Method& 
         return var;
     }
     params[":order_id"] = order_id;
-    performSql("get order info", *selectOrderInfoQuery, params);
-    if (selectOrderInfoQuery->next())
+    bool done = false;
+    do
     {
-        // p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0
-        QString pair = selectOrderInfoQuery->value(0).toString();
-        QString type = selectOrderInfoQuery->value(1).toString();
-        Amount amount = Amount(selectOrderInfoQuery->value(3).toString().toStdString());
-        Rate rate = Amount(selectOrderInfoQuery->value(4).toString().toStdString());
-        uint status = selectOrderInfoQuery->value(6).toUInt();
-        quint32 owner_id = selectOrderInfoQuery->value(7).toUInt();
-
-        if (status > 1)
+        try
         {
-            var["success"] = 0;
-            var["error"] = "not active order";
-            return var;
-        }
-        NewOrderVolume orderVolume = new_order_currency_volume(type, pair, amount, rate);
-        tradeUpdateDeposit(owner_id, orderVolume.currency, orderVolume.volume, QString::number(owner_id));
-
-        params[":owner_id"] = owner_id;
-        if (performSql("get funds", *selectFundsInfoQueryByOwnerId, params, true))
-        {
-            while(selectFundsInfoQueryByOwnerId->next())
+            startTransaction->exec();
+            performSql("get order info", *selectOrderInfoQuery, params, true);
+            if (selectOrderInfoQuery->next())
             {
-                QString currency = selectFundsInfoQueryByOwnerId->value(0).toString();
-                funds[currency] = selectFundsInfoQueryByOwnerId->value(1);
+                // p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0
+                QString pair = selectOrderInfoQuery->value(0).toString();
+                QString type = selectOrderInfoQuery->value(1).toString();
+                Amount amount = Amount(selectOrderInfoQuery->value(3).toString().toStdString());
+                Rate rate = Amount(selectOrderInfoQuery->value(4).toString().toStdString());
+                uint status = selectOrderInfoQuery->value(6).toUInt();
+                quint32 owner_id = selectOrderInfoQuery->value(7).toUInt();
+
+                if (status > 1)
+                {
+                    var["success"] = 0;
+                    var["error"] = "not active order";
+                    return var;
+                }
+                NewOrderVolume orderVolume = new_order_currency_volume(type, pair, amount, rate);
+                tradeUpdateDeposit(owner_id, orderVolume.currency, orderVolume.volume, QString::number(owner_id));
+
+                params[":owner_id"] = owner_id;
+                if (performSql("get funds", *selectFundsInfoQueryByOwnerId, params, true))
+                {
+                    while(selectFundsInfoQueryByOwnerId->next())
+                    {
+                        QString currency = selectFundsInfoQueryByOwnerId->value(0).toString();
+                        funds[currency] = selectFundsInfoQueryByOwnerId->value(1);
+                    }
+                    ret["funds"] = funds;
+                }
+                performSql("cancel order", *cancelOrderQuery, params, true);
+
+                ret["order_id"] = order_id;
+
+                var["return"] = ret;
+                var["success"] = 1;
+                var["return"] = ret;
             }
-            ret["funds"] = funds;
+            commitTransaction->exec();
+            done = true;
         }
-        performSql("cancel order", *cancelOrderQuery, params, true);
-
-        ret["order_id"] = order_id;
-
-        var["return"] = ret;
-        var["success"] = 1;
-        var["return"] = ret;
-    }
+        catch (std::runtime_error& e)
+        {
+            std::cerr << e.what() << std::endl;
+            rollbackTransaction->exec();
+        }
+        catch (const QSqlQuery& q)
+        {
+            std::cerr << q.lastError().text() << std::endl;
+            rollbackTransaction->exec();
+        }
+    } while (!done);
 
     return var;
 }
 
-QByteArray getRandomKeyWithPermissions( bool info, bool trade, bool withdraw)
-{
-    QVariantMap params;
-    params[":info"] = info;
-    params[":trade"] = trade;
-    params[":withdraw"] = withdraw;
-
-    if (!performSql("get apikey", *getRandomKey, params, true))
-        return QByteArray();
-
-    if (!getRandomKey->next())
-        return QByteArray();
-
-    return getRandomKey->value(0).toByteArray();
-}
-
-/// Return random key that has more then 'amount' of 'currency'
-QByteArray getRandomKeyForTrade(const QString& currency, double amount)
-{
-    QVariantMap params;
-    params[":currency"] = currency;
-    params[":amount"] = amount;
-
-    if (!performSql("get apikey", *getRandomKeyWithBalance, params, true))
-        return QByteArray();
-
-    if (!getRandomKeyWithBalance->next())
-        return QByteArray();
-
-    return getRandomKeyWithBalance->value(0).toByteArray();
-}
-
-QByteArray signWithKey(const QByteArray& message, const QByteArray& key)
-{
-    QVariantMap params;
-    params[":key"] = key;
-    if (!performSql("sign data", *getKeySecret, params, true))
-         return QByteArray();
-    if (!getKeySecret->next())
-        return QByteArray();
-    QByteArray secret = getKeySecret->value(0).toByteArray();
-
-    return hmac_sha512(message, secret).toHex();
-}
-
-QVariantMap exchangeBalance()
+QVariantMap Responce::exchangeBalance()
 {
     QVariantMap balance;
     performSql("get deposits balance", *totalBalance, "", true);

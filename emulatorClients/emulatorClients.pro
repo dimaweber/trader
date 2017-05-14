@@ -1,36 +1,19 @@
-QT += core sql testlib concurrent
+QT += core sql
 QT -= gui
 
 CONFIG += c++1z
 
-TARGET = emul
+TARGET = emulatorClients
 CONFIG += console
 CONFIG -= app_bundle
 
-LIBS += -lfcgi
-INCLUDEPATH += ../common ../database ../btce ../decimal_for_cpp/include
-LIBS += -L../lib -lcommon -ldatabase -lbtce
-
-LIBS += -lgcov
-QMAKE_CXXFLAGS += -fprofile-arcs -ftest-coverage
-QMAKE_CFLAGS += -fprofile-arcs -ftest-coverage
-
 TEMPLATE = app
 
-SOURCES += \
-    responce.cpp \
-    emul.cpp \
-    authentificator.cpp \
-    unit_tests.cpp \
-    sqlclient.cpp
+LIBS += -L../lib -lcommon -lbtce
+INCLUDEPATH += ../common ../btce
 
-HEADERS += \
-    query_parser.h \
-    unit_tests.h \
-    responce.h \
-    fcgi_request.h \
-    authentificator.h \
-    sqlclient.h
+SOURCES += main.cpp \
+    ../emul/sqlclient.cpp
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
@@ -42,6 +25,3 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # In order to do so, uncomment the following line.
 # You can also select to disable deprecated APIs only up to a certain version of Qt.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
-
-OTHER_FILES += owners.csv \
-    ../data/emul.ini

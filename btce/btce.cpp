@@ -314,10 +314,15 @@ bool Depth::parseSuccess(const QVariantMap& returnMap)
     return true;
 }
 
+QString Api::server = "http://example.com";
+void Api::setServer(const QString& server)
+{
+    Api::server = server;
+}
+
 QString Api::path() const
 {
-    //return "https://btc-e.com/api/3/";
-    return BTCE_SERVER "api/3/";
+    return QString("%1/api/3/").arg(BtcPublicApi::Api::server);
 }
 
 bool Api::parse(const QByteArray& serverAnswer)
@@ -480,6 +485,17 @@ QVariantMap Api::extraQueryParams()
     params["method"] = methodName();
     params["nonce"] = Api::nonce();
     return params;
+}
+
+QString BtcTradeApi::Api::server;
+void Api::setServer(const QString& server)
+{
+    Api::server = server;
+}
+
+QString Api::path() const
+{
+    return QString("%1/tapi").arg(BtcTradeApi::Api::server);
 }
 
 void Api::setHeaders(CurlListWrapper& headers)

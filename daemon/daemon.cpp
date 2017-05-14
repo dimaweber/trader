@@ -44,6 +44,10 @@ int main(int argc, char *argv[])
     }
     QSettings settings(iniFilePath, QSettings::IniFormat);
 
+    QString serverAddress = settings.value("btce/server_address", "http://example.com").toString();
+    BtcPublicApi::Api::setServer(serverAddress);
+    BtcTradeApi::Api::setServer(serverAddress);
+
     Database database(settings);
     database.init();
     if (database.isDbUpgradePerformed())
