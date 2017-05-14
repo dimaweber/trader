@@ -20,7 +20,10 @@ enum Method {Invalid, AuthIssue, AccessIssue,
 bool initialiazeResponce(QSqlDatabase& db);
 QVariantMap getResponce(const QueryParser& parser, Method& method);
 
-QByteArray getRandomValidKey(bool info, bool trade, bool withdraw);
+
+// TODO: these three should be moved to tests when tests get own sql client
+QByteArray getRandomKeyWithPermissions(bool info, bool trade, bool withdraw);
+QByteArray getRandomKeyForTrade(const QString& currency, double amount);
 QByteArray signWithKey(const QByteArray& message, const QByteArray& key);
 
 

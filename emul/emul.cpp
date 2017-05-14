@@ -84,7 +84,7 @@ void prepareDatabase(QSqlDatabase& db)
             << TableField("rate", TableField::Decimal, 14, 6).notNull().check("rate > 0")
             << TableField("start_amount", TableField::Decimal, 14, 6).notNull().check("start_amount > 0")
             << TableField("amount", TableField::Decimal, 14, 6).notNull().check("amount >= 0 and amount <= start_amount")
-            << "status enum ('done', 'active', 'cancelled', 'part_done') not null"
+            << "status enum ('active', 'done', 'cancelled', 'part_done') not null"
             << TableField("created", TableField::Datetime).notNull()
             << "FOREIGN KEY(pair_id) REFERENCES pairs(pair_id)"
             << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
@@ -338,7 +338,7 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
         orderOwner_id = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID);
         orderParams[":owner_id"] = orderOwner_id;
         orderParams[":type"] = (trade.type == BtcObjects::Trade::Type::Bid)?"buy":"sell";
-        orderParams[":rate"] = QString::number(trade.price, 'f', 3);
+        orderParams[":rate"] = QString::number(trade.price, 'f', 6); // TODO: is rate precision is always 3 ?
         orderParams[":start_amount"] = trade.amount;
         orderParams[":amount"] = 0;
         orderParams[":status"] = "done";
@@ -617,6 +617,8 @@ int main(int argc, char *argv[])
     }
     QSettings settings(iniFilePath, QSettings::IniFormat);
     recreateDatabase = settings.value("debug/recreate_database", true).toBool();
+    settings.setValue("debug/recreate_database", false);
+    settings.sync();
     runTests = settings.value("debug/run_tests", true).toBool();
     failTestExit = settings.value("debug/exit_on_test_fail", false).toBool();
     justTests = settings.value("debug/just_tests", false).toBool();

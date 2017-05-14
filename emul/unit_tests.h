@@ -8,6 +8,9 @@
 
 #include <QtTest>
 
+// TODO: add own sql client for tests s they can check consistency json to real data
+
+
 class BtceEmulator_Test : public QObject
 {
     Q_OBJECT
@@ -41,7 +44,7 @@ private slots:
         QUrl url;
         url = "http://localhost:81/api/3/ticker/btc_usd?param1=value1&param2=value2";
         in = "method=method&param=value";
-        QByteArray key = getRandomValidKey(false, false, false);
+        QByteArray key = getRandomKeyWithPermissions(false, false, false);
         QByteArray sign = signWithKey(in, key);
         headers["KEY"] = key;
         headers["SIGN"] = sign;
@@ -501,6 +504,23 @@ private slots:
         QVERIFY(responce.contains("error"));
         QVERIFY(responce["error"] == "Invalid pair name: usd_btc");
     }
+    void Ticker_timestampFormat()
+    {
+        Method method;
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://localhost/api/3/ticker/btc_usd";
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+
+        QVariantMap responce = getResponce( parser, method);
+
+        QVERIFY(responce.contains("success"));
+        QVERIFY(responce["success"].toInt() == 1);
+        QVERIFY(responce["btc_usd"].toMap()["updated"].canConvert(QVariant::LongLong));
+    }
 
     void Ticker_duplicatePair()
     {
@@ -590,7 +610,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
-        QByteArray key = getRandomValidKey(false, false, false);
+        QByteArray key = getRandomKeyWithPermissions(false, false, false);
         headers["KEY"] = key;
 
         FcgiRequest request(url , headers, in);
@@ -612,7 +632,7 @@ private slots:
         headers["SIGN"] = "SSSiiiGGGnnn";
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
-        QByteArray key = getRandomValidKey(false, false, false);
+        QByteArray key = getRandomKeyWithPermissions(false, false, false);
         headers["KEY"] = key;
 
         FcgiRequest request(url , headers, in);
@@ -632,7 +652,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=getInfo&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, true);
+        QByteArray key = getRandomKeyWithPermissions(false, true, true);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -653,7 +673,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, true);
+        QByteArray key = getRandomKeyWithPermissions(true, false, true);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -674,7 +694,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=RedeemCupon&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, true, false);
+        QByteArray key = getRandomKeyWithPermissions(true, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -696,7 +716,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = "method=getInfo";
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -720,7 +740,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = "method=getInfo&nonce=1";
-        QByteArray key = getRandomValidKey(false, false, false);
+        QByteArray key = getRandomKeyWithPermissions(false, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -744,7 +764,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=getInfo&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -763,7 +783,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=ActiveOrders&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -781,7 +801,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=OrderInfo&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -799,7 +819,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, false);
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -809,6 +829,24 @@ private slots:
         QVariantMap responce = getResponce(parser, method);
 
         QCOMPARE(method, Method::PrivateTrade);
+    }
+    void Method_privateCancelOrder()
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        in = QString("method=CancelOrder&nonce=%1").arg(nonce()).toUtf8();
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
+        headers["KEY"] = key;
+        headers["SIGN"] = signWithKey(in, key);
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(method, Method::PrivateCanelOrder);
     }
 
     void Depth_emptyList()
@@ -1009,7 +1047,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=getInfo&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1034,7 +1072,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=ActiveOrders&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1060,7 +1098,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=OrderInfo&nonce=%1").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1082,7 +1120,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=OrderInfo&nonce=%1&order_id=6553600").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1103,8 +1141,8 @@ private slots:
         QMap<QString, QString> headers;
         QUrl url;
         url = "http://loclahost:81/tapi";
-        in = QString("method=OrderInfo&nonce=%1&order_id=345").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(true, false, false);
+        in = QString("method=OrderInfo&nonce=%1&order_id=58320").arg(nonce()).toUtf8();
+        QByteArray key = getRandomKeyWithPermissions(true, false, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1120,10 +1158,10 @@ private slots:
         QVERIFY(result.size() > 0);
         QVERIFY(result.first().canConvert(QVariant::Map));
         QVariantMap order = result.first().toMap();
-        QVERIFY(order.contains("amount") && order["amount"].canConvert(QVariant::Double) && order["amount"].toDouble() > 0);
+        QVERIFY(order.contains("amount") && order["amount"].canConvert(QVariant::Double) && order["amount"].toDouble() >= 0);
         QVERIFY(order.contains("start_amount") && order["start_amount"].canConvert(QVariant::Double) && order["start_amount"].toDouble() > 0);
         QVERIFY(order.contains("status") && order["status"].canConvert(QVariant::Int));
-        QVERIFY(order["start_amount"].toDouble() >= order["start_amount"].toDouble());
+        QVERIFY(order["start_amount"].toDouble() >= order["amount"].toDouble());
     }
 
     void Trade_parameterPairPresenceCheck()
@@ -1133,7 +1171,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1&rate=100&amount=100&type=buy").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, false);
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1151,7 +1189,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1&rate=100&amount=100&type=sell&pair=usd_btc").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, false);
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1169,7 +1207,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1&rate=100&amount=0.00001&type=bid&pair=btc_usd").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, false);
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1191,7 +1229,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1&rate=100&amount=0.00001&type=buy&pair=btc_usd").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, false);
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1214,7 +1252,7 @@ private slots:
         QUrl url;
         url = "http://loclahost:81/tapi";
         in = QString("method=Trade&nonce=%1&rate=0.000001&amount=1&type=sell&pair=btc_usd").arg(nonce()).toUtf8();
-        QByteArray key = getRandomValidKey(false, true, false);
+        QByteArray key = getRandomKeyWithPermissions(false, true, false);
         headers["KEY"] = key;
         headers["SIGN"] = signWithKey(in, key);
 
@@ -1227,6 +1265,149 @@ private slots:
 
         QCOMPARE(responce["success"].toInt(), 0);
         QCOMPARE(responce["error"].toString(), QString("Price per BTC must be greater than 0.1 USD."));
+    }
+    void Trade_buy()
+    {
+        QVariantMap balanceBefore = exchangeBalance();
+
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        bool isSell = false;
+        double amount = 0.2;
+        double rate;
+        double balance;
+        QString currency;
+        if (isSell)
+        {
+            rate = 0.1;
+            balance = amount;
+            currency = "btc";
+        }
+        else
+        {
+            rate = 1850;
+            balance = rate * amount;
+            currency = "usd";
+        }
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+        QByteArray key = getRandomKeyForTrade(currency, balance);
+        headers["KEY"] = key;
+        headers["SIGN"] = signWithKey(in, key);
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        if (responce["success"].toInt() == 0)
+            std::clog << responce["error"].toString() << std::endl;
+        QCOMPARE(responce["success"].toInt(), 1);
+        QVERIFY(responce.contains("return") && responce["return"].canConvert(QVariant::Map));
+        QVariantMap ret = responce["return"].toMap();
+        double received = ret["received"].toDouble();
+        double remains = ret["remains"].toDouble();
+        quint32 order_id = ret["order_id"].toUInt();
+        QCOMPARE(received + remains, amount);
+        QVERIFY((remains > 0 and order_id != 0) or (remains == 0 and order_id == 0));
+
+        QVariantMap balanceAfter = exchangeBalance();
+        QCOMPARE(balanceBefore, balanceAfter);
+    }
+    void Trade_sell()
+    {
+        QVariantMap balanceBefore = exchangeBalance();
+
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        bool isSell = true;
+        double amount = 0.2;
+        double rate;
+        double balance;
+        QString currency;
+        if (isSell)
+        {
+            rate = 0.1;
+            balance = amount;
+            currency = "btc";
+        }
+        else
+        {
+            rate = 1850;
+            balance = rate * amount;
+            currency = "usd";
+        }
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+        QByteArray key = getRandomKeyForTrade(currency, balance);
+        headers["KEY"] = key;
+        headers["SIGN"] = signWithKey(in, key);
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Method method;
+        QVariantMap responce = getResponce(parser, method);
+
+        QCOMPARE(responce["success"].toInt(), 1);
+        QVERIFY(responce.contains("return") && responce["return"].canConvert(QVariant::Map));
+        QVariantMap ret = responce["return"].toMap();
+        double received = ret["received"].toDouble();
+        double remains = ret["remains"].toDouble();
+        quint32 order_id = ret["order_id"].toUInt();
+        QCOMPARE(received + remains, amount);
+        QVERIFY((remains > 0 and order_id != 0) or (remains == 0 and order_id == 0));
+
+        QVariantMap balanceAfter = exchangeBalance();
+        QCOMPARE(balanceBefore, balanceAfter);
+
+    }
+    void Trade_balanceValid()
+    {
+        QVariantMap balanceBefore = exchangeBalance();
+
+        for (int i=0; i<100; i++)
+        {
+            QByteArray in;
+            QMap<QString, QString> headers;
+            QUrl url;
+            url = "http://loclahost:81/tapi";
+            bool isSell = qrand() % 2;
+            double amount = (qrand() % 1000) / 100.0 + 0.01;
+            double rate;
+            double balance;
+            QString currency;
+            rate = 1750 + (qrand() % 100) / 10.0 - 5;
+            if (isSell)
+            {
+                balance = amount;
+                currency = "btc";
+            }
+            else
+            {
+                balance = rate * amount;
+                currency = "usd";
+            }
+            in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+            QByteArray key = getRandomKeyForTrade(currency, balance);
+            if (key.isEmpty())
+                continue;
+            headers["KEY"] = key;
+            headers["SIGN"] = signWithKey(in, key);
+
+            FcgiRequest request(url , headers, in);
+            QueryParser parser(request);
+            Method method;
+            QVariantMap responce = getResponce(parser, method);
+
+            if (responce["success"].toInt() == 0)
+                std::clog << responce["error"].toString() << std::endl;
+            QCOMPARE(responce["success"].toInt(), 1);
+
+            QVariantMap balanceAfter = exchangeBalance();
+            QCOMPARE(balanceBefore, balanceAfter);
+        }
     }
 };
 #endif // UNIT_TESTS_H

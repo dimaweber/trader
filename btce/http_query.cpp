@@ -1,5 +1,6 @@
 #include "utils.h"
 #include "http_query.h"
+#include <QElapsedTimer>
 #include <QJsonDocument>
 
 size_t HttpQuery::writeFunc(char* ptr, size_t size, size_t nmemb, void* userdata)
@@ -15,11 +16,27 @@ void HttpQuery::setHeaders(CurlListWrapper& headers)
     headers.setHeaders(curlHandle);
 }
 
+QByteArray fixJson64bitStupidity(const QByteArray& json)
+{
+    QString str = QString::fromUtf8(json);
+    QRegExp rx(":\\s*([0-9]{6,})\\s*(,|\\}|\\])");
+    if (rx.indexIn(str) > -1)
+    {
+        str.replace(rx, ":\"\\1\"\\2");
+    }
+    return str.toUtf8();
+}
+
 QVariantMap HttpQuery::convertReplyToMap(const QByteArray& json)
 {
     QJsonDocument jsonResponce;
     QJsonParseError error;
-    jsonResponce = QJsonDocument::fromJson(json, &error);
+
+    QElapsedTimer jsonParseTimer;
+    jsonParseTimer.start();
+    jsonResponce = QJsonDocument::fromJson(json, &error); // fixJson64bitStupidity(json)
+    std::clog << "json parsed in " << jsonParseTimer.elapsed() << " ms" << std::endl;
+
     if (jsonResponce.isNull())
     {
         throw BrokenJson(QString("json parse error [offset: %2]: %1").arg(error.errorString()).arg(error.offset));
@@ -83,8 +100,8 @@ bool HttpQuery::performQuery()
     curl_easy_getinfo(curlHandle, CURLINFO_SPEED_UPLOAD, &ul_speed);
     curl_easy_getinfo(curlHandle, CURLINFO_TOTAL_TIME, &transfer_time);
 
-    std::clog << "upload " << request_size << " bytes " << " with speed " << ul_speed << " b/sec" << std::endl;
-    std::clog << "download " << responce_size << " bytes " << " with speed " << dl_speed << " b/sec" << std::endl;
+    std::clog << "upload " << (long)request_size << " bytes " << " with speed " << ul_speed << " B/sec" << std::endl;
+    std::clog << "download " << (long)responce_size << " bytes " << " with speed " << dl_speed << " B/sec" << std::endl;
     std::clog << "transfer time: " << transfer_time << " sec" << std::endl;
 
     long http_code = 0;

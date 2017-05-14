@@ -316,7 +316,8 @@ bool Depth::parseSuccess(const QVariantMap& returnMap)
 
 QString Api::path() const
 {
-    return "https://btc-e.com/api/3/";
+    //return "https://btc-e.com/api/3/";
+    return BTCE_SERVER "api/3/";
 }
 
 bool Api::parse(const QByteArray& serverAnswer)

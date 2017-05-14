@@ -19,6 +19,8 @@
 # include <Windows.h>
 #endif
 
+#define SQL_PARAMS_CHECK
+
 class SqlKeyStorage : public KeyStorage
 {
     QString _tableName;
@@ -270,8 +272,8 @@ bool Database::prepare()
     prepareSql("UPDATE orders set status_id=" ORDER_STATUS_CHECKING
                " where status_id=" ORDER_STATUS_ACTIVE, updateOrdersCheckToActive);
 
-    prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id, created) "
-                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id, now())", insertOrder);
+    prepareSql("INSERT INTO orders (order_id, status_id, type, amount, start_amount, rate, round_id, created, modified) "
+                          " values (:order_id, :status, :type, :amount, :start_amount, :rate, :round_id, now(), now())", insertOrder);
 
     prepareSql("UPDATE orders set status_id=" ORDER_STATUS_ACTIVE ", amount=:amount, rate=:rate "
                " where order_id=:order_id", updateActiveOrder);
@@ -289,11 +291,11 @@ bool Database::prepare()
                " where o.status_id= " ORDER_STATUS_ACTIVE" and o.round_id=:round_id", selectCurrentRoundActiveOrdersCount);
 
     prepareSql("select r.settings_id, sum(o.start_amount - o.amount)*(1-s.comission) as amount, sum((o.start_amount - o.amount) * o.rate) as payment, sum((o.start_amount - o.amount) * o.rate) / sum(o.start_amount - o.amount)/(1-s.comission)/(1-s.comission)*(1+s.profit) as sell_rate, s.profit as profit from orders o left join rounds r on r.round_id=o.round_id left join settings s  on r.settings_id = s.id "
-               " where o.type='buy' and r.round_id=:round_id", selectCurrentRoundGain);
+               " where o.type='buy' and r.round_id=:round_id group by r.round_id", selectCurrentRoundGain);
 
     //  / (1-s.first_step)
     prepareSql("select max(o.rate) * (1+s.first_step * 2) from orders o left join rounds r on r.round_id = o.round_id left join settings s on s.id = r.settings_id "
-               " where o.status_id= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id", checkMaxBuyRate);
+               " where o.status_id= " ORDER_STATUS_ACTIVE" and o.type='buy' and o.round_id=:round_id group by o.round_id", checkMaxBuyRate);
 
     prepareSql("select sum(start_amount-amount) from orders o "
                " where o.round_id=:round_id and o.type='sell' and o.status_id = " ORDER_STATUS_PARTIAL, currentRoundPayback);
@@ -304,7 +306,7 @@ bool Database::prepare()
     prepareSql("SELECT order_id from orders o "
                " where o.round_id=:round_id and o.status_id < " ORDER_STATUS_DONE, selectOrdersFromPrevRound);
 
-    prepareSql("select  least(:last_price, o.rate + (:last_price - o.rate) / 10 * least(timestampdiff(MINUTE, r.end_time, now()), 10)) from rounds r left join orders o on r.round_id=o.round_id "
+    prepareSql("select  least(:last_price, MIN(o.rate) + (:last_price - MIN(o.rate)) / 10 * least(timestampdiff(MINUTE, r.end_time, now()), 10)) from rounds r left join orders o on r.round_id=o.round_id "
                " where r.settings_id=:settings_id and r.reason='archive' and o.type='sell' and o.status_id in (" ORDER_STATUS_DONE ", " ORDER_STATUS_INSTANT ", " ORDER_STATUS_PARTIAL ") group by r.round_id", selectPrevRoundSellRate);
 
     prepareSql("select count(id) from transactions t "
@@ -330,10 +332,10 @@ bool Database::prepare()
                " where r.settings_id=:settings_id and reason='archive'", getPrevRoundId);
 
     prepareSql("select sum(start_amount - amount) * (1-comission) as goods_in, sum((start_amount-amount)*rate)  as currency_out from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
-               " where o.type='buy' and o.round_id=:round_id", roundBuyStat);
+               " where o.type='buy' and o.round_id=:round_id group by o.round_id", roundBuyStat);
 
     prepareSql("select sum(start_amount-amount) as goods_out, sum((start_amount-amount)*rate)*(1-comission) as currency_in from orders o left join rounds r on r.round_id=o.round_id left join settings s on s.id=r.settings_id "
-               " where o.type='sell' and o.round_id=:round_id", roundSellStat);
+               " where o.type='sell' and o.round_id=:round_id group by o.round_id", roundSellStat);
 
     prepareSql("update settings set dep = dep+:dep_inc "
                " where id=:settings_id", depositIncrease);
@@ -379,8 +381,8 @@ bool Database::create_tables()
             << "rate DECIMAL(14,6) not null check (rate>0)"
             << "executed INTEGER not null default 0"
             << "status varchar(255) default null"
-            << "put_time TIMESTAMP not null DEFAULT '0000-00-00 00:00:00'"
-            << "exec_time TIMESTAMP not null DEFAULT '0000-00-00 00:00:00'"
+            << TableField("put_time", TableField::Datetime).notNull()
+            << TableField("exec_time", TableField::Datetime).notNull()
                ;
 
     createSqls["secrets"]
@@ -430,8 +432,8 @@ bool Database::create_tables()
              << TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
-             << "created TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00'"
-             << "modified TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00'"
+             << TableField("created", TableField::Datetime).notNull()
+             << TableField("modified", TableField::Datetime).notNull()
              << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
              << "FOREIGN KEY(status_id) REFERENCES order_status(status_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
              ;

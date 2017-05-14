@@ -1,13 +1,14 @@
 #!/bin/sh
 
-METHOD=Trade
-PARAMS=`date +method=$METHOD\&nonce=%s\&amount=0.02\&rate=1588\&pair=btc_eur\&type=sell`
+METHOD=CancelOrder
+#PARAMS=`date +method=$METHOD\&nonce=%s\&amount=0.02\&rate=1588\&pair=btc_eur\&type=sell`
+PARAMS=`date +method=$METHOD\&nonce=%s\&order_id=76656`
 
-#KEY="2RG2YQX3-R5K2OFWG-3PSHUMC6-3M4O5A4T-LGRV3WLA"
-#SECRET="110jxiqndrz5zciuu0d53isz1dioy7qr2so71nn5waui9vnt3lfawk3o5rrvas2d"
+KEY="2RG2YQX3-R5K2OFWG-3PSHUMC6-3M4O5A4T-LGRV3WLA"
+SECRET="110jxiqndrz5zciuu0d53isz1dioy7qr2so71nn5waui9vnt3lfawk3o5rrvas2d"
 
-KEY='7Q4GTI2F-LD5GJSS0-1UXYT49I-HH560OBD-DD0LBTCX'
-SECRET='uqu34opjgxaqvaztt6pap59yr1x0353r6pii0s9vbgkyu6up2mfzexdcd2lq7fwq'
+#KEY='YGE6F4M3-DBDYOSO1-GXV9D3SN-SENXSSOG-ZOLCB33G'
+#SECRET='wvnbmbsgxtzy4rrz9frhmqh6yzz0j7rh9cbsqxgz1p6ki4cf7705q6lptawz3bhh'
 
 #btce key
 #KEY="2S1XKFM6-NYO3X5FH-QGHGE9IT-GLL3UEL7-QA26ESCI"

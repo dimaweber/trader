@@ -13,6 +13,8 @@
 #include "key_storage.h"
 #include "curl_wrapper.h"
 
+#define BTCE_SERVER "http://localhost:81/"
+
 class CommonTest;
 
 namespace BtcObjects {
@@ -232,7 +234,7 @@ public:
           success(false), errorMsg("Not executed")
     {}
 
-    virtual QString path() const override { return "https://btc-e.com/tapi";}
+    virtual QString path() const override { return BTCE_SERVER "tapi";}
     virtual void setHeaders(CurlListWrapper& headers) override final;
     void display() const;
     bool isSuccess() const {return isValid() && success;}
