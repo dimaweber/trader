@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <memory>
 
+#include <QtConcurrent>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -20,6 +21,7 @@
 #include <QSqlQuery>
 #include <QSettings>
 #include <QtTest>
+
 
 void prepareDatabase(QSqlDatabase& db)
 {
@@ -57,7 +59,7 @@ void prepareDatabase(QSqlDatabase& db)
             << TableField("secret", TableField::Char, 128).notNull()
             << TableField("info", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("trade", TableField::Boolean).notNull().defaultValue("FALSE")
-            << TableField("widthdraw", TableField::Boolean).notNull().defaultValue("FALSE")
+            << TableField("withdraw", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("nonce", TableField::Integer).notNull().defaultValue(1).check("nonce > 0")
             << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
                ;
@@ -78,7 +80,7 @@ void prepareDatabase(QSqlDatabase& db)
             << TableField("order_id").primaryKey(true)
             << TableField("pair_id").references("pairs", {"pair_id"})
             << TableField("owner_id").references("owners", {"owner_id"})
-            << "type enum ('asks', 'bids') not null"
+            << "type enum ('sell', 'buy') not null"
             << TableField("rate", TableField::Decimal, 14, 6).notNull().check("rate > 0")
             << TableField("start_amount", TableField::Decimal, 14, 6).notNull().check("start_amount > 0")
             << TableField("amount", TableField::Decimal, 14, 6).notNull().check("amount >= 0 and amount <= start_amount")
@@ -242,21 +244,21 @@ QString randomApiKey()
 
 QString randomSecret()
 {
-    int len = QString("****************************************************************").length();
+    constexpr int len = strlen("****************************************************************");
     return randomString(len).toLower();
 }
 
 static QVector<quint32> ownerIdCache;
 static QVector<quint32> currencyIdCache;
 
-quint32 get_random_owner_id(quint32 except = 0)
+quint32 get_random_owner_id(QVector<quint32> except = QVector<quint32>())
 {
     quint32 id;
     do
     {
         int rndIndex = qrand() % ownerIdCache.size();
         id = ownerIdCache[rndIndex];
-    } while (id == except);
+    } while (except.contains(id));
     return id;
 }
 
@@ -298,8 +300,8 @@ void buildOrdersFromDepth(const BtcObjects::Depth::Position& position, const Btc
 
     for (int i=0; i < ownersCount; i++)
     {
-        orderParams[":owner_id"] = get_random_owner_id();
-        orderParams[":type"] = isAsks?"asks":"bids";
+        orderParams[":owner_id"] = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID);
+        orderParams[":type"] = isAsks?"sell":"buy";
         orderParams[":rate"] = QString::number(rate, 'f', p.decimal_places);
         orderParams[":start_amount"] = ownersPropotions[i];
         orderParams[":amount"] = orderParams[":start_amount"];
@@ -317,6 +319,7 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
     quint32 orderOwner_id = 0;
 
     selectOrdersWithGivenPairRate.bindValue(":rate", trade.price);
+    selectOrdersWithGivenPairRate.bindValue(":type", (trade.type==BtcObjects::Trade::Type::Bid)?"sell":"buy");
     if (selectOrdersWithGivenPairRate.exec())
     {
         if (selectOrdersWithGivenPairRate.next())
@@ -332,9 +335,9 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
 
     if (!order_id.isValid())
     {
-        orderOwner_id = get_random_owner_id();
+        orderOwner_id = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID);
         orderParams[":owner_id"] = orderOwner_id;
-        orderParams[":type"] = (trade.type == BtcObjects::Trade::Type::Bid)?"asks":"bids";
+        orderParams[":type"] = (trade.type == BtcObjects::Trade::Type::Bid)?"buy":"sell";
         orderParams[":rate"] = QString::number(trade.price, 'f', 3);
         orderParams[":start_amount"] = trade.amount;
         orderParams[":amount"] = 0;
@@ -347,7 +350,7 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
     }
 
     tradesParams[":trade_id"] = trade.id;
-    tradesParams[":owner_id"] = get_random_owner_id(orderOwner_id);
+    tradesParams[":owner_id"] = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID << orderOwner_id);
     tradesParams[":order_id"] = order_id;
     tradesParams[":amount"] = trade.amount;
     tradesParams[":created"] = trade.timestamp;
@@ -355,151 +358,202 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
     performSql("insert trade", tradesInsertQuery, tradesParams, true);
 }
 
-void populateTablesFromBtce(QSqlDatabase& db)
+void populateTablesFromBtce(QSqlDatabase& database)
 {
-    QSqlQuery pairInsertQuery(db);
-    QSqlQuery tickerInsertQuery(db);
-    QSqlQuery ordersInsertQuery(db);
-    QSqlQuery tradesInsertQuery(db);
-    QSqlQuery selectOrdersWithGivenPairRate(db);
-    QSqlQuery updateOrderIncreaseStartAmount(db);
-    QSqlQuery insertCurrencyQuery(db);
-
-    pairInsertQuery.prepare("insert into pairs (pair, decimal_places, min_price, max_price, min_amount, hidden, fee) values (:pair, :decimal_places, :min_price, :max_price, :min_amount, :hidden, :fee)");
-    tickerInsertQuery.prepare("insert into ticker (pair_id, high, low, avg, vol, vol_cur, buy, sell, last, updated) values (:pair_id, :high, :low, :avg, :vol, :vol_cur, :buy, :sell, :last, :updated)");
-    ordersInsertQuery.prepare("insert into orders (pair_id, owner_id,   type,   rate, start_amount, amount,   status, created)"
-                                      "values (:pair_id, :owner_id,   :type,   :rate, :start_amount, :amount,   :status, :created)");
-    tradesInsertQuery.prepare("insert into trades (trade_id, order_id, owner_id, amount, created) values (:trade_id, :order_id, :owner_id, :amount, :created)");
-    selectOrdersWithGivenPairRate.prepare("select order_id, owner_id, created from orders o where pair_id=:pair_id and o.rate=:rate and type= order by created asc");
-    updateOrderIncreaseStartAmount.prepare("update orders set start_amount = start_amount + :increase, created = :created where order_id=:order_id");
-    insertCurrencyQuery.prepare("insert into currencies (currency) values (:currency)");
-
-    QVariantMap pairParams;
-    QVariantMap tickerParams;
-    QVariantMap orderParams;
+    //for (const QString& pair: BtcObjects::Pairs::ref().keys())
     QStringList currencies;
+    QMutex currenciesAccess;
 
-    for (const QString& pair: BtcObjects::Pairs::ref().keys())
+    auto func = [&database, &currencies, &currenciesAccess](const QString& pair) -> void
     {
-        BtcObjects::Pair& p = BtcObjects::Pairs::ref(pair);
-        pairParams[":pair"] = pair;
-        pairParams[":decimal_places"] = p.decimal_places;
-        pairParams[":min_price"] =  p.min_price;
-        pairParams[":max_price"] = p.max_price;
-        pairParams[":min_amount"] = p.min_amount;
-        pairParams[":hidden"] = p.hidden;
-        pairParams[":fee"] = p.fee;
-        performSql("insert pair", pairInsertQuery, pairParams, true);
-
-        quint32 pair_id = pairInsertQuery.lastInsertId().toUInt();
-        QString currency;
-        currency = pair.left(3);
-        QVariantMap currencyParams;
-        if (!currencies.contains(currency))
+        QString connectionName = QString("orders-%1-%2").arg((uintptr_t)QThread::currentThreadId()).arg(QDateTime::currentDateTime().toTime_t());
         {
-            currencyParams[":currency"] = currency;
-            performSql("insert currency", insertCurrencyQuery, currencyParams, true);
-            currencyIdCache.append( insertCurrencyQuery.lastInsertId().toUInt());
-            currencies.append(currency);
-        }
-        currency = pair.right(3);
-        if (!currencies.contains(currency))
-        {
-            currencyParams[":currency"] = currency;
-            performSql("insert currency", insertCurrencyQuery, currencyParams, true);
-            currencyIdCache.append( insertCurrencyQuery.lastInsertId().toUInt());
-            currencies.append(currency);
-        }
-
-        tickerParams[":pair_id"] = pair_id;
-        tickerParams[":high"] = p.ticker.high;
-        tickerParams[":low"] = p.ticker.low;
-        tickerParams[":avg"] = p.ticker.avg;
-        tickerParams[":vol"] = p.ticker.vol;
-        tickerParams[":vol_cur"] = p.ticker.vol_cur;
-        tickerParams[":buy"] = p.ticker.buy;
-        tickerParams[":sell"] = p.ticker.sell;
-        tickerParams[":last"] = p.ticker.last;
-        tickerParams[":updated"] = p.ticker.updated;
-        performSql("insert ticker", tickerInsertQuery, tickerParams, true);
-
-        orderParams[":pair_id"] = pair_id;
-        for(const BtcObjects::Depth::Position& position: p.depth.asks)
-            buildOrdersFromDepth(position, p, ordersInsertQuery, true, orderParams);
-        for(const BtcObjects::Depth::Position& position: p.depth.bids)
-            buildOrdersFromDepth(position, p, ordersInsertQuery, false, orderParams);
-
-        selectOrdersWithGivenPairRate.bindValue(":pair_id", pair_id);
-        for (const BtcObjects::Trade& trade: p.trades)
-        {
-            buildTradesFromBtce(trade, tradesInsertQuery, selectOrdersWithGivenPairRate, updateOrderIncreaseStartAmount, ordersInsertQuery, orderParams);
-        }
-    }
-}
-
-void createSecrets(QSqlDatabase& db)
-{
-    QSqlQuery insertSecret(db);
-    insertSecret.prepare("insert into apikeys (owner_id,apikey,secret,info,trade) values (:owner_id, :apikey, :secret, :info, :trade)");
-    QVariantMap apikeyParams;
-    for(quint32 owner_id: ownerIdCache)
-    {
-        apikeyParams[":owner_id"] = owner_id;
-        apikeyParams[":apikey"] = randomApiKey();
-        apikeyParams[":secret"] = randomSecret();
-        apikeyParams[":info"] = true;
-        apikeyParams[":trade"] = true;
-
-        performSql("insert apikey", insertSecret, apikeyParams, true) ;
-
-        apikeyParams[":owner_id"] = owner_id;
-        apikeyParams[":apikey"] = randomApiKey();
-        apikeyParams[":secret"] = randomSecret();
-        apikeyParams[":info"] = false;
-        apikeyParams[":trade"] = true;
-
-        performSql("insert apikey", insertSecret, apikeyParams, true) ;
-
-        apikeyParams[":owner_id"] = owner_id;
-        apikeyParams[":apikey"] = randomApiKey();
-        apikeyParams[":secret"] = randomSecret();
-        apikeyParams[":info"] = true;
-        apikeyParams[":trade"] = false;
-
-        performSql("insert apikey", insertSecret, apikeyParams, true) ;
-
-        apikeyParams[":owner_id"] = owner_id;
-        apikeyParams[":apikey"] = randomApiKey();
-        apikeyParams[":secret"] = randomSecret();
-        apikeyParams[":info"] = false;
-        apikeyParams[":trade"] = false;
-
-        performSql("insert apikey", insertSecret, apikeyParams, true) ;
-
-    }
-}
-
-void createDeposits(QSqlDatabase& db)
-{
-    QSqlQuery insertDepositQuery(db);
-    insertDepositQuery.prepare("insert into deposits (owner_id, currency_id, volume) values (:owner_id, :currency_id, :volume)");
-    QVariantMap depositsParams;
-    for(quint32 owner_id : ownerIdCache)
-    {
-        depositsParams[":owner_id"] = owner_id;
-        for(quint32 pair_id: currencyIdCache)
-        {
-            depositsParams[":currency_id"] = pair_id;
-            if (qrand() % 3 == 0)
+            QSqlDatabase db = QSqlDatabase::cloneDatabase(database, connectionName);
+            if (db.open())
             {
-                depositsParams[":volume"] = (((static_cast<long>(qrand()) << 30) + qrand()) % 1000000) / 100.0;
+                db.exec("START TRANSACTION");
+                QSqlQuery pairInsertQuery(db);
+                QSqlQuery tickerInsertQuery(db);
+                QSqlQuery ordersInsertQuery(db);
+                QSqlQuery tradesInsertQuery(db);
+                QSqlQuery selectOrdersWithGivenPairRate(db);
+                QSqlQuery updateOrderIncreaseStartAmount(db);
+                QSqlQuery insertCurrencyQuery(db);
+
+                pairInsertQuery.prepare("insert into pairs (pair, decimal_places, min_price, max_price, min_amount, hidden, fee) values (:pair, :decimal_places, :min_price, :max_price, :min_amount, :hidden, :fee)");
+                tickerInsertQuery.prepare("insert into ticker (pair_id, high, low, avg, vol, vol_cur, buy, sell, last, updated) values (:pair_id, :high, :low, :avg, :vol, :vol_cur, :buy, :sell, :last, :updated)");
+                ordersInsertQuery.prepare("insert into orders (pair_id, owner_id,   type,   rate, start_amount, amount,   status, created)"
+                                          "values (:pair_id, :owner_id,   :type,   :rate, :start_amount, :amount,   :status, :created)");
+                tradesInsertQuery.prepare("insert into trades (trade_id, order_id, owner_id, amount, created) values (:trade_id, :order_id, :owner_id, :amount, :created)");
+                selectOrdersWithGivenPairRate.prepare("select order_id, owner_id, created from orders o where pair_id=:pair_id and o.rate=:rate and type=:type order by created asc");
+                updateOrderIncreaseStartAmount.prepare("update orders set start_amount = start_amount + :increase, created = :created where order_id=:order_id");
+                insertCurrencyQuery.prepare("insert into currencies (currency) values (:currency)");
+
+                QVariantMap pairParams;
+                QVariantMap tickerParams;
+                QVariantMap orderParams;
+
+                std::clog << "create pair " <<pair << " record " << std::endl;
+                BtcObjects::Pair& p = BtcObjects::Pairs::ref(pair);
+                pairParams[":pair"] = pair;
+                pairParams[":decimal_places"] = p.decimal_places;
+                pairParams[":min_price"] =  p.min_price;
+                pairParams[":max_price"] = p.max_price;
+                pairParams[":min_amount"] = p.min_amount;
+                pairParams[":hidden"] = p.hidden;
+                pairParams[":fee"] = p.fee;
+                performSql("insert pair", pairInsertQuery, pairParams, true);
+
+                quint32 pair_id = pairInsertQuery.lastInsertId().toUInt();
+
+                QStringList c = pair.split('_');
+                currenciesAccess.lock();
+                QVariantMap currencyParams;
+                for(QString& cu: c)
+                {
+                    if (!currencies.contains(cu))
+                    {
+                        currencyParams[":currency"] = cu;
+                        performSql("insert currency", insertCurrencyQuery, currencyParams, true);
+                        currencyIdCache.append( insertCurrencyQuery.lastInsertId().toUInt());
+                        currencies.append(cu);
+                        std::clog << '[' << QDateTime::currentDateTime().toString(Qt::ISODate) << "] currency " << cu << " added " << std::endl;
+                    }
+                }
+                currenciesAccess.unlock();
+
+                tickerParams[":pair_id"] = pair_id;
+                tickerParams[":high"] = p.ticker.high;
+                tickerParams[":low"] = p.ticker.low;
+                tickerParams[":avg"] = p.ticker.avg;
+                tickerParams[":vol"] = p.ticker.vol;
+                tickerParams[":vol_cur"] = p.ticker.vol_cur;
+                tickerParams[":buy"] = p.ticker.buy;
+                tickerParams[":sell"] = p.ticker.sell;
+                tickerParams[":last"] = p.ticker.last;
+                tickerParams[":updated"] = p.ticker.updated;
+                performSql("insert ticker", tickerInsertQuery, tickerParams, true);
+                std::clog << '[' << QDateTime::currentDateTime().toString(Qt::ISODate) << "] ticker record for pair " << pair << " created " << std::endl;
+
+                orderParams[":pair_id"] = pair_id;
+                quint32 cnt = 0;
+                for(const BtcObjects::Depth::Position& position: p.depth.asks)
+                {
+                    buildOrdersFromDepth(position, p, ordersInsertQuery, true, orderParams);
+                    cnt++;
+                }
+                std::clog << '[' << QDateTime::currentDateTime().toString(Qt::ISODate) << "] for pair " << pair << " " << cnt << " sell orders created " << std::endl;
+
+                cnt = 0;
+                for(const BtcObjects::Depth::Position& position: p.depth.bids)
+                {
+                    buildOrdersFromDepth(position, p, ordersInsertQuery, false, orderParams);
+                    cnt++;
+                }
+                std::clog << '[' << QDateTime::currentDateTime().toString(Qt::ISODate) << "] for pair " << pair << " " << cnt << " buy orders created " << std::endl;
+
+                selectOrdersWithGivenPairRate.bindValue(":pair_id", pair_id);
+                cnt = 0;
+                for (const BtcObjects::Trade& trade: p.trades)
+                {
+                    buildTradesFromBtce(trade, tradesInsertQuery, selectOrdersWithGivenPairRate, updateOrderIncreaseStartAmount, ordersInsertQuery, orderParams);
+                    cnt ++;
+                }
+                std::clog << '[' << QDateTime::currentDateTime().toString(Qt::ISODate) << "] for pair " << pair << " " << cnt << " complete trades created " << std::endl;
+
+                db.exec("COMMIT");
+                db.close();
             }
             else
-                depositsParams[":volume"] = 0;
+                std::cerr << db.lastError().text() << std::endl;
 
-            performSql("insert deposit", insertDepositQuery, depositsParams, true);
         }
-    }
+        QSqlDatabase::removeDatabase(connectionName);
+    };
+
+    QList<QString> keys = BtcObjects::Pairs::ref().keys();
+    QtConcurrent::blockingMap(keys, func);
+}
+
+void createSecrets(QSqlDatabase& database)
+{
+    QAtomicInt dbCounter = 0;
+    auto func = [&database, &dbCounter](quint32 owner_id)
+    {
+        qsrand(dbCounter++);
+        QString connectionName = QString("secrets-%1").arg(++dbCounter);
+        {
+            QSqlDatabase db = QSqlDatabase::cloneDatabase(database, connectionName);
+            if (db.open())
+            {
+                db.exec("START TRANSACTION");
+                QSqlQuery insertSecret(db);
+                insertSecret.prepare("insert into apikeys (owner_id,apikey,secret,info,trade, withdraw) values (:owner_id, :apikey, :secret, :info, :trade, :withdraw)");
+                QVariantMap apikeyParams;
+
+                for (int info=0; info<2;info++)
+                    for (int trade=0; trade<2;trade++)
+                        for (int withdraw=0; withdraw<2;withdraw++)
+                        {
+                            apikeyParams[":owner_id"] = owner_id;
+                            apikeyParams[":apikey"] = randomApiKey();
+                            apikeyParams[":secret"] = randomSecret();
+                            apikeyParams[":info"] = (bool)info;
+                            apikeyParams[":trade"] = (bool)trade;
+                            apikeyParams[":withdraw"] = (bool)withdraw;
+
+                            performSql("insert apikey", insertSecret, apikeyParams, true) ;
+                        }
+
+                db.exec("COMMIT");
+                db.close();
+            }
+            else
+                std::cerr << db.lastError().text() << std::endl;
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+    };
+
+    QtConcurrent::blockingMap(ownerIdCache, func);
+}
+
+void createDeposits(QSqlDatabase& database)
+{
+    QAtomicInt dbCounter = 0;
+    auto func = [&database, &dbCounter](quint32 owner_id)
+    {
+        qsrand(dbCounter++);
+        QString connectionName =  QString("deposits-%1").arg(++dbCounter);
+        {
+            QSqlDatabase db = QSqlDatabase::cloneDatabase(database,connectionName);
+            if (db.open())
+            {
+                db.exec("START TRANSACTION");
+                QSqlQuery insertDepositQuery(db);
+                insertDepositQuery.prepare("insert into deposits (owner_id, currency_id, volume) values (:owner_id, :currency_id, :volume)");
+                QVariantMap depositsParams;
+                depositsParams[":owner_id"] = owner_id;
+                for(quint32 pair_id: currencyIdCache)
+                {
+                    depositsParams[":currency_id"] = pair_id;
+                    if (qrand() % 3 == 0)
+                    {
+                        depositsParams[":volume"] = (((static_cast<long>(qrand()) << 30) + qrand()) % 1000000) / 100.0;
+                    }
+                    else
+                        depositsParams[":volume"] = 0;
+
+                    performSql("insert deposit", insertDepositQuery, depositsParams, true);
+                }
+                db.exec("COMMIT");
+                db.close();
+            }
+            else
+                std::cerr << db.lastError().text() << std::endl;
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+    };
+    QtConcurrent::blockingMap(ownerIdCache, func);
 }
 
 void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
@@ -514,7 +568,6 @@ void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
     btceDepth.performQuery();
     btceTrades.performQuery();
 
-    QSqlQuery query(db);
 
     bool inTransaction;
     inTransaction = db.transaction();
@@ -523,9 +576,14 @@ void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
         std::clog << "fail to start transaction -- expect very slow inserts" << std::endl;
         if (!db.driver()->hasFeature(QSqlDriver::DriverFeature::Transactions))
             std::clog << "Transactions are not supported by sql driver" << std::endl;
-        performSql("manual transaction start", query, "START TRANSACTION", true);
+        //performSql("manual transaction start", query, "START TRANSACTION", true);
     }
+    QSqlQuery query(db);
     populateTablesFromCsv(db);
+
+    performSql("add user_type column", query, "alter table owners add user_type int not null default 1"); // 0 - special (exchannge), 1 - emulated, 2 - regular
+
+    performSql("create EXCHANGE user", query, QString("insert into owners (owner_id, name, user_type) values (%1, 'EXCHANGE', 0)").arg(EXCHNAGE_OWNER_ID));
 
     performSql("fill ownersIdDache", query, "select owner_id from owners", true);
     while (query.next())
@@ -537,8 +595,8 @@ void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
 
     if (inTransaction)
         db.commit();
-    else
-        performSql("manual transaction commit", query, "COMMIT", true);
+   // else
+      //  performSql("manual transaction commit", query, "COMMIT", true);
 }
 
 int main(int argc, char *argv[])
@@ -546,6 +604,7 @@ int main(int argc, char *argv[])
     bool recreateDatabase = false;
     bool runTests = false;
     bool failTestExit = true;
+    bool justTests;
     int depth_limit = 150;
     int trades_limit = 150;
 
@@ -560,6 +619,7 @@ int main(int argc, char *argv[])
     recreateDatabase = settings.value("debug/recreate_database", true).toBool();
     runTests = settings.value("debug/run_tests", true).toBool();
     failTestExit = settings.value("debug/exit_on_test_fail", false).toBool();
+    justTests = settings.value("debug/just_tests", false).toBool();
     depth_limit = settings.value("btce/depth_limit", 150).toInt();
     trades_limit = settings.value("btce/trades_limit", 150).toInt();
 
@@ -568,7 +628,7 @@ int main(int argc, char *argv[])
     if (recreateDatabase)
     {
         prepareDatabase(db);
-        populateDatabase(db, trades_limit, depth_limit); //TODO: run this in thread
+        populateDatabase(db, trades_limit, depth_limit);
     }
 
     if (!initialiazeResponce(db))
@@ -585,6 +645,8 @@ int main(int argc, char *argv[])
         if (failTestExit && testReturnCode)
             return testReturnCode;
     }
+    if (justTests)
+        return 0;
 
     int ret;
     int sock;

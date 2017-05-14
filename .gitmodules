@@ -1,3 +1,6 @@
 [submodule "tgbot-cpp"]
 	path = tgbot-cpp
 	url = https://github.com/dimaweber/tgbot-cpp
+[submodule "decimal_for_cpp"]
+	path = decimal_for_cpp
+	url = https://github.com/vpiotr/decimal_for_cpp

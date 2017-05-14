@@ -1,13 +1,13 @@
 #!/bin/sh
 
 METHOD=Trade
-PARAMS=`date +method=$METHOD\&nonce=%s\&amount=0.02\&rate=1764\&pair=btc_usd\&type=buy`
+PARAMS=`date +method=$METHOD\&nonce=%s\&amount=0.02\&rate=1588\&pair=btc_eur\&type=sell`
 
 #KEY="2RG2YQX3-R5K2OFWG-3PSHUMC6-3M4O5A4T-LGRV3WLA"
 #SECRET="110jxiqndrz5zciuu0d53isz1dioy7qr2so71nn5waui9vnt3lfawk3o5rrvas2d"
 
-KEY="3WTYG4ZB-I32T5T2V-S7UOKP61-9H8AMAAZ-R5H0BIVL"
-SECRET="rarjtfm024i4axtfxqufhwjiqc2d9zle0m0yf6tbvzyzb87a2rnpvy3bvawlcrlo"
+KEY='7Q4GTI2F-LD5GJSS0-1UXYT49I-HH560OBD-DD0LBTCX'
+SECRET='uqu34opjgxaqvaztt6pap59yr1x0353r6pii0s9vbgkyu6up2mfzexdcd2lq7fwq'
 
 #btce key
 #KEY="2S1XKFM6-NYO3X5FH-QGHGE9IT-GLL3UEL7-QA26ESCI"
