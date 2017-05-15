@@ -105,13 +105,14 @@ bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bo
     return ok;
 }
 
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds, bool silent)
+bool performSql(QString message, QSqlQuery& query, const QVariantMap& binds, bool silent)
 {
-    for(QString param: binds.keys())
+    for(const QString& param: binds.keys())
     {
         query.bindValue(param, binds[param]);
         if (!silent)
             std::clog << "\tbind: " << param << " = " << binds[param].toString() << std::endl;
+        message.replace(param, binds[param].toString());
     }
     return performSql(message, query, QString(), silent);
 }

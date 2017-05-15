@@ -2,8 +2,13 @@
 #define RESPONCE_H
 
 #include "decimal.h"
-#include <QCache>
+#include <QDateTime>
+#include <QMap>
+#include <QMutex>
 #include <QVariantMap>
+#include <QVector>
+
+#include <memory>
 
 class Authentificator;
 class QueryParser;
@@ -22,6 +27,7 @@ public:
     using OwnerId = quint32;
     using TradeId = quint32;
     using OrderId = quint32;
+    using PairName = QString;
 
     enum Method {Invalid, AuthIssue, AccessIssue,
                  PublicInfo, PublicTicker, PublicDepth, PublicTrades,
@@ -31,15 +37,59 @@ public:
                  PrivateWithdrawCoin, PrivateCreateCupon, PrivateRedeemCupon
                 };
 
-    static QAtomicInt counter;
+    struct PairInfo
+    {
+        Rate min_price;
+        Rate max_price;
+        Rate min_amount;
+        Fee fee;
+        PairId pair_id;
+        int decimal_places;
+        bool hidden;
+        PairName pair;
+
+        typedef std::shared_ptr<PairInfo> Ptr;
+    };
+    struct TickerInfo
+    {
+        // TODO: std::weak_ptr<PairInfo> pair;
+        Rate high;
+        Rate low;
+        Rate avg;
+        Amount vol;
+        Amount vol_cur;
+        Rate last;
+        Rate buy;
+        Rate sell;
+        QDateTime updated;
+        typedef std::shared_ptr<TickerInfo> Ptr;
+    };
+    struct OrderInfo
+    {
+        enum class Type {Sell, Buy};
+        enum class Status {Active=1, Done, Cancelled, PartiallyDone};
+        using Ptr = std::shared_ptr<OrderInfo>;
+        PairName pair;
+        std::weak_ptr<PairInfo> pair_ptr;
+        Type type;
+        Amount start_amount;
+        Amount amount;
+        Rate rate;
+        QDateTime created;
+        Status status;
+        OwnerId owner_id;
+        OrderId order_id;
+    };
+
     Responce(QSqlDatabase& database);
 
     QVariantMap getResponce(const QueryParser& parser, Method& method);
 
     QVariantMap exchangeBalance();
 
-    static QString oppositOrderType(const QString& type);
+    static OrderInfo::Type oppositOrderType(OrderInfo::Type type);
 private:
+    static QAtomicInt counter;
     QSqlDatabase& db;
 
     QVariantMap getInfoResponce(Method& method);
@@ -52,7 +102,7 @@ private:
     QVariantMap getPrivateOrderInfoResponce(const QueryParser &httpQuery, Method& method);
 
     QVariantMap getPrivateTradeResponce(const QueryParser& httpQuery, Method& method);
-    QVariantMap getPrivateCalcelOrderResponce(const QueryParser& httpQuery, Method& method);
+    QVariantMap getPrivateCancelOrderResponce(const QueryParser& httpQuery, Method& method);
 
     struct TradeCurrencyVolume
     {
@@ -84,18 +134,14 @@ private:
     };
 
     bool tradeUpdateDeposit(const QVariant& owner_id, const QString& currency, Amount diff, const QString& ownerName);
-    TradeCurrencyVolume trade_volumes (const QString& type, const QString& pair, Fee fee,
+    TradeCurrencyVolume trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                      Amount trade_amount, Rate matched_order_rate);
-    NewOrderVolume new_order_currency_volume (const QString& type, const QString& pair, Amount amount, Rate rate);
-    quint32 doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, const QString& type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams);
-    OrderCreateResult createTrade(const QString& key, const QString& pair, const QString& type, const QString& rate, const QString& amount);
+    quint32 doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams);
+    OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const QString& rate, const QString& amount);
     QVariantList appendDepthToMap(QSqlQuery& query, const QString& pairName, int limit);
 
     std::unique_ptr<Authentificator> auth;
-    std::unique_ptr<QSqlQuery> selectTickerInfoQuery;
-    std::unique_ptr<QSqlQuery> selectOrderInfoQuery;
     std::unique_ptr<QSqlQuery> selectActiveOrdersQuery;
-    std::unique_ptr<QSqlQuery> selectPairsInfoQuery;
     std::unique_ptr<QSqlQuery> selectBuyOrdersQuery;
     std::unique_ptr<QSqlQuery> selectSellOrdersQuery;
     std::unique_ptr<QSqlQuery> selectAllTradesInfo;
@@ -119,16 +165,25 @@ private:
     std::unique_ptr<QSqlQuery> totalBalance;
 
 
-    struct PairInfo {
-        Rate min_price;
-        Rate max_price;
-        Rate min_amount;
-        Fee fee;
-        PairId pair_id;
-        int decimal_places;
-    };
-    static QCache<QString, PairInfo> pairInfoCache;
-    PairInfo* pairInfo(const QString& pair);
+    static QMap<Responce::PairName, Responce::PairInfo::Ptr> pairInfoCache;
+    static QMutex pairInfoCacheAccess;
+
+    QVector<PairInfo::Ptr> allPairsInfo();
+    PairInfo::Ptr pairInfo(const QString& pair);
+
+
+    static QMap<Responce::PairName, TickerInfo::Ptr> tickerInfoCache;
+    static QMutex tickerInfoCacheAccess;
+
+    TickerInfo::Ptr tickerInfo(const QString& pair);
+
+
+
+    static QCache<Responce::OrderId, Responce::OrderInfo::Ptr> orderInfoCache;
+    static QMutex orderInfoCacheAccess;
+    OrderInfo::Ptr orderInfo(OrderId order_id);
+
+    NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
 };
 
 #endif // RESPONCE_H

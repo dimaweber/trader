@@ -3,9 +3,11 @@
 #include "sql_database.h"
 #include "utils.h"
 
-#include <QDateTime>
+#include <QCache>
 #include <QSqlError>
 #include <QSqlQuery>
+
+#define TICKER_CACHE_EXPIRE_SECONDS 300
 
 QAtomicInt Responce::counter = 0;
 
@@ -14,10 +16,7 @@ Responce::Responce(QSqlDatabase& database)
 {
     auth.reset(new Authentificator(db));
 
-    selectTickerInfoQuery.reset( new QSqlQuery(db));
-    selectOrderInfoQuery.reset(new QSqlQuery(db));
     selectActiveOrdersQuery.reset(new QSqlQuery(db));
-    selectPairsInfoQuery.reset( new QSqlQuery(db));
     selectBuyOrdersQuery.reset( new QSqlQuery(db));
     selectSellOrdersQuery.reset( new QSqlQuery(db));
     selectAllTradesInfo.reset(new QSqlQuery(db));
@@ -41,9 +40,6 @@ Responce::Responce(QSqlDatabase& database)
     totalBalance.reset(new QSqlQuery(db));
 
     bool ok =true
-    &&  prepareSql(*selectTickerInfoQuery, "select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name")
-    &&  prepareSql(*selectPairsInfoQuery, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs")
-    &&  prepareSql(*selectOrderInfoQuery, "select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0, o.owner_id from orders o left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id")
     &&  prepareSql(*selectActiveOrdersQuery, "select o.order_id, p.pair, o.type, o.amount, o.rate, o.created, 0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:key and o.status = 'active'")
     &&  prepareSql(*selectBuyOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='buy' and p.pair=:name group by rate order by  rate desc")
     &&  prepareSql(*selectSellOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='sell' and p.pair=:name group by rate order by  rate asc")
@@ -92,7 +88,7 @@ bool Responce::tradeUpdateDeposit(const QVariant& owner_id, const QString& curre
     return ok;
 }
 
-Responce::TradeCurrencyVolume Responce::trade_volumes (const QString& type, const QString& pair, Fee fee,
+Responce::TradeCurrencyVolume Responce::trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                  Amount trade_amount, Rate matched_order_rate)
 {
     TradeCurrencyVolume ret;
@@ -100,7 +96,7 @@ Responce::TradeCurrencyVolume Responce::trade_volumes (const QString& type, cons
     ret.goods = pair.left(3);
 
     Fee contra_fee = Fee(1) - fee;
-    if (type == "buy")
+    if (type == OrderInfo::Type::Buy)
     {
         ret.trader_currency_out = ret.currency;
         ret.trader_volume_out = trade_amount * matched_order_rate;
@@ -124,10 +120,10 @@ Responce::TradeCurrencyVolume Responce::trade_volumes (const QString& type, cons
     return ret;
 }
 
-Responce::NewOrderVolume Responce::new_order_currency_volume (const QString& type, const QString& pair, Amount amount, Rate rate)
+Responce::NewOrderVolume Responce::new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate)
 {
     NewOrderVolume ret;
-    if (type == "sell")
+    if (type == OrderInfo::Type::Sell)
     {
         ret.currency = pair.left(3);
         ret.volume = amount;
@@ -140,17 +136,17 @@ Responce::NewOrderVolume Responce::new_order_currency_volume (const QString& typ
     return ret;
 }
 
-QString Responce::oppositOrderType(const QString& type)
+Responce::OrderInfo::Type Responce::oppositOrderType(OrderInfo::Type type)
 {
-    if (type=="buy")
-        return "sell";
-    return "buy";
+    if (type==OrderInfo::Type::Buy)
+        return OrderInfo::Type::Sell;
+    return OrderInfo::Type::Buy;
 }
 
-quint32 Responce::doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, const QString& type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams)
+quint32 Responce::doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, Responce::OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams)
 {
     quint32 ret = 0;
-    if (!performSql(QString("get %1 orders").arg(oppositOrderType(type)), query, orderCreateParams, true))
+    if (!performSql(QString("get %1 orders").arg((oppositOrderType(type) == OrderInfo::Type::Buy)?"buy":"sell"), query, orderCreateParams, true))
     {
         return (quint32)-1;
     }
@@ -221,7 +217,7 @@ quint32 Responce::doExchange(QString ownerName, const QString& rate, TradeCurren
         createOrderParams[":start_amount"] = amnt.getAsDouble();
         createOrderParams[":rate"] = rt.getAsDouble();
         createOrderParams[":created"] = QDateTime::currentDateTime();
-        createOrderParams[":type"] = type;
+        createOrderParams[":type"] = (type == OrderInfo::Type::Buy)?"buy":"sell";
         if (!performSql("create order", *createOrderQuery, createOrderParams, true))
             return (quint32)-1;
 //        std::clog << "new " << type << " order for " << amnt << " @ " << rate << " created" << std::endl;
@@ -231,7 +227,7 @@ quint32 Responce::doExchange(QString ownerName, const QString& rate, TradeCurren
     return ret;
 }
 
-Responce::OrderCreateResult Responce::createTrade(const QString& key, const QString& pair, const QString& type, const QString& rate, const QString& amount)
+Responce::OrderCreateResult Responce::createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const QString& rate, const QString& amount)
 {
     OrderCreateResult ret;
     ret.recieved = 0;
@@ -243,7 +239,7 @@ Responce::OrderCreateResult Responce::createTrade(const QString& key, const QStr
     orderCreateParams[":key"] = key;
     bool isSell = false;
 
-    PairInfo* info = pairInfo(pair);
+    PairInfo::Ptr info = pairInfo(pair);
     if (!info)
     {
         ret.errMsg = "You incorrectly entered one of fields.";
@@ -256,17 +252,12 @@ Responce::OrderCreateResult Responce::createTrade(const QString& key, const QStr
     Fee fee         = info->fee;
     PairId pair_id = info->pair_id;
 
-    if (type == "buy")
+    if (type == OrderInfo::Type::Buy)
         orderCreateParams[":currency"] = pair.right(3);
-    else if (type == "sell")
+    else/* if (type == OrderInfo::Type::Sell)*/
     {
         isSell = true;
         orderCreateParams[":currency"] = pair.left(3);
-    }
-    else
-    {
-        ret.errMsg = "You incorrectly entered one of fields.";
-        return ret;
     }
 
     if (!performSql("get funds info", *selectCurrencyVolumeQuery, orderCreateParams, true))
@@ -346,9 +337,9 @@ Responce::OrderCreateResult Responce::createTrade(const QString& key, const QStr
 
     TradeCurrencyVolume volumes;
     QSqlQuery* query = nullptr;
-    if (type == "buy")
+    if (type == OrderInfo::Type::Buy)
         query = selectOrdersForBuyTrade.get();
-    else if (type == "sell")
+    else if (type == OrderInfo::Type::Sell)
         query = selectOrdersForSellTrade.get();
 
     ret.order_id = doExchange(ownerName, rate, volumes, type, rt, pair, *query, amnt, fee, owner_id, pair_id, orderCreateParams);
@@ -451,7 +442,7 @@ QVariantMap Responce::getResponce(const QueryParser& parser, Method& method)
         }
         else if (methodName == "CancelOrder")
         {
-            var = getPrivateCalcelOrderResponce(parser, method);
+            var = getPrivateCancelOrderResponce(parser, method);
         }
         else if (methodName == "TradeHistory")
         {
@@ -505,20 +496,18 @@ QVariantMap Responce::getInfoResponce(Method &method)
     QVariantMap pairs;
 
     var["server_time"] = QDateTime::currentDateTime().toTime_t();
-    if (performSql("get info", *selectPairsInfoQuery, QVariantMap(), true))
+    QVector<PairInfo::Ptr> allPairs = allPairsInfo();
+    for (PairInfo::Ptr info: allPairs)
     {
-        while (selectPairsInfoQuery->next())
-        {
-            QVariantMap pair;
-            pair["decimal_places"] = selectPairsInfoQuery->value(1).toInt();
-            pair["min_price"] = selectPairsInfoQuery->value(2).toFloat();
-            pair["max_price"] = selectPairsInfoQuery->value(3).toFloat();
-            pair["min_amount"] = selectPairsInfoQuery->value(4).toFloat();
-            pair["hidden"] = selectPairsInfoQuery->value(5).toInt();
-            pair["fee"] = selectPairsInfoQuery->value(6).toFloat();
+        QVariantMap pair;
+        pair["decimal_places"] = info->decimal_places;
+        pair["min_price"] = info->min_price.getAsDouble();
+        pair["max_price"] = info->max_price.getAsDouble();
+        pair["min_amount"] = info->min_amount.getAsDouble();
+        pair["hidden"] = info->hidden;
+        pair["fee"] = info->fee.getAsDouble();
 
-            pairs[selectPairsInfoQuery->value(0).toString()] = pair;
-        }
+        pairs[info->pair] = pair;
     }
     var["pairs"] = pairs;
     return var;
@@ -541,33 +530,30 @@ QVariantMap Responce::getTickerResponce(const QueryParser& httpQuery, Method& me
             var["error"] = "Duplicated pair name: " + pairName;
             break;
         }
-        tickerParams[":name"] = pairName;
-        if (performSql("get ticker", *selectTickerInfoQuery, tickerParams, true))
+        TickerInfo::Ptr info = tickerInfo(pairName);
+        if (info)
         {
-            if (selectTickerInfoQuery->next())
-            {
-                QVariantMap pair;
-                pair["high"] = selectTickerInfoQuery->value(0);
-                pair["low"] = selectTickerInfoQuery->value(1);
-                pair["avg"] = selectTickerInfoQuery->value(2);
-                pair["vol"] = selectTickerInfoQuery->value(3);
-                pair["vol_cur"] = selectTickerInfoQuery->value(4);
-                pair["last"] = selectTickerInfoQuery->value(5);
-                pair["buy"] = selectTickerInfoQuery->value(6);
-                pair["sell"] = selectTickerInfoQuery->value(7);
-                pair["updated"] = selectTickerInfoQuery->value(8).toDateTime().toTime_t();
+            QVariantMap pair;
+            pair["high"] = info->high.getAsDouble();
+            pair["low"]  = info->low.getAsDouble();
+            pair["avg"]  = info->avg.getAsDouble();
+            pair["vol"]  = info->vol.getAsDouble();
+            pair["vol_cur"] = info->vol_cur.getAsDouble();
+            pair["last"] = info->last.getAsDouble();
+            pair["buy"] = info->buy.getAsDouble();
+            pair["sell"] = info->sell.getAsDouble();
+            pair["updated"] = info->updated.toTime_t();
 
-                var[pairName] = pair;
-            }
-            else
+            var[pairName] = pair;
+        }
+        else
+        {
+            if (!httpQuery.ignoreInvalid())
             {
-                if (!httpQuery.ignoreInvalid())
-                {
-                    var.clear();
-                    var["success"] = 0;
-                    var["error"] = "Invalid pair name: " + pairName;
-                    break;
-                }
+                var.clear();
+                var["success"] = 0;
+                var["error"] = "Invalid pair name: " + pairName;
+                break;
             }
         }
     }
@@ -599,36 +585,147 @@ QVariantList Responce::appendDepthToMap(QSqlQuery& query, const QString& pairNam
     return ret;
 }
 
-QCache<QString, Responce::PairInfo> Responce::pairInfoCache;
-Responce::PairInfo* Responce::pairInfo(const QString &pair)
+QMap<QString, Responce::PairInfo::Ptr> Responce::pairInfoCache;
+QMutex Responce::pairInfoCacheAccess;
+
+QVector<Responce::PairInfo::Ptr> Responce::allPairsInfo()
 {
     QSqlQuery sql(db);
+    QVector<PairInfo::Ptr> ret;
+    prepareSql(sql, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee, pair_id from pairs");
+    if (performSql("retrieve all pairs info", sql, QVariantMap()))
+    {
+        QMutexLocker lock(&pairInfoCacheAccess);
+        pairInfoCache.clear();
+        while(sql.next())
+        {
+            PairInfo::Ptr info (new PairInfo);
+            info->pair = sql.value(0).toString();
+            info->decimal_places = sql.value(1).toInt();
+            info->min_price = Rate(sql.value(2).toString().toStdString());
+            info->max_price = Rate(sql.value(3).toString().toStdString());
+            info->min_amount = Rate(sql.value(4).toString().toStdString());
+            info->hidden = sql.value(6).toBool();
+            info->fee = Fee(sql.value(6).toString().toStdString());
+            info->pair_id = sql.value(7).toUInt();
+
+            pairInfoCache.insert(info->pair, info);
+            ret.append(info);
+        }
+    }
+    return ret;
+}
+
+Responce::PairInfo::Ptr Responce::pairInfo(const QString &pair)
+{
+    // pairs are not updated after insert into map, so we can check/get existing value withput locking.
+    // Hopefully.
     if (!pairInfoCache.contains(pair))
     {
-        prepareSql(sql, "select min_price, max_price, min_amount, fee, pair_id, decimal_places from pairs where pair=:pair");
-        QVariantMap params;
-        params[":pair"] = pair;
-        if (!performSql("get pair info", sql, params, true))
+        QMutexLocker lock(&pairInfoCacheAccess);
+        if (!pairInfoCache.contains(pair))
         {
-            std::cerr << "internal database error: cannot get pair info" << std::endl;
-            throw std::runtime_error("internal database error: cannot get pair info");
-            return nullptr;
+            QSqlQuery sql(db);
+            prepareSql(sql, "select min_price, max_price, min_amount, fee, pair_id, decimal_places from pairs where pair=:pair");
+            QVariantMap params;
+            params[":pair"] = pair;
+            if (performSql("get pair :pair info", sql, params, true) && sql.next())
+            {
+                PairInfo::Ptr info (new PairInfo());
+                info->min_price = Rate(sql.value(0).toString().toStdString());
+                info->max_price = Rate(sql.value(1).toString().toStdString());
+                info->min_amount = Rate(sql.value(2).toString().toStdString());
+                info->fee = Fee(sql.value(3).toString().toStdString());
+                info->pair_id = sql.value(4).toUInt();
+                info->decimal_places = sql.value(5).toInt();
+
+                pairInfoCache.insert(pair, info);
+                return info;
+            }
+            else
+            {
+                std::cerr << "cannot get pair '" << pair << "' info " << std::endl;
+                //throw std::runtime_error("internal database error: cannot get pair info");
+                return nullptr;
+            }
         }
-
-        sql.bindValue(":pair", pair);
-        sql.exec();
-        std::unique_ptr<PairInfo> info = std::make_unique<PairInfo>();
-        info->min_price = Rate(sql.value(0).toString().toStdString());
-        info->max_price = Rate(sql.value(1).toString().toStdString());
-        info->min_amount = Rate(sql.value(2).toString().toStdString());
-        info->fee = Fee(sql.value(3).toString().toStdString());
-        info->pair_id = sql.value(4).toUInt();
-        info->decimal_places = sql.value(5).toInt();
-
-        pairInfoCache.insert(pair, info.release());
     }
     return pairInfoCache[pair];
 
+}
+
+QMap<Responce::PairName, Responce::TickerInfo::Ptr> Responce::tickerInfoCache;
+QMutex Responce::tickerInfoCacheAccess;
+
+Responce::TickerInfo::Ptr Responce::tickerInfo(const QString& pair)
+{
+    QMutexLocker lock(&tickerInfoCacheAccess);
+    if (!tickerInfoCache.contains(pair) || tickerInfoCache[pair]->updated.secsTo(QDateTime::currentDateTime()) > TICKER_CACHE_EXPIRE_SECONDS)
+    {
+        QSqlQuery sql(db);
+        prepareSql(sql, "select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name");
+        QVariantMap params;
+        params[":name"] = pair;
+        if (performSql("get ticker for pair ':name'", sql, params) && sql.next())
+        {
+            TickerInfo::Ptr info (new TickerInfo);
+
+            info->high = Rate(sql.value(0).toString().toStdString());
+            info->low  = Rate(sql.value(1).toString().toStdString());
+            info->avg  = Rate(sql.value(2).toString().toStdString());
+            info->vol  = Amount(sql.value(3).toString().toStdString());
+            info->vol_cur  = Amount(sql.value(4).toString().toStdString());
+            info->last = Amount(sql.value(5).toString().toStdString());
+            info->buy = Amount(sql.value(6).toString().toStdString());
+            info->sell = Amount(sql.value(7).toString().toStdString());
+            info->updated = sql.value(8).toDateTime();
+
+            tickerInfoCache[pair] = info;
+            return info;
+        }
+        else
+        {
+            std::cerr << "cannot get pair '" << pair << "' ticker info " << std::endl;
+            //throw std::runtime_error("internal database error: cannot get pair ticker info");
+            return nullptr;
+        }
+    }
+    return tickerInfoCache[pair];
+}
+
+QCache<Responce::OrderId, Responce::OrderInfo::Ptr> Responce::orderInfoCache;
+QMutex Responce::orderInfoCacheAccess;
+
+Responce::OrderInfo::Ptr Responce::orderInfo(Responce::OrderId order_id)
+{
+    QMutexLocker lock(&orderInfoCacheAccess);
+    if (!orderInfoCache.contains(order_id))
+    {
+        QSqlQuery sql(db);
+        prepareSql(sql, "select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0, o.owner_id from orders o left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id");
+        QVariantMap params;
+        params[":order_id"] = order_id;
+        if (performSql("get info for order :order_id", sql, params) && sql.next())
+        {
+            OrderInfo::Ptr* info = new OrderInfo::Ptr(new OrderInfo);
+            (*info)->pair = sql.value(0).toString();
+            //info->pair_ptr = pairInfo(pair);
+            (*info)->type = (sql.value(1).toString() == "sell")?OrderInfo::Type::Sell : OrderInfo::Type::Buy;
+            (*info)->start_amount = Amount(sql.value(2).toString().toStdString());
+            (*info)->amount = Amount(sql.value(3).toString().toStdString());
+            (*info)->rate = Rate(sql.value(4).toString().toStdString());
+            (*info)->created = sql.value(5).toDateTime();
+            (*info)->status = static_cast<OrderInfo::Status>(sql.value(6).toInt());
+            (*info)->owner_id = sql.value(7).toUInt();
+            (*info)->owner_id = order_id;
+
+            orderInfoCache.insert(order_id, info);
+            return *info;
+        }
+        else
+            return nullptr;
+    }
+    return *orderInfoCache[order_id];
 }
 
 QVariantMap Responce::getDepthResponce(const QueryParser& httpQuery, Method& method)
@@ -797,7 +894,6 @@ QVariantMap Responce::getPrivateOrderInfoResponce(const QueryParser &httpQuery, 
     method = Method::PrivateOrderInfo;
     QVariantMap var;
 
-    QVariantMap params;
     QString order_id = httpQuery.order_id();
     if (order_id.isEmpty())
     {
@@ -805,32 +901,29 @@ QVariantMap Responce::getPrivateOrderInfoResponce(const QueryParser &httpQuery, 
         var["error"] = "invalid parameter: order_id";
         return var;
     }
-    params[":order_id"] = order_id;
-    QVariantMap result;
-    if (performSql("get order info", *selectOrderInfoQuery, params, true))
-    {
-        if(selectOrderInfoQuery->next())
-        {
-            QVariantMap order;
-            order["pair"] = selectOrderInfoQuery->value(0);
-            QString type = selectOrderInfoQuery->value(1).toString();
-            order["type"] = (type=="bids")?"buy":"sell";
-            order["start_amount"] = selectOrderInfoQuery->value(2);
-            order["amount"] = selectOrderInfoQuery->value(3);
-            order["rate"] = selectOrderInfoQuery->value(4);
-            order["timestamp_created"] = selectOrderInfoQuery->value(5).toDateTime().toTime_t();
-            order["status"] = selectOrderInfoQuery->value(6);
 
-            result[order_id] = order;
-            var["return"] = result;
-            var["success"] = 1;
-        }
-        else
-        {
-            var["success"] = 0;
-            var["error"] = "invalid order";
-            return var;
-        }
+    OrderInfo::Ptr info = orderInfo(order_id.toUInt());
+    QVariantMap result;
+    if (info)
+    {
+        QVariantMap order;
+        order["pair"] = info->pair;
+        order["type"] = (info->type == OrderInfo::Type::Buy)?"buy":"sell";
+        order["start_amount"] = info->start_amount.getAsDouble();
+        order["amount"] = info->start_amount.getAsDouble();
+        order["rate"] = info->rate.getAsDouble();
+        order["timestamp_created"] = info->created.toTime_t();
+        order["status"] = static_cast<int>(info->status);
+
+        result[order_id] = order;
+        var["return"] = result;
+        var["success"] = 1;
+    }
+    else
+    {
+        var["success"] = 0;
+        var["error"] = "invalid order";
+        return var;
     }
 
     return var;
@@ -847,12 +940,24 @@ QVariantMap Responce::getPrivateTradeResponce(const QueryParser& httpQuery, Meth
         try
         {
             startTransaction->exec();
-            OrderCreateResult ret = createTrade(httpQuery.key(), httpQuery.pair(), httpQuery.orderType(), httpQuery.rate(), httpQuery.amount());
+            OrderInfo::Type type;
+            if (httpQuery.orderType() == "buy")
+                type = OrderInfo::Type::Buy;
+            else if (httpQuery.orderType() == "sell")
+                type = OrderInfo::Type::Sell;
+            else
+            {
+                var["success"] = 0;
+                var["error"] = "You incorrectly entered one of fields.";
+                return var;
+            }
+            OrderCreateResult ret = createTrade(httpQuery.key(), httpQuery.pair(), type, httpQuery.rate(), httpQuery.amount());
             if (!ret.ok)
             {
                 rollbackTransaction->exec();
                 var["success"] = 0;
                 var["error"] = ret.errMsg;
+                done = true;
             }
             else
             {
@@ -893,7 +998,7 @@ QVariantMap Responce::getPrivateTradeResponce(const QueryParser& httpQuery, Meth
     return var;
 }
 
-QVariantMap Responce::getPrivateCalcelOrderResponce(const QueryParser& httpQuery, Method& method)
+QVariantMap Responce::getPrivateCancelOrderResponce(const QueryParser& httpQuery, Method& method)
 {
     method = Method::PrivateCanelOrder;
     QVariantMap var;
@@ -914,18 +1019,18 @@ QVariantMap Responce::getPrivateCalcelOrderResponce(const QueryParser& httpQuery
         try
         {
             startTransaction->exec();
-            performSql("get order info", *selectOrderInfoQuery, params, true);
-            if (selectOrderInfoQuery->next())
+            OrderInfo::Ptr info = orderInfo(order_id.toUInt());
+            if (info)
             {
                 // p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0
-                QString pair = selectOrderInfoQuery->value(0).toString();
-                QString type = selectOrderInfoQuery->value(1).toString();
-                Amount amount = Amount(selectOrderInfoQuery->value(3).toString().toStdString());
-                Rate rate = Amount(selectOrderInfoQuery->value(4).toString().toStdString());
-                uint status = selectOrderInfoQuery->value(6).toUInt();
-                quint32 owner_id = selectOrderInfoQuery->value(7).toUInt();
+                QString pair = info->pair;
+                OrderInfo::Type type = info->type;
+                Amount amount = info->amount;
+                Rate rate = info->rate;
+                OrderInfo::Status status = info->status;
+                quint32 owner_id = info->owner_id;
 
-                if (status > 1)
+                if (status != OrderInfo::Status::Active)
                 {
                     var["success"] = 0;
                     var["error"] = "not active order";

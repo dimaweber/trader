@@ -30,7 +30,7 @@ std::ostream& operator << (std::ostream& stream, const QString& str);
 
 class QSqlQuery;
 
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
+bool performSql(QString message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
 bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
 bool prepareSql(QSqlQuery& query, const QString& sql);
 

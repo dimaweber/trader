@@ -1015,7 +1015,7 @@ void BtceEmulator_Test::Trades_valid()
         QVariantMap trade = v.toMap();
         QVERIFY(trade.contains("type") && (trade["type"].toString() == "bid" || trade["type"].toString() == "ask"));
         QVERIFY(trade.contains("price") && trade["price"].toFloat() > 0 );
-        QVERIFY(trade.contains("amount") && trade["amount"].toFloat() > 0 );
+        QVERIFY(trade.contains("amount") && trade["amount"].toFloat() >= 0 );
         QVERIFY(trade.contains("tid") && trade["tid"].toUInt() > 0 );
         QVERIFY(trade.contains("timestamp") && trade["timestamp"].toUInt() > 0 );
     }
@@ -1395,7 +1395,7 @@ void BtceEmulator_Test::Trade_balanceValid()
 {
     QVariantMap balanceBefore = client->exchangeBalance();
 
-    for (int i=0; i<100; i++)
+    for (int i=0; i<4; i++)
     {
         QByteArray in;
         QMap<QString, QString> headers;
