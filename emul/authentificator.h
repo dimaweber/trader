@@ -3,7 +3,7 @@
 
 #include <QtCore/qglobal.h>
 #include <QCache>
-
+#include <QMutex>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 
@@ -21,7 +21,8 @@ class Authentificator
 {
     QSqlQuery selectKey;
     QSqlQuery updateNonceQuery;
-    QCache<QString, ApiKeyCacheItem> cache;
+    static QCache<QString, ApiKeyCacheItem> cache;
+    static QMutex accessMutex;
 
 public:
     Authentificator(QSqlDatabase& db);

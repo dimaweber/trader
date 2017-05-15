@@ -6,6 +6,9 @@
 #include <QSqlQuery>
 #include <QVariant>
 
+QCache<QString, ApiKeyCacheItem> Authentificator::cache;
+QMutex Authentificator::accessMutex;
+
 Authentificator::Authentificator(QSqlDatabase& db)
     :selectKey(db), updateNonceQuery(db)
 {
@@ -79,8 +82,11 @@ bool Authentificator::hasWithdraw(const QString& key)
 
 bool Authentificator::validateKey(const QString& key)
 {
+    QMutexLocker lock(&Authentificator::accessMutex);
+
     if (cache.contains(key))
         return true;
+
     QVariantMap params;
     params[":key"] = key;
     if (performSql("select key", selectKey, params, true))

@@ -18,7 +18,6 @@ Responce::Responce(QSqlDatabase& database)
     selectOrderInfoQuery.reset(new QSqlQuery(db));
     selectActiveOrdersQuery.reset(new QSqlQuery(db));
     selectPairsInfoQuery.reset( new QSqlQuery(db));
-    selectPairInfoQuery.reset( new QSqlQuery(db));
     selectBuyOrdersQuery.reset( new QSqlQuery(db));
     selectSellOrdersQuery.reset( new QSqlQuery(db));
     selectAllTradesInfo.reset(new QSqlQuery(db));
@@ -44,7 +43,6 @@ Responce::Responce(QSqlDatabase& database)
     bool ok =true
     &&  prepareSql(*selectTickerInfoQuery, "select high, low, avg, vol, vol_cur, last, buy, sell, updated from ticker t left join pairs p on p.pair_id = t.pair_id where p.pair=:name")
     &&  prepareSql(*selectPairsInfoQuery, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee from pairs")
-    &&  prepareSql(*selectPairInfoQuery, "select min_price, max_price, min_amount, fee, pair_id from pairs where pair=:pair")
     &&  prepareSql(*selectOrderInfoQuery, "select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0, o.owner_id from orders o left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id")
     &&  prepareSql(*selectActiveOrdersQuery, "select o.order_id, p.pair, o.type, o.amount, o.rate, o.created, 0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:key and o.status = 'active'")
     &&  prepareSql(*selectBuyOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='buy' and p.pair=:name group by rate order by  rate desc")
@@ -245,23 +243,18 @@ Responce::OrderCreateResult Responce::createTrade(const QString& key, const QStr
     orderCreateParams[":key"] = key;
     bool isSell = false;
 
-    orderCreateParams[":pair"] = pair;
-    if (!performSql("get pair info", *selectPairInfoQuery, orderCreateParams, true))
-    {
-        ret.errMsg = "internal database error";
-        return ret;
-    }
-    if (!selectPairInfoQuery->next())
+    PairInfo* info = pairInfo(pair);
+    if (!info)
     {
         ret.errMsg = "You incorrectly entered one of fields.";
         return ret;
     }
 
-    Rate min_price  = Rate(selectPairInfoQuery->value(0).toString().toStdString());
-    Rate max_price  = Rate(selectPairInfoQuery->value(1).toString().toStdString());
-    Rate min_amount = Rate(selectPairInfoQuery->value(2).toString().toStdString());
-    Fee fee         = Fee (selectPairInfoQuery->value(3).toString().toStdString()) / 100;
-    QVariant pair_id = selectPairInfoQuery->value(4);;
+    Rate min_price  = info->min_price;
+    Rate max_price  = info->max_price;
+    Rate min_amount = info->min_amount;
+    Fee fee         = info->fee;
+    PairId pair_id = info->pair_id;
 
     if (type == "buy")
         orderCreateParams[":currency"] = pair.right(3);
@@ -604,6 +597,38 @@ QVariantList Responce::appendDepthToMap(QSqlQuery& query, const QString& pairNam
         }
     }
     return ret;
+}
+
+QCache<QString, Responce::PairInfo> Responce::pairInfoCache;
+Responce::PairInfo* Responce::pairInfo(const QString &pair)
+{
+    QSqlQuery sql(db);
+    if (!pairInfoCache.contains(pair))
+    {
+        prepareSql(sql, "select min_price, max_price, min_amount, fee, pair_id, decimal_places from pairs where pair=:pair");
+        QVariantMap params;
+        params[":pair"] = pair;
+        if (!performSql("get pair info", sql, params, true))
+        {
+            std::cerr << "internal database error: cannot get pair info" << std::endl;
+            throw std::runtime_error("internal database error: cannot get pair info");
+            return nullptr;
+        }
+
+        sql.bindValue(":pair", pair);
+        sql.exec();
+        std::unique_ptr<PairInfo> info = std::make_unique<PairInfo>();
+        info->min_price = Rate(sql.value(0).toString().toStdString());
+        info->max_price = Rate(sql.value(1).toString().toStdString());
+        info->min_amount = Rate(sql.value(2).toString().toStdString());
+        info->fee = Fee(sql.value(3).toString().toStdString());
+        info->pair_id = sql.value(4).toUInt();
+        info->decimal_places = sql.value(5).toInt();
+
+        pairInfoCache.insert(pair, info.release());
+    }
+    return pairInfoCache[pair];
+
 }
 
 QVariantMap Responce::getDepthResponce(const QueryParser& httpQuery, Method& method)

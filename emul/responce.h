@@ -2,6 +2,7 @@
 #define RESPONCE_H
 
 #include "decimal.h"
+#include <QCache>
 #include <QVariantMap>
 
 class Authentificator;
@@ -17,6 +18,11 @@ public:
     using Amount = cppdecimal::decimal<7>;
     using Fee    = cppdecimal::decimal<7>;
     using Rate   = cppdecimal::decimal<7>;
+    using PairId = quint32;
+    using OwnerId = quint32;
+    using TradeId = quint32;
+    using OrderId = quint32;
+
     enum Method {Invalid, AuthIssue, AccessIssue,
                  PublicInfo, PublicTicker, PublicDepth, PublicTrades,
                  PrivateGetInfo, PrivateTrade, PrivateActiveOrders, PrivateOrderInfo,
@@ -90,7 +96,6 @@ private:
     std::unique_ptr<QSqlQuery> selectOrderInfoQuery;
     std::unique_ptr<QSqlQuery> selectActiveOrdersQuery;
     std::unique_ptr<QSqlQuery> selectPairsInfoQuery;
-    std::unique_ptr<QSqlQuery> selectPairInfoQuery;
     std::unique_ptr<QSqlQuery> selectBuyOrdersQuery;
     std::unique_ptr<QSqlQuery> selectSellOrdersQuery;
     std::unique_ptr<QSqlQuery> selectAllTradesInfo;
@@ -112,6 +117,18 @@ private:
     std::unique_ptr<QSqlQuery> commitTransaction;
     std::unique_ptr<QSqlQuery> rollbackTransaction;
     std::unique_ptr<QSqlQuery> totalBalance;
+
+
+    struct PairInfo {
+        Rate min_price;
+        Rate max_price;
+        Rate min_amount;
+        Fee fee;
+        PairId pair_id;
+        int decimal_places;
+    };
+    static QCache<QString, PairInfo> pairInfoCache;
+    PairInfo* pairInfo(const QString& pair);
 };
 
 #endif // RESPONCE_H
