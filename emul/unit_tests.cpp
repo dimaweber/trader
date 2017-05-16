@@ -902,6 +902,25 @@ void BtceEmulator_Test::Depth_valid()
     QVERIFY(btc_usd.contains("asks"));
     QVERIFY(btc_usd.contains("bids"));
 }
+void BtceEmulator_Test::Depth_twoPairs()
+{
+    // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_eur
+    // Out:  VALID json
+    Responce::Method method;
+    QByteArray in;
+    QMap<QString, QString> headers;
+    QUrl url;
+    url = "http://localhost/api/3/depth/btc_usd-btc_eur";
+
+    FcgiRequest request(url , headers, in);
+    QueryParser parser(request);
+
+    QVariantMap responce = client->getResponce(parser, method);
+
+    QVERIFY(responce.size() == 2);
+    QVERIFY(responce.contains("btc_usd"));
+    QVERIFY(responce.contains("btc_eur"));
+}
 
 void BtceEmulator_Test::Depth_sortedByRate()
 {
@@ -1300,24 +1319,14 @@ void BtceEmulator_Test::Trade_buy()
     QMap<QString, QString> headers;
     QUrl url;
     url = "http://loclahost:81/tapi";
-    bool isSell = false;
     double amount = 0.2;
     double rate;
     double balance;
     QString currency;
-    if (isSell)
-    {
-        rate = 0.1;
-        balance = amount;
-        currency = "btc";
-    }
-    else
-    {
-        rate = 1850;
-        balance = rate * amount;
-        currency = "usd";
-    }
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+    rate = 1850;
+    balance = rate * amount;
+    currency = "usd";
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(amount).arg(rate).toUtf8();
     QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);

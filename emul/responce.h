@@ -29,6 +29,7 @@ public:
     using TradeId = quint32;
     using OrderId = quint32;
     using PairName = QString;
+    using ApiKey = QString;
 
     enum Method {Invalid, AuthIssue, AccessIssue,
                  PublicInfo, PublicTicker, PublicDepth, PublicTrades,
@@ -41,7 +42,8 @@ public:
     struct PairInfo
     {
         using Ptr = std::shared_ptr<PairInfo>;
-        using List = QList<PairInfo::Ptr>;
+        using WPtr = std::weak_ptr<PairInfo>;
+        using List = QList<PairInfo::Ptr>; // WPtr ?
 
         Rate min_price;
         Rate max_price;
@@ -54,7 +56,8 @@ public:
     };
     struct TickerInfo
     {
-        // TODO: std::weak_ptr<PairInfo> pair;
+        using Ptr = std::shared_ptr<TickerInfo>;
+
         Rate high;
         Rate low;
         Rate avg;
@@ -64,14 +67,18 @@ public:
         Rate buy;
         Rate sell;
         QDateTime updated;
-        typedef std::shared_ptr<TickerInfo> Ptr;
+        PairName pairName;
+
+        PairInfo::WPtr pair_ptr;
+        PairInfo::Ptr pair();
     };
     struct OrderInfo
     {
         enum class Type {Sell, Buy};
         enum class Status {Active=1, Done, Cancelled, PartiallyDone};
         using Ptr = std::shared_ptr<OrderInfo>;
-        using List = QList<OrderInfo::Ptr>;
+        using WPtr = std::shared_ptr<OrderInfo>;
+        using List = QList<OrderInfo::Ptr>; // WPtr ?
 
         PairName pair;
         std::weak_ptr<PairInfo> pair_ptr;
@@ -83,6 +90,54 @@ public:
         Status status;
         OwnerId owner_id;
         OrderId order_id;
+    };
+    struct TradeInfo
+    {
+        enum class Type {Ask, Bid};
+        using Ptr = std::shared_ptr<TradeInfo>;
+        using List  = QList<TradeInfo::Ptr>; // Wptr ?
+
+        TradeInfo::Type type;
+        Rate rate;
+        Amount amount;
+        TradeId tid;
+        QDateTime created;
+        OrderId order_id;
+        OwnerId owner_id;
+        OrderInfo::WPtr order_ptr;
+    };
+
+    using DepthItem = QPair<Responce::Rate, Responce::Amount>;
+    using Depth = QList<DepthItem>;
+    using BuySellDepth = QPair<Depth, Depth>;
+    using Funds = QMap<QString, Amount>;
+    using FundsPtr = std::shared_ptr<Funds>;
+    using FundsWPtr = std::weak_ptr<Funds>;
+
+    struct OwnerInfo
+    {
+        using Ptr = std::shared_ptr<OwnerInfo>;
+        using WPtr = std::weak_ptr<OwnerInfo>;
+
+        OwnerId owner_id;
+        QString name;
+        FundsWPtr funds_ptr;
+
+        FundsPtr funds ();
+    };
+
+    struct ApikeyInfo
+    {
+        using Ptr = std::shared_ptr<ApikeyInfo>;
+
+        ApiKey apikey;
+        bool info;
+        bool trade;
+        bool withdraw;
+        OwnerId owner_id;
+        OwnerInfo::WPtr owner_ptr;
+
+        OwnerInfo::Ptr owner();
     };
 
     Responce(QSqlDatabase& database);
@@ -142,12 +197,8 @@ private:
                                      Amount trade_amount, Rate matched_order_rate);
     quint32 doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams);
     OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const QString& rate, const QString& amount);
-    QVariantList appendDepthToMap(QSqlQuery& query, const QString& pairName, int limit);
 
     std::unique_ptr<Authentificator>  auth;
-    std::unique_ptr<QSqlQuery>  selectSellOrdersQuery;
-    std::unique_ptr<QSqlQuery>  selectAllTradesInfo;
-    std::unique_ptr<QSqlQuery>  selectFundsInfoQuery;
     std::unique_ptr<QSqlQuery>  selectFundsInfoQueryByOwnerId;
     std::unique_ptr<QSqlQuery>  selectRightsInfoQuery;
     std::unique_ptr<QSqlQuery>  selectActiveOrdersCountQuery;
@@ -167,21 +218,33 @@ private:
     std::unique_ptr<QSqlQuery>  totalBalance;
 
     static QMap<Responce::PairName, Responce::PairInfo::Ptr> pairInfoCache;
-    static QMutex pairInfoCacheAccess;
-    static QReadWriteLock pairInfoCacheAccessRW;
+    static QReadWriteLock pairInfoCacheRWAccess;
     static QMap<Responce::PairName, TickerInfo::Ptr> tickerInfoCache;
-    static QMutex tickerInfoCacheAccess;
+    static QReadWriteLock tickerInfoCacheRWAccess;
     static QCache<Responce::OrderId, Responce::OrderInfo::Ptr> orderInfoCache;
-    static QMutex orderInfoCacheAccess;
+    static QReadWriteLock orderInfoCacheRWAccess;
+    static QCache<Responce::TradeId, Responce::TradeInfo::Ptr> tradeInfoCache;
+    static QReadWriteLock tradeInfoCacheRWAccess;
+    static QCache<ApiKey, ApikeyInfo::Ptr> apikeyInfoCache;
+    static QReadWriteLock apikeyInfoCacheRWAccess;
+    static QCache<OwnerId, OwnerInfo::Ptr> ownerInfoCache;
+    static QReadWriteLock ownerInfoCacheRWAccess;
+    static QCache<OwnerId, FundsPtr> fundsCache;
+    static QReadWriteLock fundsCacheRWAccess;
 
-    PairInfo::List allPairsInfoList();
+    PairInfo::List   allPairsInfoList();
     PairInfo::Ptr    pairInfo(const QString& pair);
     TickerInfo::Ptr  tickerInfo(const QString& pair);
     OrderInfo::Ptr   orderInfo(OrderId order_id);
-    OrderInfo::List activeOrdersInfoList(const QString& apikey);
-    QMap<Responce::PairName, QList<QPair<Responce::Rate, Responce::Amount>>> allBuyOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
+    OrderInfo::List  activeOrdersInfoList(const QString& apikey);
+    TradeInfo::List  allTradesInfo(const PairName& pair);
+    QMap<Responce::PairName, Responce::BuySellDepth> allActiveOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
+    ApikeyInfo::Ptr  apikeyInfo(const ApiKey& apikey);
+    OwnerInfo::Ptr   ownerInfo(OwnerId owner_id);
+    FundsPtr         funds(OwnerId owner_id);
 
     NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
+    QVariantList appendDepthToMap(const Depth& depth, int limit);
 };
 
 #endif // RESPONCE_H

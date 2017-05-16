@@ -73,6 +73,7 @@ private slots:
 
     void Depth_emptyList();
     void Depth_valid();
+    void Depth_twoPairs();
     void Depth_sortedByRate();
     void Depth_ratesDecimalDigits();
     void Depth_limit();
