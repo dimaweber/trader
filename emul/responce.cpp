@@ -16,8 +16,6 @@ Responce::Responce(QSqlDatabase& database)
 {
     auth.reset(new Authentificator(db));
 
-    selectActiveOrdersQuery.reset(new QSqlQuery(db));
-    selectBuyOrdersQuery.reset( new QSqlQuery(db));
     selectSellOrdersQuery.reset( new QSqlQuery(db));
     selectAllTradesInfo.reset(new QSqlQuery(db));
     selectFundsInfoQuery.reset(new QSqlQuery(db));
@@ -40,8 +38,7 @@ Responce::Responce(QSqlDatabase& database)
     totalBalance.reset(new QSqlQuery(db));
 
     bool ok =true
-    &&  prepareSql(*selectActiveOrdersQuery, "select o.order_id, p.pair, o.type, o.amount, o.rate, o.created, 0 from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:key and o.status = 'active'")
-    &&  prepareSql(*selectBuyOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='buy' and p.pair=:name group by rate order by  rate desc")
+
     &&  prepareSql(*selectSellOrdersQuery, "select rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type='sell' and p.pair=:name group by rate order by  rate asc")
     &&  prepareSql(*selectAllTradesInfo, "select o.type, o.rate, t.amount, t.trade_id, t.created from trades t left join orders o on o.order_id=t.order_id left join pairs p on o.pair_id=p.pair_id where p.pair=:name  order by t.trade_id desc")
     &&  prepareSql(*selectFundsInfoQuery, "select c.currency, d.volume from deposits d left join currencies c on c.currency_id=d.currency_id left join apikeys a on a.owner_Id=d.owner_id where apikey=:key")
@@ -496,7 +493,7 @@ QVariantMap Responce::getInfoResponce(Method &method)
     QVariantMap pairs;
 
     var["server_time"] = QDateTime::currentDateTime().toTime_t();
-    QVector<PairInfo::Ptr> allPairs = allPairsInfo();
+    PairInfo::List allPairs = allPairsInfoList();
     for (PairInfo::Ptr info: allPairs)
     {
         QVariantMap pair;
@@ -587,15 +584,17 @@ QVariantList Responce::appendDepthToMap(QSqlQuery& query, const QString& pairNam
 
 QMap<QString, Responce::PairInfo::Ptr> Responce::pairInfoCache;
 QMutex Responce::pairInfoCacheAccess;
+QReadWriteLock Responce::pairInfoCacheAccessRW;
 
-QVector<Responce::PairInfo::Ptr> Responce::allPairsInfo()
+Responce::PairInfo::List Responce::allPairsInfoList()
 {
+    // This function never use cache and always read from DB, invalidating cache
     QSqlQuery sql(db);
-    QVector<PairInfo::Ptr> ret;
+    PairInfo::List ret;
     prepareSql(sql, "select pair, decimal_places, min_price, max_price, min_amount, hidden, fee, pair_id from pairs");
     if (performSql("retrieve all pairs info", sql, QVariantMap()))
     {
-        QMutexLocker lock(&pairInfoCacheAccess);
+        QWriteLocker wlock(&Responce::pairInfoCacheAccessRW);
         pairInfoCache.clear();
         while(sql.next())
         {
@@ -618,8 +617,9 @@ QVector<Responce::PairInfo::Ptr> Responce::allPairsInfo()
 
 Responce::PairInfo::Ptr Responce::pairInfo(const QString &pair)
 {
-    // pairs are not updated after insert into map, so we can check/get existing value withput locking.
+    // pairs are not updated after insert into map, so we can check/get existing value without locking.
     // Hopefully.
+    QWriteLocker rlock(&Responce::pairInfoCacheAccessRW);
     if (!pairInfoCache.contains(pair))
     {
         QMutexLocker lock(&pairInfoCacheAccess);
@@ -717,7 +717,7 @@ Responce::OrderInfo::Ptr Responce::orderInfo(Responce::OrderId order_id)
             (*info)->created = sql.value(5).toDateTime();
             (*info)->status = static_cast<OrderInfo::Status>(sql.value(6).toInt());
             (*info)->owner_id = sql.value(7).toUInt();
-            (*info)->owner_id = order_id;
+            (*info)->order_id = order_id;
 
             orderInfoCache.insert(order_id, info);
             return *info;
@@ -726,6 +726,60 @@ Responce::OrderInfo::Ptr Responce::orderInfo(Responce::OrderId order_id)
             return nullptr;
     }
     return *orderInfoCache[order_id];
+}
+
+Responce::OrderInfo::List Responce::activeOrdersInfoList(const QString& apikey)
+{
+    QSqlQuery sql(db);
+    OrderInfo::List list;
+    prepareSql(sql, "select o.order_id, p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status, o.owner_id from orders o left join apikeys a  on o.owner_id=a.owner_id left join pairs p on p.pair_id = o.pair_id where a.apikey=:apikey and o.status = 'active'");
+    QVariantMap params;
+    params[":apikey"] = apikey;
+    if (performSql("get active orders for key ':apikey'", sql, params))
+        while(sql.next())
+        {
+            Responce::OrderId order_id = sql.value(0).toUInt();
+            OrderInfo::Ptr* pinfo = orderInfoCache.object(order_id);
+            if (!pinfo)
+            {
+                pinfo = new OrderInfo::Ptr(new OrderInfo);
+                (*pinfo)->pair = sql.value(1).toString();
+                //info->pair_ptr = pairInfo(pair);
+                (*pinfo)->type = (sql.value(2).toString() == "sell")?OrderInfo::Type::Sell : OrderInfo::Type::Buy;
+                (*pinfo)->start_amount = Amount(sql.value(3).toString().toStdString());
+                (*pinfo)->amount = Amount(sql.value(4).toString().toStdString());
+                (*pinfo)->rate = Rate(sql.value(5).toString().toStdString());
+                (*pinfo)->created = sql.value(6).toDateTime();
+                (*pinfo)->status = OrderInfo::Status::Active;
+                (*pinfo)->owner_id = sql.value(7).toUInt();
+                (*pinfo)->order_id = order_id;
+
+                orderInfoCache.insert(order_id, pinfo);
+            }
+            list.append(*pinfo);
+        }
+    return list;
+}
+
+QMap<Responce::PairName, QList<QPair<Responce::Rate, Responce::Amount>>> Responce::allBuyOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs)
+{
+    QSqlQuery sql(db);
+    QMap<PairName, QList<QPair<Rate, Amount>>> map;
+    prepareSql(sql, "select pair, rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type = 'buy' and p.pair in (:pairs) group by pair, rate order by  pair, rate desc");
+    QVariantMap params;
+    params[":pairs"] = pairs;
+    if (performSql("get active buy orders for pairs ':pairs'", sql, params))
+    {
+        while(sql.next())
+        {
+            QString pair = sql.value(0).toString();
+            Rate rate = Rate(sql.value(2).toString().toStdString());
+            Amount sumAmount = Amount(sql.value(3).toString().toStdString());
+
+            map[pair].append(qMakePair(rate, sumAmount));
+        }
+    }
+    return map;
 }
 
 QVariantMap Responce::getDepthResponce(const QueryParser& httpQuery, Method& method)
@@ -863,28 +917,23 @@ QVariantMap Responce::getPrivateActiveOrdersResponce(const QueryParser &httpQuer
     method = Method::PrivateActiveOrders;
     QVariantMap var;
 
-    QVariantMap params;
-    params[":key"] = httpQuery.key();
+    QVector<Responce::OrderInfo::Ptr> list = activeOrdersInfoList(httpQuery.key());
     QVariantMap result;
-    if (performSql("get active orders", *selectActiveOrdersQuery, params, true))
+    for(Responce::OrderInfo::Ptr& info: list)
     {
-        while(selectActiveOrdersQuery->next())
-        {
-            QString order_id = selectActiveOrdersQuery->value(0).toString();
-            QVariantMap order;
-            order["pair"] = selectActiveOrdersQuery->value(1);
-            QString type = selectActiveOrdersQuery->value(2).toString();
-            order["type"] = (type=="bids")?"buy":"sell";
-            order["amount"] = selectActiveOrdersQuery->value(3);
-            order["rate"] = selectActiveOrdersQuery->value(4);
-            order["timestamp_created"] = selectActiveOrdersQuery->value(5).toDateTime().toTime_t();
-            order["status"] = selectActiveOrdersQuery->value(6);
+        Responce::OrderId order_id = info->order_id;
+        QVariantMap order;
+        order["pair"]   = info->pair;
+        order["type"]   = (info->type == Responce::OrderInfo::Type::Sell)?"sell":"buy";
+        order["amount"] = info->amount.getAsDouble();
+        order["rate"]   = info->rate.getAsDouble();
+        order["timestamp_created"] = info->created.toTime_t();
+        order["status"] = static_cast<int>(info->status) - 1;
 
-            result[order_id] = order;
-        }
-        var["return"] = result;
-        var["success"] = 1;
+        result[QString::number(order_id)] = order;
     }
+    var["return"] = result;
+    var["success"] = 1;
 
     return var;
 }

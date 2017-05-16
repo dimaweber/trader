@@ -5,8 +5,9 @@
 #include <QDateTime>
 #include <QMap>
 #include <QMutex>
+#include <QReadWriteLock>
 #include <QVariantMap>
-#include <QVector>
+#include <QList>
 
 #include <memory>
 
@@ -39,6 +40,9 @@ public:
 
     struct PairInfo
     {
+        using Ptr = std::shared_ptr<PairInfo>;
+        using List = QList<PairInfo::Ptr>;
+
         Rate min_price;
         Rate max_price;
         Rate min_amount;
@@ -47,8 +51,6 @@ public:
         int decimal_places;
         bool hidden;
         PairName pair;
-
-        typedef std::shared_ptr<PairInfo> Ptr;
     };
     struct TickerInfo
     {
@@ -69,6 +71,8 @@ public:
         enum class Type {Sell, Buy};
         enum class Status {Active=1, Done, Cancelled, PartiallyDone};
         using Ptr = std::shared_ptr<OrderInfo>;
+        using List = QList<OrderInfo::Ptr>;
+
         PairName pair;
         std::weak_ptr<PairInfo> pair_ptr;
         Type type;
@@ -140,48 +144,42 @@ private:
     OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const QString& rate, const QString& amount);
     QVariantList appendDepthToMap(QSqlQuery& query, const QString& pairName, int limit);
 
-    std::unique_ptr<Authentificator> auth;
-    std::unique_ptr<QSqlQuery> selectActiveOrdersQuery;
-    std::unique_ptr<QSqlQuery> selectBuyOrdersQuery;
-    std::unique_ptr<QSqlQuery> selectSellOrdersQuery;
-    std::unique_ptr<QSqlQuery> selectAllTradesInfo;
-    std::unique_ptr<QSqlQuery> selectFundsInfoQuery;
-    std::unique_ptr<QSqlQuery> selectFundsInfoQueryByOwnerId;
-    std::unique_ptr<QSqlQuery> selectRightsInfoQuery;
-    std::unique_ptr<QSqlQuery> selectActiveOrdersCountQuery;
-    std::unique_ptr<QSqlQuery> selectCurrencyVolumeQuery;
-    std::unique_ptr<QSqlQuery> selectOrdersForSellTrade;
-    std::unique_ptr<QSqlQuery> selectOrdersForBuyTrade;
-    std::unique_ptr<QSqlQuery> selectOwnerForKeyQuery;
-    std::unique_ptr<QSqlQuery> updateDepositQuery;
-    std::unique_ptr<QSqlQuery> updateOrderAmount;
-    std::unique_ptr<QSqlQuery> updateOrderDone;
-    std::unique_ptr<QSqlQuery> createTradeQuery;
-    std::unique_ptr<QSqlQuery> createOrderQuery;
-    std::unique_ptr<QSqlQuery> cancelOrderQuery;
-    std::unique_ptr<QSqlQuery> startTransaction;
-    std::unique_ptr<QSqlQuery> commitTransaction;
-    std::unique_ptr<QSqlQuery> rollbackTransaction;
-    std::unique_ptr<QSqlQuery> totalBalance;
-
+    std::unique_ptr<Authentificator>  auth;
+    std::unique_ptr<QSqlQuery>  selectSellOrdersQuery;
+    std::unique_ptr<QSqlQuery>  selectAllTradesInfo;
+    std::unique_ptr<QSqlQuery>  selectFundsInfoQuery;
+    std::unique_ptr<QSqlQuery>  selectFundsInfoQueryByOwnerId;
+    std::unique_ptr<QSqlQuery>  selectRightsInfoQuery;
+    std::unique_ptr<QSqlQuery>  selectActiveOrdersCountQuery;
+    std::unique_ptr<QSqlQuery>  selectCurrencyVolumeQuery;
+    std::unique_ptr<QSqlQuery>  selectOrdersForSellTrade;
+    std::unique_ptr<QSqlQuery>  selectOrdersForBuyTrade;
+    std::unique_ptr<QSqlQuery>  selectOwnerForKeyQuery;
+    std::unique_ptr<QSqlQuery>  updateDepositQuery;
+    std::unique_ptr<QSqlQuery>  updateOrderAmount;
+    std::unique_ptr<QSqlQuery>  updateOrderDone;
+    std::unique_ptr<QSqlQuery>  createTradeQuery;
+    std::unique_ptr<QSqlQuery>  createOrderQuery;
+    std::unique_ptr<QSqlQuery>  cancelOrderQuery;
+    std::unique_ptr<QSqlQuery>  startTransaction;
+    std::unique_ptr<QSqlQuery>  commitTransaction;
+    std::unique_ptr<QSqlQuery>  rollbackTransaction;
+    std::unique_ptr<QSqlQuery>  totalBalance;
 
     static QMap<Responce::PairName, Responce::PairInfo::Ptr> pairInfoCache;
     static QMutex pairInfoCacheAccess;
-
-    QVector<PairInfo::Ptr> allPairsInfo();
-    PairInfo::Ptr pairInfo(const QString& pair);
-
-
+    static QReadWriteLock pairInfoCacheAccessRW;
     static QMap<Responce::PairName, TickerInfo::Ptr> tickerInfoCache;
     static QMutex tickerInfoCacheAccess;
-
-    TickerInfo::Ptr tickerInfo(const QString& pair);
-
-
-
     static QCache<Responce::OrderId, Responce::OrderInfo::Ptr> orderInfoCache;
     static QMutex orderInfoCacheAccess;
-    OrderInfo::Ptr orderInfo(OrderId order_id);
+
+    PairInfo::List allPairsInfoList();
+    PairInfo::Ptr    pairInfo(const QString& pair);
+    TickerInfo::Ptr  tickerInfo(const QString& pair);
+    OrderInfo::Ptr   orderInfo(OrderId order_id);
+    OrderInfo::List activeOrdersInfoList(const QString& apikey);
+    QMap<Responce::PairName, QList<QPair<Responce::Rate, Responce::Amount>>> allBuyOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
 
     NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
 };
