@@ -582,8 +582,7 @@ QVariantList Responce::appendDepthToMap(QSqlQuery& query, const QString& pairNam
     return ret;
 }
 
-QMap<QString, Responce::PairInfo::Ptr> Responce::pairInfoCache;
-QMutex Responce::pairInfoCacheAccess;
+QMap<Responce::PairName, Responce::PairInfo::Ptr> Responce::pairInfoCache;
 QReadWriteLock Responce::pairInfoCacheAccessRW;
 
 Responce::PairInfo::List Responce::allPairsInfoList()
@@ -617,41 +616,44 @@ Responce::PairInfo::List Responce::allPairsInfoList()
 
 Responce::PairInfo::Ptr Responce::pairInfo(const QString &pair)
 {
-    // pairs are not updated after insert into map, so we can check/get existing value without locking.
-    // Hopefully.
-    QWriteLocker rlock(&Responce::pairInfoCacheAccessRW);
-    if (!pairInfoCache.contains(pair))
+    PairInfo::Ptr p = nullptr;
     {
-        QMutexLocker lock(&pairInfoCacheAccess);
-        if (!pairInfoCache.contains(pair))
+        QReadLocker rlock(&Responce::pairInfoCacheAccessRW);
+        p = pairInfoCache.object(pair);
+        if (p)
+            return p;
+    }
+    {
+        QWriteLocker wlock(&Responce::pairInfoCacheAccessRW);
+        p = pairInfoCache.object(pair);
+        if (p)
+            return p;
+        
+        QSqlQuery sql(db);
+        prepareSql(sql, "select min_price, max_price, min_amount, fee, pair_id, decimal_places from pairs where pair=:pair");
+        QVariantMap params;
+        params[":pair"] = pair;
+        if (performSql("get pair :pair info", sql, params, true) && sql.next())
         {
-            QSqlQuery sql(db);
-            prepareSql(sql, "select min_price, max_price, min_amount, fee, pair_id, decimal_places from pairs where pair=:pair");
-            QVariantMap params;
-            params[":pair"] = pair;
-            if (performSql("get pair :pair info", sql, params, true) && sql.next())
-            {
-                PairInfo::Ptr info (new PairInfo());
-                info->min_price = Rate(sql.value(0).toString().toStdString());
-                info->max_price = Rate(sql.value(1).toString().toStdString());
-                info->min_amount = Rate(sql.value(2).toString().toStdString());
-                info->fee = Fee(sql.value(3).toString().toStdString());
-                info->pair_id = sql.value(4).toUInt();
-                info->decimal_places = sql.value(5).toInt();
+            PairInfo::Ptr info (new PairInfo());
+            info->min_price = Rate(sql.value(0).toString().toStdString());
+            info->max_price = Rate(sql.value(1).toString().toStdString());
+            info->min_amount = Rate(sql.value(2).toString().toStdString());
+            info->fee = Fee(sql.value(3).toString().toStdString());
+            info->pair_id = sql.value(4).toUInt();
+            info->decimal_places = sql.value(5).toInt();
 
-                pairInfoCache.insert(pair, info);
-                return info;
-            }
-            else
-            {
-                std::cerr << "cannot get pair '" << pair << "' info " << std::endl;
-                //throw std::runtime_error("internal database error: cannot get pair info");
-                return nullptr;
-            }
+            pairInfoCache.insert(pair, info);
+            return info;
+        }
+        else
+        {
+            std::cerr << "cannot get pair '" << pair << "' info " << std::endl;
+            //throw std::runtime_error("internal database error: cannot get pair info");
+            return nullptr;
         }
     }
-    return pairInfoCache[pair];
-
+    return p;
 }
 
 QMap<Responce::PairName, Responce::TickerInfo::Ptr> Responce::tickerInfoCache;
@@ -694,13 +696,24 @@ Responce::TickerInfo::Ptr Responce::tickerInfo(const QString& pair)
 }
 
 QCache<Responce::OrderId, Responce::OrderInfo::Ptr> Responce::orderInfoCache;
-QMutex Responce::orderInfoCacheAccess;
+QReadWriteLock Responce::orderInfoCacheRWAccess;
 
 Responce::OrderInfo::Ptr Responce::orderInfo(Responce::OrderId order_id)
 {
-    QMutexLocker lock(&orderInfoCacheAccess);
-    if (!orderInfoCache.contains(order_id))
+    OrderInfo::Ptr* p = nullptr;
     {
+        QReadLocker rlock(&orderInfoCacheRWAccess);
+        info = Responce::orderInfoCache.object(order_id);
+        if (info)
+            return *info;
+    }
+    
+    {
+        QWriteLocker wlock(&orderInfoCacheRWAccess);
+        info = Responce::orderInfoCache.object(order_id);
+        if (info)
+            return *info;
+        
         QSqlQuery sql(db);
         prepareSql(sql, "select p.pair, o.type, o.start_amount, o.amount, o.rate, o.created, o.status+0, o.owner_id from orders o left join pairs p on p.pair_id = o.pair_id where o.order_id=:order_id");
         QVariantMap params;
@@ -761,11 +774,11 @@ Responce::OrderInfo::List Responce::activeOrdersInfoList(const QString& apikey)
     return list;
 }
 
-QMap<Responce::PairName, QList<QPair<Responce::Rate, Responce::Amount>>> Responce::allBuyOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs)
+QMap<Responce::PairName, QList<QList<QPair<Responce::Rate, Responce::Amount>>, QList<QPair<Responce::Rate, Responce::Amount>>>> Responce::allBuyOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs)
 {
     QSqlQuery sql(db);
     QMap<PairName, QList<QPair<Rate, Amount>>> map;
-    prepareSql(sql, "select pair, rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type = 'buy' and p.pair in (:pairs) group by pair, rate order by  pair, rate desc");
+    prepareSql(sql, "select pair, type, rate, sum(amount) from orders o left join pairs p on p.pair_id=o.pair_id where status = 'active' and type = 'buy' and p.pair in (:pairs) group by pair, type, rate order by  pair,  type, rate desc");
     QVariantMap params;
     params[":pairs"] = pairs;
     if (performSql("get active buy orders for pairs ':pairs'", sql, params))
@@ -773,10 +786,14 @@ QMap<Responce::PairName, QList<QPair<Responce::Rate, Responce::Amount>>> Responc
         while(sql.next())
         {
             QString pair = sql.value(0).toString();
+            OrderInfo::Type type = (type=="buy")?OrderInfo::Type::Buy:OrderInfo::Type::Sell;
             Rate rate = Rate(sql.value(2).toString().toStdString());
             Amount sumAmount = Amount(sql.value(3).toString().toStdString());
 
-            map[pair].append(qMakePair(rate, sumAmount));
+            if (type == OrderInfo::Type::Buy)
+                map[pair].first.append(qMakePair(rate, sumAmount));
+            else
+                map[pair].second.prepend(qMakePair(rate, sumAmount));
         }
     }
     return map;
