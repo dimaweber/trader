@@ -1272,7 +1272,7 @@ void BtceEmulator_Test::Trade_parameterAmountMinValueCheck()
     QUrl url;
     url = "http://loclahost:81/tapi";
     in = QString("method=Trade&nonce=%1&rate=100&amount=0.00001&type=buy&pair=btc_usd").arg(nonce()).toUtf8();
-    QByteArray key = sqlClient->randomKeyWithPermissions(false, true, false);
+    QByteArray key = sqlClient->randomKeyForTrade("usd", 0.2);
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);
 

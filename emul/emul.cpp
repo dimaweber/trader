@@ -300,7 +300,7 @@ void buildOrdersFromDepth(const BtcObjects::Depth::Position& position, const Btc
 
     for (int i=0; i < usersCount; i++)
     {
-        orderParams[":user_id"] = get_random_user_id(QVector<quint32>() << EXCHNAGE_user_ID);
+        orderParams[":user_id"] = get_random_user_id(QVector<quint32>() << EXCHNAGE_USER_ID);
         orderParams[":type"] = isAsks?"sell":"buy";
         orderParams[":rate"] = QString::number(rate, 'f', p.decimal_places);
         orderParams[":start_amount"] = usersPropotions[i];
@@ -415,7 +415,7 @@ void populateTablesFromBtce(QSqlDatabase& database)
                     {
                         currencyParams[":currency"] = cu;
                         performSql("insert currency", insertCurrencyQuery, currencyParams, true);
-                        currencyIdCache.append( insertCurrencyQuery.lastInsertId().toUInt());
+                        currencyIdCache.insert( insertCurrencyQuery.lastInsertId().toUInt());
                         currencies.append(cu);
                         std::clog << '[' << QDateTime::currentDateTime().toString(Qt::ISODate) << "] currency " << cu << " added " << std::endl;
                     }

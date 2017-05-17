@@ -12,7 +12,7 @@ QMutex Authentificator::accessMutex;
 Authentificator::Authentificator(QSqlDatabase& db)
     :selectKey(db), updateNonceQuery(db)
 {
-    selectKey.prepare("select owner_id, secret, info, trade, withdraw, nonce from apikeys where apikey=:key");
+    selectKey.prepare("select user_id, secret, info, trade, withdraw, nonce from apikeys where apikey=:key");
     updateNonceQuery.prepare("update apikeys set nonce=:nonce where apikey=:key");
 }
 
@@ -93,7 +93,7 @@ bool Authentificator::validateKey(const QString& key)
         if (selectKey.next())
         {
             std::unique_ptr<ApiKeyCacheItem> pItem = std::make_unique<ApiKeyCacheItem>();
-            pItem->owner_id = selectKey.value(0).toUInt();
+            pItem->user_id = selectKey.value(0).toUInt();
             pItem->secret = selectKey.value(1).toByteArray();
             pItem->info = selectKey.value(2).toBool();
             pItem->trade = selectKey.value(3).toBool();

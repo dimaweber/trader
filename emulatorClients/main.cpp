@@ -17,8 +17,6 @@
 
 #include <unistd.h>
 
-using OwnerId = quint32;
-
 void connectDatabase(QSqlDatabase& database, QSettings& settings)
 {
     settings.beginGroup("database");

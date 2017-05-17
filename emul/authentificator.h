@@ -9,7 +9,7 @@
 
 struct ApiKeyCacheItem
 {
-    quint32 owner_id;
+    quint32 user_id;
     QByteArray secret;
     bool info;
     bool trade;

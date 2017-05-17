@@ -132,8 +132,6 @@ public:
         bool withdraw;
         UserId user_id;
         UserInfo::WPtr user_ptr;
-
-        UserInfo::Ptr user();
     };
 
     Responce(QSqlDatabase& database);
@@ -188,21 +186,21 @@ private:
         bool     ok;
     };
 
-    bool tradeUpdateDeposit(const QVariant& user_id, const QString& currency, Amount diff, const QString& userName);
+    bool tradeUpdateDeposit(const UserId &user_id, const QString& currency, Amount diff, const QString& userName);
+    bool reduceOrderAmount(Responce::OrderId, Amount amount);
+    bool closeOrder(Responce::OrderId order_id);
+    bool createNewTradeRecord(Responce::UserId user_id, Responce::OrderId order_id, const Amount &amount);
+
     TradeCurrencyVolume trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                      Amount trade_amount, Rate matched_order_rate);
-    quint32 doExchange(QString userName, const QString& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant user_id, QVariant pair_id, QVariantMap orderCreateParams);
-    OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const QString& rate, const QString& amount);
+    quint32 doExchange(QString userName, const Rate& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, UserId user_id, QVariant pair_id);
+    OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const Rate& rate, const Amount& amount);
 
     std::unique_ptr<Authentificator>  auth;
     std::unique_ptr<QSqlQuery>  selectActiveOrdersCountQuery;
     std::unique_ptr<QSqlQuery>  selectOrdersForSellTrade;
     std::unique_ptr<QSqlQuery>  selectOrdersForBuyTrade;
-    std::unique_ptr<QSqlQuery>  selectUserForKeyQuery;
-    std::unique_ptr<QSqlQuery>  updateDepositQuery;
-    std::unique_ptr<QSqlQuery>  updateOrderAmount;
     std::unique_ptr<QSqlQuery>  updateOrderDone;
-    std::unique_ptr<QSqlQuery>  createTradeQuery;
     std::unique_ptr<QSqlQuery>  createOrderQuery;
     std::unique_ptr<QSqlQuery>  cancelOrderQuery;
     std::unique_ptr<QSqlQuery>  startTransaction;
@@ -230,7 +228,7 @@ private:
     OrderInfo::List  activeOrdersInfoList(const QString& apikey);
     TradeInfo::List  allTradesInfo(const PairName& pair);
     ApikeyInfo::Ptr  apikeyInfo(const ApiKey& apikey);
-    UserInfo::Ptr   userInfo(UserId user_id);
+    UserInfo::Ptr    userInfo(UserId user_id);
 
     QMap<Responce::PairName, Responce::BuySellDepth> allActiveOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
 

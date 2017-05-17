@@ -9,8 +9,8 @@ SqlClient::SqlClient(QSqlDatabase& db)
     getKeySecret.reset(new QSqlQuery(db));
 
     bool ok = true
-    &&  prepareSql(*getRandomKey, "select apikey from apikeys a left join owners o on o.owner_id = a.owner_id where o.user_type=1 and a.info=:info and a.trade=:trade and a.withdraw = :withdraw order by rand() limit 1")
-    &&  prepareSql(*getRandomKeyWithBalance, "select apikey from apikeys a left join deposits d  on d.owner_id = a.owner_id left join currencies c on d.currency_id = c.currency_id  left join owners o on o.owner_id = a.owner_id where o.user_type = 1 and a.trade=true  and c.currency=:currency and d.volume>:amount order by rand() limit 1")
+    &&  prepareSql(*getRandomKey, "select apikey from apikeys a left join users o on o.user_id = a.user_id where o.user_type=1 and a.info=:info and a.trade=:trade and a.withdraw = :withdraw order by rand() limit 1")
+    &&  prepareSql(*getRandomKeyWithBalance, "select apikey from apikeys a left join deposits d  on d.user_id = a.user_id left join currencies c on d.currency_id = c.currency_id  left join users o on o.user_id = a.user_id where o.user_type = 1 and a.trade=true  and c.currency=:currency and d.volume>:amount order by rand() limit 1")
     &&  prepareSql(*getKeySecret, "select secret from apikeys where apikey=:key")
     ;
 }
