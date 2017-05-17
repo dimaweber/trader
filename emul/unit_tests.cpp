@@ -1446,3 +1446,43 @@ void BtceEmulator_Test::Trade_balanceValid()
         QCOMPARE(balanceBefore, balanceAfter);
     }
 }
+
+void BtceEmulator_Test::Trade_tradeBenchmark()
+{
+    QVariantMap balanceBefore = client->exchangeBalance();
+
+    for (int i=0; i<4; i++)
+    {
+        QByteArray in;
+        QMap<QString, QString> headers;
+        QUrl url;
+        url = "http://loclahost:81/tapi";
+        bool isSell = qrand() % 2;
+        double amount = (qrand() % 1000) / 100.0 + 0.01;
+        double rate;
+        double balance;
+        QString currency;
+        rate = 1750 + (qrand() % 100) / 10.0 - 5;
+        if (isSell)
+        {
+            balance = amount;
+            currency = "btc";
+        }
+        else
+        {
+            balance = rate * amount;
+            currency = "usd";
+        }
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+        QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
+        if (key.isEmpty())
+            continue;
+        headers["KEY"] = key;
+        headers["SIGN"] = sqlClient->signWithKey(in, key);
+
+        FcgiRequest request(url , headers, in);
+        QueryParser parser(request);
+        Responce::Method method;
+        QBENCHMARK(client->getResponce(parser, method));
+    }
+}

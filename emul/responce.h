@@ -186,27 +186,24 @@ private:
         bool     ok;
     };
 
-    bool tradeUpdateDeposit(const UserId &user_id, const QString& currency, Amount diff, const QString& userName);
-    bool reduceOrderAmount(Responce::OrderId, Amount amount);
-    bool closeOrder(Responce::OrderId order_id);
-    bool createNewTradeRecord(Responce::UserId user_id, Responce::OrderId order_id, const Amount &amount);
-
+    NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
+    QVariantList appendDepthToMap(const Depth& depth, int limit);
     TradeCurrencyVolume trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                      Amount trade_amount, Rate matched_order_rate);
-    quint32 doExchange(QString userName, const Rate& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, UserId user_id, QVariant pair_id);
-    OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const Rate& rate, const Amount& amount);
+    quint32 doExchange(QString userName, const Rate& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const PairName &pair, QSqlQuery& query, Amount& amnt, Fee fee, UserId user_id);
+    OrderCreateResult checkParamsAndDoExchange(const ApiKey& key, const PairName& pair, OrderInfo::Type type, const Rate& rate, const Amount& amount);
 
     std::unique_ptr<Authentificator>  auth;
     std::unique_ptr<QSqlQuery>  selectActiveOrdersCountQuery;
     std::unique_ptr<QSqlQuery>  selectOrdersForSellTrade;
     std::unique_ptr<QSqlQuery>  selectOrdersForBuyTrade;
-    std::unique_ptr<QSqlQuery>  updateOrderDone;
-    std::unique_ptr<QSqlQuery>  createOrderQuery;
+
+
     std::unique_ptr<QSqlQuery>  cancelOrderQuery;
+
     std::unique_ptr<QSqlQuery>  startTransaction;
     std::unique_ptr<QSqlQuery>  commitTransaction;
     std::unique_ptr<QSqlQuery>  rollbackTransaction;
-    std::unique_ptr<QSqlQuery>  totalBalance;
 
     static QMap<Responce::PairName, Responce::PairInfo::Ptr> pairInfoCache;
     static QReadWriteLock pairInfoCacheRWAccess;
@@ -231,9 +228,11 @@ private:
     UserInfo::Ptr    userInfo(UserId user_id);
 
     QMap<Responce::PairName, Responce::BuySellDepth> allActiveOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
-
-    NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
-    QVariantList appendDepthToMap(const Depth& depth, int limit);
+    bool tradeUpdateDeposit(const UserId &user_id, const QString& currency, Amount diff, const QString& userName);
+    bool reduceOrderAmount(Responce::OrderId, Amount amount);
+    bool closeOrder(Responce::OrderId order_id);
+    bool createNewTradeRecord(Responce::UserId user_id, Responce::OrderId order_id, const Amount &amount);
+    OrderId createNewOrderRecord(const PairName& pair, const UserId& user_id, OrderInfo::Type type, Rate rate, Amount start_amount);
 };
 
 #endif // RESPONCE_H

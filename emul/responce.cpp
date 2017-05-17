@@ -32,28 +32,19 @@ Responce::Responce(QSqlDatabase& database)
     selectActiveOrdersCountQuery.reset(new QSqlQuery(db));
     selectOrdersForSellTrade.reset(new QSqlQuery(db));
     selectOrdersForBuyTrade.reset(new QSqlQuery(db));
-    updateOrderDone.reset(new QSqlQuery(db));
-    createOrderQuery.reset(new QSqlQuery(db));
+
     cancelOrderQuery.reset(new QSqlQuery(db));
+
     startTransaction.reset(new QSqlQuery("start transaction", db));
     commitTransaction.reset(new QSqlQuery("commit", db));
     rollbackTransaction.reset(new QSqlQuery("rollback", db));
-    totalBalance.reset(new QSqlQuery(db));
 
 
     prepareSql(*selectActiveOrdersCountQuery, "select count(*) from apikeys a left join orders o on o.user_id=a.user_id where a.apikey=:key and o.status = 'active'");
     prepareSql(*selectOrdersForSellTrade, "select order_id, amount, rate, o.user_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join users w on w.user_id=o.user_id where type='buy' and status='active' and pair=:pair and o.user_id<>:user_id and rate >= :rate order by rate desc, order_id asc");
     prepareSql(*selectOrdersForBuyTrade, "select order_id, amount, rate, o.user_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join users w on w.user_id=o.user_id where type='sell' and status='active' and pair=:pair and o.user_id<>:user_id and rate <= :rate order by rate asc, order_id asc");
 
-    prepareSql(*createOrderQuery, "insert into orders (pair_id, user_id, type, rate, start_amount, amount, created, status) values (:pair_id, :user_id, :type, :rate, :start_amount, :amount, :created, 'active')");
     prepareSql(*cancelOrderQuery, "update orders set status=case when start_amount=amount then 'cancelled' else 'part_done' end where order_id=:order_id");
-    prepareSql(*totalBalance, "SELECT cur, sum(vol) from ("
-                   "select c.currency as cur, sum(volume) as vol from deposits d left join currencies c on c.currency_id = d.currency_id group by d.currency_id  "
-                   " UNION "
-                   "select right(p.pair,3) as cur, sum(amount*rate) as vol  from orders o left join pairs p on p.pair_id = o.pair_id where status='active' and type='buy'  group by right(p.pair, 3) "
-                   " UNION "
-                   "select left(p.pair,3) as cur, sum(amount)      as vol  from orders o left join pairs p on p.pair_id = o.pair_id where status='active' and type='sell' group by  left(p.pair, 3)"
-                   ") A group by cur");
 }
 
 bool Responce::tradeUpdateDeposit(const Responce::UserId& user_id, const QString& currency, Amount diff, const QString& userName)
@@ -134,7 +125,7 @@ Responce::OrderInfo::Type Responce::oppositOrderType(OrderInfo::Type type)
     return OrderInfo::Type::Buy;
 }
 
-quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVolume volumes, Responce::OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, Responce::UserId user_id, QVariant pair_id)
+quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVolume volumes, Responce::OrderInfo::Type type, Rate rt, const PairName& pair, QSqlQuery& query, Amount& amnt, Fee fee, Responce::UserId user_id)
 {
     quint32 ret = 0;
     QVariantMap params;
@@ -195,19 +186,8 @@ quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVo
         if (!tradeUpdateDeposit(user_id, orderVolume.currency, -orderVolume.volume, userName))
             return (quint32)-1;
 
-        QVariantMap createOrderParams;
-        createOrderParams[":user_id"] = user_id;
-        createOrderParams[":pair_id"] = pair_id;
-        createOrderParams[":amount"] = amnt.getAsDouble();
-        createOrderParams[":start_amount"] = amnt.getAsDouble();
-        createOrderParams[":rate"] = rt.getAsDouble();
-        createOrderParams[":created"] = QDateTime::currentDateTime();
-        createOrderParams[":type"] = (type == OrderInfo::Type::Buy)?"buy":"sell";
-        if (!performSql("create order", *createOrderQuery, createOrderParams, true))
-            return (quint32)-1;
-//        std::clog << "new " << type << " order for " << amnt << " @ " << rate << " created" << std::endl;
 
-        ret = createOrderQuery->lastInsertId().toUInt();
+        ret = createNewOrderRecord(pair, user_id, type, rate, amnt);
     }
     return ret;
 }
@@ -258,7 +238,27 @@ bool Responce::createNewTradeRecord(Responce::UserId user_id, Responce::OrderId 
 
 }
 
-Responce::OrderCreateResult Responce::createTrade(const ApiKey& key, const PairName& pair, OrderInfo::Type type, const Rate& rate, const Amount& amount)
+Responce::OrderId Responce::createNewOrderRecord(const Responce::PairName &pair, const Responce::UserId &user_id, Responce::OrderInfo::Type type, Responce::Rate rate, Responce::Amount amount)
+{
+    QSqlQuery sql(db);
+    QVariantMap params;
+    params[":pair_id"]  = pairInfo(pair)->pair_id;
+    params[":user_id"]  = user_id;
+    params[":type"]     = (type == OrderInfo::Type::Buy)?"buy":"sell";
+    params[":rate"]     = rate.getAsDouble();
+    params[":start_amount"] = amount.getAsDouble();
+    params[":created"] = QDateTime::currentDateTime();
+    if (!prepareSql(sql, "insert into orders (pair_id, user_id, type, rate, start_amount, amount, created, status) values (:pair_id, :user_id, :type, :rate, :start_amount, :start_amount, :created, 'active')"))
+        return static_cast<OrderId>(-1);
+    if (!performSql("create new ':pair' order for user :user_id as :amount @ :rate", sql, params ))
+        return static_cast<OrderId>(-1);
+
+    std::clog << "new " << ((type == OrderInfo::Type::Buy)?"buy":"sell") << " order for " << amount << " @ " << rate << " created" << std::endl;
+
+    return sql.lastInsertId().toUInt();
+}
+
+Responce::OrderCreateResult Responce::checkParamsAndDoExchange(const ApiKey& key, const PairName& pair, OrderInfo::Type type, const Rate& rate, const Amount& amount)
 {
     OrderCreateResult ret;
     ret.recieved = 0;
@@ -277,13 +277,12 @@ Responce::OrderCreateResult Responce::createTrade(const ApiKey& key, const PairN
     Rate max_price  = info->max_price;
     Rate min_amount = info->min_amount;
     Fee fee         = info->fee;
-    PairId pair_id = info->pair_id;
 
     QString currency;
 
     if (type == OrderInfo::Type::Buy)
         currency = pair.right(3);
-    else/* if (type == OrderInfo::Type::Sell)*/
+    else
         currency = pair.left(3);
 
     ApikeyInfo::Ptr apikey = apikeyInfo(key);
@@ -331,21 +330,14 @@ Responce::OrderCreateResult Responce::createTrade(const ApiKey& key, const PairN
         return ret;
     }
 
-    ApikeyInfo::Ptr aInfo = apikeyInfo(key);
-    UserInfo::Ptr uInfo = aInfo->user_ptr.lock();
-    if (!uInfo)
-    {
-        uInfo = userInfo(aInfo->user_id);
-        aInfo->user_ptr = uInfo;
-    }
 
-    Responce::UserId user_id = uInfo->user_id;
-    QString userName = uInfo->name;
+    Responce::UserId user_id = user->user_id;
+    QString userName = user->name;
 
-//    std::clog << QString("user %1 wants to %2 %3 %4 for %5 %6 (rate %7)")
-//                 .arg(userName).arg(type).arg(amnt.getAsDouble()).arg(pair.left(3).toUpper())
-//                 .arg((amnt * rt).getAsDouble()).arg(pair.right(3).toUpper()).arg(rt.getAsDouble())
-//              << std::endl;
+    std::clog << QString("user %1 wants to %2 %3 %4 for %5 %6 (rate %7)")
+                 .arg(userName).arg((type == OrderInfo::Type::Buy)?"buy":"sell").arg(amnt.getAsDouble()).arg(pair.left(3).toUpper())
+                 .arg((amnt * rate).getAsDouble()).arg(pair.right(3).toUpper()).arg(rate.getAsDouble())
+              << std::endl;
 
     TradeCurrencyVolume volumes;
     QSqlQuery* query = nullptr;
@@ -354,7 +346,7 @@ Responce::OrderCreateResult Responce::createTrade(const ApiKey& key, const PairN
     else if (type == OrderInfo::Type::Sell)
         query = selectOrdersForSellTrade.get();
 
-    ret.order_id = doExchange(userName, rate, volumes, type, rate, pair, *query, amnt, fee, user_id, pair_id);
+    ret.order_id = doExchange(userName, rate, volumes, type, rate, pair, *query, amnt, fee, user_id);
     if (ret.order_id != (quint32)-1)
     {
         ret.ok = true;
@@ -901,6 +893,7 @@ Responce::UserInfo::Ptr Responce::userInfo(Responce::UserId user_id)
     if (performSql("get user name and deposits for user id ':user_id'", sql, params))
     {
         info = new UserInfo::Ptr(new UserInfo);
+        (*info)->user_id = user_id;
         while(sql.next())
         {
             (*info)->name = sql.value(2).toString();
@@ -1125,8 +1118,8 @@ QVariantMap Responce::getPrivateTradeResponce(const QueryParser& httpQuery, Meth
                 return var;
             }
             Rate rate = Rate(httpQuery.rate().toStdString());
-            Amount amount = Amount(httpQuery.rate().toStdString());
-            OrderCreateResult ret = createTrade(httpQuery.key(), httpQuery.pair(), type, rate, amount);
+            Amount amount = Amount(httpQuery.amount().toStdString());
+            OrderCreateResult ret = checkParamsAndDoExchange(httpQuery.key(), httpQuery.pair(), type, rate, amount);
             if (!ret.ok)
             {
                 rollbackTransaction->exec();
@@ -1248,9 +1241,17 @@ QVariantMap Responce::getPrivateCancelOrderResponce(const QueryParser& httpQuery
 QVariantMap Responce::exchangeBalance()
 {
     QVariantMap balance;
-    performSql("get deposits balance", *totalBalance, "", true);
-    while(totalBalance->next())
-        balance[totalBalance->value(0).toString()] = totalBalance->value(1).toFloat();
+    QSqlQuery sql(db);
+    QString query = "SELECT cur, sum(vol) from ("
+                   "select c.currency as cur, sum(volume) as vol from deposits d left join currencies c on c.currency_id = d.currency_id group by d.currency_id  "
+                   " UNION "
+                   "select right(p.pair,3) as cur, sum(amount*rate) as vol  from orders o left join pairs p on p.pair_id = o.pair_id where status='active' and type='buy'  group by right(p.pair, 3) "
+                   " UNION "
+                   "select left(p.pair,3) as cur, sum(amount)      as vol  from orders o left join pairs p on p.pair_id = o.pair_id where status='active' and type='sell' group by  left(p.pair, 3)"
+                   ") A group by cur";
+    performSql("get deposits balance", sql, query, true);
+    while(sql.next())
+        balance[sql.value(0).toString()] = sql.value(1).toFloat();
 
 
     return balance;

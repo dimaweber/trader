@@ -99,5 +99,6 @@ private slots:
     void Trade_buy();
     void Trade_sell();
     void Trade_balanceValid();
+    void Trade_tradeBenchmark();
 };
 #endif // UNIT_TESTS_H
