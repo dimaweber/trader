@@ -32,8 +32,8 @@ void prepareDatabase(QSqlDatabase& db)
     sql.exec("create database emul_debug");
     sql.exec("use emul_debug");
 
-    createSqls["owners"]
-        << TableField("owner_id").primaryKey(true)
+    createSqls["users"]
+        << TableField("user_id").primaryKey(true)
         << TableField("name", TableField::Char, 128)
            << "CONSTRAINT uniq_name UNIQUE (name)"
         ;
@@ -45,23 +45,23 @@ void prepareDatabase(QSqlDatabase& db)
                ;
 
     createSqls["deposits"]
-            << TableField("owner_id").references("owners", {"owner_id"})
+            << TableField("user_id").references("users", {"user_id"})
             << TableField("currency_id").references("currencies", {"currency_id"})
             << TableField("volume", TableField::Decimal, 14, 6).notNull().check("amount >= 0")
             << "FOREIGN KEY(currency_id) REFERENCES currencies(currency_id)"
-            << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
-            << "CONSTRAINT uniq_ownercurrency UNIQUE (owner_id,currency_id)"
+            << "FOREIGN KEY(user_id) REFERENCES users(user_id)"
+            << "CONSTRAINT uniq_usercurrency UNIQUE (user_id,currency_id)"
                ;
 
     createSqls["apikeys"]
-            << TableField("owner_id").references("owners", {"owner_id"})
+            << TableField("user_id").references("users", {"user_id"})
             << TableField("apikey", TableField::Char, 128).notNull()
             << TableField("secret", TableField::Char, 128).notNull()
             << TableField("info", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("trade", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("withdraw", TableField::Boolean).notNull().defaultValue("FALSE")
             << TableField("nonce", TableField::Integer).notNull().defaultValue(1).check("nonce > 0")
-            << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
+            << "FOREIGN KEY(user_id) REFERENCES users(user_id)"
                ;
 
     createSqls["pairs"]
@@ -79,7 +79,7 @@ void prepareDatabase(QSqlDatabase& db)
     createSqls["orders"]
             << TableField("order_id").primaryKey(true)
             << TableField("pair_id").references("pairs", {"pair_id"})
-            << TableField("owner_id").references("owners", {"owner_id"})
+            << TableField("user_id").references("users", {"user_id"})
             << "type enum ('sell', 'buy') not null"
             << TableField("rate", TableField::Decimal, 14, 6).notNull().check("rate > 0")
             << TableField("start_amount", TableField::Decimal, 14, 6).notNull().check("start_amount > 0")
@@ -87,17 +87,17 @@ void prepareDatabase(QSqlDatabase& db)
             << "status enum ('active', 'done', 'cancelled', 'part_done') not null"
             << TableField("created", TableField::Datetime).notNull()
             << "FOREIGN KEY(pair_id) REFERENCES pairs(pair_id)"
-            << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
+            << "FOREIGN KEY(user_id) REFERENCES users(user_id)"
                ;
 
     createSqls["trades"]
             << TableField("trade_id").primaryKey(true)
             << TableField("order_id").references("orders", {"order_id"})
-            << TableField("owner_id").references("owners", {"owner_id"})
+            << TableField("user_id").references("users", {"user_id"})
             << TableField("amount", TableField::Decimal, 14, 6).notNull()
             << TableField("created", TableField::Datetime).notNull()
             << "FOREIGN KEY(order_id) REFERENCES orders(order_id)"
-            << "FOREIGN KEY(owner_id) REFERENCES owners(owner_id)"
+            << "FOREIGN KEY(user_id) REFERENCES users(user_id)"
                ;
 
     createSqls["ticker"]
@@ -248,16 +248,16 @@ QString randomSecret()
     return randomString(len).toLower();
 }
 
-static QVector<quint32> ownerIdCache;
-static QVector<quint32> currencyIdCache;
+static QVector<quint32> userIdCache;
+static QSet<quint32> currencyIdCache;
 
-quint32 get_random_owner_id(QVector<quint32> except = QVector<quint32>())
+quint32 get_random_user_id(QVector<quint32> except = QVector<quint32>())
 {
     quint32 id;
     do
     {
-        int rndIndex = qrand() % ownerIdCache.size();
-        id = ownerIdCache[rndIndex];
+        int rndIndex = qrand() % userIdCache.size();
+        id = userIdCache[rndIndex];
     } while (except.contains(id));
     return id;
 }
@@ -267,43 +267,43 @@ void buildOrdersFromDepth(const BtcObjects::Depth::Position& position, const Btc
     float amount = position.amount;
     float rate = position.rate;
 
-    int ownersCount = 0;
-    QMap<int, float> ownersPropotions;
+    int usersCount = 0;
+    QMap<int, float> usersPropotions;
     if (amount < p.min_amount * 10)
     {
-        // force only one owner for tiny amounts
-        ownersCount = 1;
+        // force only one user for tiny amounts
+        usersCount = 1;
     }
     else
     {
         int dice = qrand() % 10;
-        if (dice < 5) ownersCount = 1;
-        else if (dice < 7) ownersCount = 2;
-        else if (dice < 9) ownersCount = 3;
-        else ownersCount = 4;
+        if (dice < 5) usersCount = 1;
+        else if (dice < 7) usersCount = 2;
+        else if (dice < 9) usersCount = 3;
+        else usersCount = 4;
     }
-    if (ownersCount == 1)
-        ownersPropotions[0] = amount;
+    if (usersCount == 1)
+        usersPropotions[0] = amount;
     else
     {
         float rest = amount;
-        // first n-1 owners take thei parts
-        for(int i=0; i<ownersCount-1; i++)
+        // first n-1 users take thei parts
+        for(int i=0; i<usersCount-1; i++)
         {
             float part = (qrand() % 1000) / 1000.0;
-            ownersPropotions[i] = rest * part;
+            usersPropotions[i] = rest * part;
             rest = rest * (1-part);
         }
         // last one take whole rest
-        ownersPropotions[ownersCount-1] = rest;
+        usersPropotions[usersCount-1] = rest;
     }
 
-    for (int i=0; i < ownersCount; i++)
+    for (int i=0; i < usersCount; i++)
     {
-        orderParams[":owner_id"] = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID);
+        orderParams[":user_id"] = get_random_user_id(QVector<quint32>() << EXCHNAGE_user_ID);
         orderParams[":type"] = isAsks?"sell":"buy";
         orderParams[":rate"] = QString::number(rate, 'f', p.decimal_places);
-        orderParams[":start_amount"] = ownersPropotions[i];
+        orderParams[":start_amount"] = usersPropotions[i];
         orderParams[":amount"] = orderParams[":start_amount"];
         orderParams[":status"] = "active";
         orderParams[":created"] = QDateTime::currentDateTime();
@@ -316,7 +316,7 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
 {
     QVariantMap tradesParams;
     QVariant order_id;
-    quint32 orderOwner_id = 0;
+    quint32 orderuser_id = 0;
 
     selectOrdersWithGivenPairRate.bindValue(":rate", trade.price);
     selectOrdersWithGivenPairRate.bindValue(":type", (trade.type==BtcObjects::Trade::Type::Bid)?"sell":"buy");
@@ -325,7 +325,7 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
         if (selectOrdersWithGivenPairRate.next())
         {
             order_id = selectOrdersWithGivenPairRate.value(0);
-            orderOwner_id = selectOrdersWithGivenPairRate.value(1).toUInt();
+            orderuser_id = selectOrdersWithGivenPairRate.value(1).toUInt();
             updateOrderIncreaseStartAmount.bindValue(":order_id", order_id);
             updateOrderIncreaseStartAmount.bindValue(":increase", trade.amount);
             updateOrderIncreaseStartAmount.bindValue(":created", trade.timestamp.addSecs(-qrand() % 65534 + 1));
@@ -335,8 +335,8 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
 
     if (!order_id.isValid())
     {
-        orderOwner_id = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID);
-        orderParams[":owner_id"] = orderOwner_id;
+        orderuser_id = get_random_user_id(QVector<quint32>() << EXCHNAGE_USER_ID);
+        orderParams[":user_id"] = orderuser_id;
         orderParams[":type"] = (trade.type == BtcObjects::Trade::Type::Bid)?"buy":"sell";
         orderParams[":rate"] = QString::number(trade.price, 'f', 6); // TODO: is rate precision is always 3 ?
         orderParams[":start_amount"] = trade.amount;
@@ -350,7 +350,7 @@ void buildTradesFromBtce(const BtcObjects::Trade& trade, QSqlQuery& tradesInsert
     }
 
     tradesParams[":trade_id"] = trade.id;
-    tradesParams[":owner_id"] = get_random_owner_id(QVector<quint32>() << EXCHNAGE_OWNER_ID << orderOwner_id);
+    tradesParams[":user_id"] = get_random_user_id(QVector<quint32>() << EXCHNAGE_USER_ID << orderuser_id);
     tradesParams[":order_id"] = order_id;
     tradesParams[":amount"] = trade.amount;
     tradesParams[":created"] = trade.timestamp;
@@ -382,10 +382,10 @@ void populateTablesFromBtce(QSqlDatabase& database)
 
                 pairInsertQuery.prepare("insert into pairs (pair, decimal_places, min_price, max_price, min_amount, hidden, fee) values (:pair, :decimal_places, :min_price, :max_price, :min_amount, :hidden, :fee)");
                 tickerInsertQuery.prepare("insert into ticker (pair_id, high, low, avg, vol, vol_cur, buy, sell, last, updated) values (:pair_id, :high, :low, :avg, :vol, :vol_cur, :buy, :sell, :last, :updated)");
-                ordersInsertQuery.prepare("insert into orders (pair_id, owner_id,   type,   rate, start_amount, amount,   status, created)"
-                                          "values (:pair_id, :owner_id,   :type,   :rate, :start_amount, :amount,   :status, :created)");
-                tradesInsertQuery.prepare("insert into trades (trade_id, order_id, owner_id, amount, created) values (:trade_id, :order_id, :owner_id, :amount, :created)");
-                selectOrdersWithGivenPairRate.prepare("select order_id, owner_id, created from orders o where pair_id=:pair_id and o.rate=:rate and type=:type order by created asc");
+                ordersInsertQuery.prepare("insert into orders (pair_id, user_id,   type,   rate, start_amount, amount,   status, created)"
+                                          "values (:pair_id, :user_id,   :type,   :rate, :start_amount, :amount,   :status, :created)");
+                tradesInsertQuery.prepare("insert into trades (trade_id, order_id, user_id, amount, created) values (:trade_id, :order_id, :user_id, :amount, :created)");
+                selectOrdersWithGivenPairRate.prepare("select order_id, user_id, created from orders o where pair_id=:pair_id and o.rate=:rate and type=:type order by created asc");
                 updateOrderIncreaseStartAmount.prepare("update orders set start_amount = start_amount + :increase, created = :created where order_id=:order_id");
                 insertCurrencyQuery.prepare("insert into currencies (currency) values (:currency)");
 
@@ -478,7 +478,7 @@ void populateTablesFromBtce(QSqlDatabase& database)
 void createSecrets(QSqlDatabase& database)
 {
     QAtomicInt dbCounter = 0;
-    auto func = [&database, &dbCounter](quint32 owner_id)
+    auto func = [&database, &dbCounter](quint32 user_id)
     {
         qsrand(dbCounter++);
         QString connectionName = QString("secrets-%1").arg(++dbCounter);
@@ -488,14 +488,14 @@ void createSecrets(QSqlDatabase& database)
             {
                 db.exec("START TRANSACTION");
                 QSqlQuery insertSecret(db);
-                insertSecret.prepare("insert into apikeys (owner_id,apikey,secret,info,trade, withdraw) values (:owner_id, :apikey, :secret, :info, :trade, :withdraw)");
+                insertSecret.prepare("insert into apikeys (user_id,apikey,secret,info,trade, withdraw) values (:user_id, :apikey, :secret, :info, :trade, :withdraw)");
                 QVariantMap apikeyParams;
 
                 for (int info=0; info<2;info++)
                     for (int trade=0; trade<2;trade++)
                         for (int withdraw=0; withdraw<2;withdraw++)
                         {
-                            apikeyParams[":owner_id"] = owner_id;
+                            apikeyParams[":user_id"] = user_id;
                             apikeyParams[":apikey"] = randomApiKey();
                             apikeyParams[":secret"] = randomSecret();
                             apikeyParams[":info"] = (bool)info;
@@ -514,13 +514,13 @@ void createSecrets(QSqlDatabase& database)
         QSqlDatabase::removeDatabase(connectionName);
     };
 
-    QtConcurrent::blockingMap(ownerIdCache, func);
+    QtConcurrent::blockingMap(userIdCache, func);
 }
 
 void createDeposits(QSqlDatabase& database)
 {
     QAtomicInt dbCounter = 0;
-    auto func = [&database, &dbCounter](quint32 owner_id)
+    auto func = [&database, &dbCounter](quint32 user_id)
     {
         qsrand(dbCounter++);
         QString connectionName =  QString("deposits-%1").arg(++dbCounter);
@@ -530,9 +530,9 @@ void createDeposits(QSqlDatabase& database)
             {
                 db.exec("START TRANSACTION");
                 QSqlQuery insertDepositQuery(db);
-                insertDepositQuery.prepare("insert into deposits (owner_id, currency_id, volume) values (:owner_id, :currency_id, :volume)");
+                insertDepositQuery.prepare("insert into deposits (user_id, currency_id, volume) values (:user_id, :currency_id, :volume)");
                 QVariantMap depositsParams;
-                depositsParams[":owner_id"] = owner_id;
+                depositsParams[":user_id"] = user_id;
                 for(quint32 pair_id: currencyIdCache)
                 {
                     depositsParams[":currency_id"] = pair_id;
@@ -553,7 +553,7 @@ void createDeposits(QSqlDatabase& database)
         }
         QSqlDatabase::removeDatabase(connectionName);
     };
-    QtConcurrent::blockingMap(ownerIdCache, func);
+    QtConcurrent::blockingMap(userIdCache, func);
 }
 
 void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
@@ -581,13 +581,13 @@ void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
     QSqlQuery query(db);
     populateTablesFromCsv(db);
 
-    performSql("add user_type column", query, "alter table owners add user_type int not null default 1"); // 0 - special (exchannge), 1 - emulated, 2 - regular
+    performSql("add user_type column", query, "alter table users add user_type int not null default 1"); // 0 - special (exchannge), 1 - emulated, 2 - regular
 
-    performSql("create EXCHANGE user", query, QString("insert into owners (owner_id, name, user_type) values (%1, 'EXCHANGE', 0)").arg(EXCHNAGE_OWNER_ID));
+    performSql("create EXCHANGE user", query, QString("insert into users (user_id, name, user_type) values (%1, 'EXCHANGE', 0)").arg(EXCHNAGE_USER_ID));
 
-    performSql("fill ownersIdDache", query, "select owner_id from owners", true);
+    performSql("fill usersIdDache", query, "select user_id from users", true);
     while (query.next())
-        ownerIdCache.append( query.value(0).toUInt());
+        userIdCache.append( query.value(0).toUInt());
 
     populateTablesFromBtce(db);
     createSecrets(db);

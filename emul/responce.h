@@ -16,7 +16,7 @@ class QueryParser;
 class QSqlDatabase;
 class QSqlQuery;
 
-#define EXCHNAGE_OWNER_ID 1000
+#define EXCHNAGE_USER_ID 1000
 
 class Responce
 {
@@ -25,7 +25,7 @@ public:
     using Fee    = cppdecimal::decimal<7>;
     using Rate   = cppdecimal::decimal<7>;
     using PairId = quint32;
-    using OwnerId = quint32;
+    using UserId = quint32;
     using TradeId = quint32;
     using OrderId = quint32;
     using PairName = QString;
@@ -88,7 +88,7 @@ public:
         Rate rate;
         QDateTime created;
         Status status;
-        OwnerId owner_id;
+        UserId user_id;
         OrderId order_id;
     };
     struct TradeInfo
@@ -103,7 +103,7 @@ public:
         TradeId tid;
         QDateTime created;
         OrderId order_id;
-        OwnerId owner_id;
+        UserId user_id;
         OrderInfo::WPtr order_ptr;
     };
 
@@ -111,19 +111,15 @@ public:
     using Depth = QList<DepthItem>;
     using BuySellDepth = QPair<Depth, Depth>;
     using Funds = QMap<QString, Amount>;
-    using FundsPtr = std::shared_ptr<Funds>;
-    using FundsWPtr = std::weak_ptr<Funds>;
 
-    struct OwnerInfo
+    struct UserInfo
     {
-        using Ptr = std::shared_ptr<OwnerInfo>;
-        using WPtr = std::weak_ptr<OwnerInfo>;
+        using Ptr = std::shared_ptr<UserInfo>;
+        using WPtr = std::weak_ptr<UserInfo>;
 
-        OwnerId owner_id;
+        UserId user_id;
         QString name;
-        FundsWPtr funds_ptr;
-
-        FundsPtr funds ();
+        Funds funds;
     };
 
     struct ApikeyInfo
@@ -134,10 +130,10 @@ public:
         bool info;
         bool trade;
         bool withdraw;
-        OwnerId owner_id;
-        OwnerInfo::WPtr owner_ptr;
+        UserId user_id;
+        UserInfo::WPtr user_ptr;
 
-        OwnerInfo::Ptr owner();
+        UserInfo::Ptr user();
     };
 
     Responce(QSqlDatabase& database);
@@ -165,47 +161,44 @@ private:
 
     struct TradeCurrencyVolume
     {
-        QString goods;
-        QString currency;
-        QString trader_currency_in;
+        QString  goods;
+        QString  currency;
+        QString  trader_currency_in;
         Amount   trader_volume_in;
-        QString trader_currency_out;
-        Amount trader_volume_out;
-        QString parter_currency_in;
-        Amount partner_volume_in;
-        Amount exchange_currency_in;
-        Amount exchange_goods_in;
+        QString  trader_currency_out;
+        Amount   trader_volume_out;
+        QString  parter_currency_in;
+        Amount   partner_volume_in;
+        Amount   exchange_currency_in;
+        Amount   exchange_goods_in;
     };
 
     struct NewOrderVolume
     {
-        QString currency;
-        Responce::Amount volume;
+        QString           currency;
+        Responce::Amount  volume;
     };
 
     struct OrderCreateResult
     {
-        QString errMsg;
-        Amount recieved;
-        Amount remains;
-        quint32 order_id;
-        bool ok;
+        QString  errMsg;
+        Amount   recieved;
+        Amount   remains;
+        quint32  order_id;
+        bool     ok;
     };
 
-    bool tradeUpdateDeposit(const QVariant& owner_id, const QString& currency, Amount diff, const QString& ownerName);
+    bool tradeUpdateDeposit(const QVariant& user_id, const QString& currency, Amount diff, const QString& userName);
     TradeCurrencyVolume trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                      Amount trade_amount, Rate matched_order_rate);
-    quint32 doExchange(QString ownerName, const QString& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant owner_id, QVariant pair_id, QVariantMap orderCreateParams);
+    quint32 doExchange(QString userName, const QString& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const QString& pair, QSqlQuery& query, Amount& amnt, Fee fee, QVariant user_id, QVariant pair_id, QVariantMap orderCreateParams);
     OrderCreateResult createTrade(const QString& key, const QString& pair, OrderInfo::Type type, const QString& rate, const QString& amount);
 
     std::unique_ptr<Authentificator>  auth;
-    std::unique_ptr<QSqlQuery>  selectFundsInfoQueryByOwnerId;
-    std::unique_ptr<QSqlQuery>  selectRightsInfoQuery;
     std::unique_ptr<QSqlQuery>  selectActiveOrdersCountQuery;
-    std::unique_ptr<QSqlQuery>  selectCurrencyVolumeQuery;
     std::unique_ptr<QSqlQuery>  selectOrdersForSellTrade;
     std::unique_ptr<QSqlQuery>  selectOrdersForBuyTrade;
-    std::unique_ptr<QSqlQuery>  selectOwnerForKeyQuery;
+    std::unique_ptr<QSqlQuery>  selectUserForKeyQuery;
     std::unique_ptr<QSqlQuery>  updateDepositQuery;
     std::unique_ptr<QSqlQuery>  updateOrderAmount;
     std::unique_ptr<QSqlQuery>  updateOrderDone;
@@ -227,10 +220,8 @@ private:
     static QReadWriteLock tradeInfoCacheRWAccess;
     static QCache<ApiKey, ApikeyInfo::Ptr> apikeyInfoCache;
     static QReadWriteLock apikeyInfoCacheRWAccess;
-    static QCache<OwnerId, OwnerInfo::Ptr> ownerInfoCache;
-    static QReadWriteLock ownerInfoCacheRWAccess;
-    static QCache<OwnerId, FundsPtr> fundsCache;
-    static QReadWriteLock fundsCacheRWAccess;
+    static QCache<UserId, UserInfo::Ptr> userInfoCache;
+    static QReadWriteLock userInfoCacheRWAccess;
 
     PairInfo::List   allPairsInfoList();
     PairInfo::Ptr    pairInfo(const QString& pair);
@@ -238,10 +229,10 @@ private:
     OrderInfo::Ptr   orderInfo(OrderId order_id);
     OrderInfo::List  activeOrdersInfoList(const QString& apikey);
     TradeInfo::List  allTradesInfo(const PairName& pair);
-    QMap<Responce::PairName, Responce::BuySellDepth> allActiveOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
     ApikeyInfo::Ptr  apikeyInfo(const ApiKey& apikey);
-    OwnerInfo::Ptr   ownerInfo(OwnerId owner_id);
-    FundsPtr         funds(OwnerId owner_id);
+    UserInfo::Ptr   userInfo(UserId user_id);
+
+    QMap<Responce::PairName, Responce::BuySellDepth> allActiveOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
 
     NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
     QVariantList appendDepthToMap(const Depth& depth, int limit);
