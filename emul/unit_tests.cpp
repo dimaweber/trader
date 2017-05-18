@@ -1309,7 +1309,7 @@ void BtceEmulator_Test::Trade_parameterRateMinValueCheck()
     //            std::clog << responce["error"].toString() << std::endl;
 
     QCOMPARE(responce["success"].toInt(), 0);
-    QCOMPARE(responce["error"].toString(), QString("Price per BTC must be greater than 0.1 USD."));
+    QCOMPARE(responce["error"].toString(), QString("Price per BTC must be greater than 0.100 USD."));
 }
 
 void BtceEmulator_Test::Trade_buy()
@@ -1326,7 +1326,7 @@ void BtceEmulator_Test::Trade_buy()
     QString currency;
     balance = rate * amount;
     currency = "usd";
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(dec2qstr(amount, 6)).arg(dec2qstr(rate, 6)).toUtf8();
     QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);
@@ -1377,7 +1377,7 @@ void BtceEmulator_Test::Trade_sell()
         balance = rate * amount;
         currency = "usd";
     }
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount, 6)).arg(dec2qstr(rate, 6)).toUtf8();
     QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);
@@ -1413,7 +1413,7 @@ void BtceEmulator_Test::Trade_depositValid_sell()
 
     QString currency  = "btc";
 
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("sell").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("sell").arg(dec2qstr(amount, 6)).arg(dec2qstr(rate, 6)).toUtf8();
 
     QByteArray key = sqlClient->randomKeyForTrade(currency, amount);
     headers["KEY"] = key;
@@ -1455,7 +1455,7 @@ void BtceEmulator_Test::Trade_depositValid_buy()
     Rate rate (2000);
     QString currency  = "usd";
 
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(dec2qstr(amount, 6)).arg(dec2qstr(rate, 6)).toUtf8();
 
     QByteArray key = sqlClient->randomKeyForTrade(currency, amount*rate);
     headers["KEY"] = key;
@@ -1516,7 +1516,7 @@ void BtceEmulator_Test::Trade_exchangeTotalBalanceValid()
             balance = rate * amount;
             currency = "usd";
         }
-        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount, 6)).arg(dec2qstr(rate, 6)).toUtf8();
         QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
         if (key.isEmpty())
             continue;
@@ -1562,7 +1562,7 @@ void BtceEmulator_Test::Trade_tradeBenchmark()
             balance = rate * amount;
             currency = "usd";
         }
-        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount, 6)).arg(dec2qstr(rate, 6)).toUtf8();
         QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
         if (key.isEmpty())
             continue;

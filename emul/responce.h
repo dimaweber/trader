@@ -6,8 +6,6 @@
 
 #include <QDateTime>
 #include <QMap>
-#include <QMutex>
-#include <QReadWriteLock>
 #include <QVariantMap>
 #include <QList>
 
@@ -76,7 +74,7 @@ private:
     };
 
     NewOrderVolume new_order_currency_volume (OrderInfo::Type type, const QString& pair, Amount amount, Rate rate);
-    QVariantList appendDepthToMap(const Depth& depth, int limit);
+    QVariantList appendDepthToMap(const Depth& depth, int limit, int dp);
     TradeCurrencyVolume trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                      Amount trade_amount, Rate matched_order_rate);
     quint32 doExchange(QString userName, const Rate& rate, TradeCurrencyVolume volumes, OrderInfo::Type type, Rate rt, const PairName &pair, QSqlQuery& query, Amount& amnt, Fee fee, UserId user_id);
@@ -95,19 +93,6 @@ private:
     std::unique_ptr<QSqlQuery>  rollbackTransaction;
 
     std::shared_ptr<AbstractDataAccessor> dataAccessor;
-//    static QMap<PairName, PairInfo::Ptr> pairInfoCache;
-//    static QMap<PairName, TickerInfo::Ptr> tickerInfoCache;
-//    static QCache<OrderId, OrderInfo::Ptr> orderInfoCache;
-//    static QCache<TradeId, TradeInfo::Ptr> tradeInfoCache;
-//    static QCache<ApiKey, ApikeyInfo::Ptr> apikeyInfoCache;
-//    static QCache<UserId, UserInfo::Ptr> userInfoCache;
-
-//    static QMutex pairInfoCacheRWAccess;
-//    static QMutex tickerInfoCacheRWAccess;
-//    static QMutex orderInfoCacheRWAccess;
-//    static QMutex tradeInfoCacheRWAccess;
-//    static QMutex apikeyInfoCacheRWAccess;
-//    static QMutex userInfoCacheRWAccess;
 
 //    PairInfo::List   allPairsInfoList();
 //    PairInfo::Ptr    pairInfo(const QString& pair);

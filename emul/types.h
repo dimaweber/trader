@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QMap>
+#include <QMutex>
 #include <QString>
 #include <QVariant>
 
@@ -22,9 +23,19 @@ using PairName = QString;
 using ApiKey = QString;
 
 template <int n>
-QString dec2qstr(const DEC_NAMESPACE::decimal<n>& d)
+QString dec2qstr(const DEC_NAMESPACE::decimal<n>& d, int decimal_places =7)
 {
-    return QString::fromStdString(DEC_NAMESPACE::toString(d));
+    switch (decimal_places) {
+        case 0: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<0>(d)));
+        case 1: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<1>(d)));
+        case 2: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<2>(d)));
+        case 3: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<3>(d)));
+        case 4: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<4>(d)));
+        case 5: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<5>(d)));
+        case 6: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<6>(d)));
+        case 7:
+        default: return QString::fromStdString(DEC_NAMESPACE::toString(DEC_NAMESPACE::decimal_cast<7>(d)));
+    }
 }
 
 template <int n>
@@ -78,7 +89,6 @@ struct TickerInfo
     PairName pairName;
 
     PairInfo::WPtr pair_ptr;
-    PairInfo::Ptr pair();
 };
 struct OrderInfo
 {
@@ -98,6 +108,8 @@ struct OrderInfo
     Status status;
     UserId user_id;
     OrderId order_id;
+
+    QMutex updateAccess;
 };
 struct TradeInfo
 {
@@ -128,6 +140,8 @@ struct UserInfo
     UserId user_id;
     QString name;
     Funds funds;
+
+    QMutex updateAccess;
 };
 
 struct ApikeyInfo
@@ -142,6 +156,8 @@ struct ApikeyInfo
     quint32 nonce;
     UserId user_id;
     UserInfo::WPtr user_ptr;
+
+    QMutex updateAccess;
 };
 
 #endif // TYPES_H
