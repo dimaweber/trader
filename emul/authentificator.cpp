@@ -6,7 +6,7 @@
 #include <QSqlQuery>
 #include <QVariant>
 
-QCache<QString, ApiKeyCacheItem> Authentificator::cache;
+QCache<QString, ApiKeyCacheItem::Ptr> Authentificator::cache;
 QMutex Authentificator::accessMutex;
 
 Authentificator::Authentificator(QSqlDatabase& db)
@@ -23,11 +23,6 @@ bool Authentificator::authOk(const QString& key, const QByteArray& sign, const Q
         message = "api key not specified";
         return false;
     }
-    if (!validateKey(key))
-    {
-        message = "invalid api key";
-        return false;
-    }
 
     if (sign.isEmpty())
     {
@@ -35,7 +30,14 @@ bool Authentificator::authOk(const QString& key, const QByteArray& sign, const Q
         return false;
     }
 
-    if (!validateSign(key, sign, rawPostData))
+    ApiKeyCacheItem::Ptr item = validateKey(key);
+    if (!item)
+    {
+        message = "invalid api key";
+        return false;
+    }
+
+    if (!validateSign(item, sign, rawPostData))
     {
         message = "invalid sign";
         return false;
@@ -61,63 +63,69 @@ bool Authentificator::authOk(const QString& key, const QByteArray& sign, const Q
 
 bool Authentificator::hasInfo(const QString& key)
 {
-    if (!validateKey(key))
+    ApiKeyCacheItem::Ptr item = validateKey(key);
+    if (!item)
         return false;
-    return cache[key]->info;
+    return item->info;
 }
 
 bool Authentificator::hasTrade(const QString &key)
 {
-    if (!validateKey(key))
+    ApiKeyCacheItem::Ptr item = validateKey(key);
+    if (!item)
         return false;
-    return cache[key]->trade;
+    return item->trade;
 }
 
 bool Authentificator::hasWithdraw(const QString& key)
 {
-    if (!validateKey(key))
+    ApiKeyCacheItem::Ptr item = validateKey(key);
+    if (!item)
         return false;
-    return cache[key]->withdraw;
+    return item->withdraw;
 }
 
-bool Authentificator::validateKey(const QString& key)
+ApiKeyCacheItem::Ptr Authentificator::validateKey(const QString& key)
 {
-    QMutexLocker lock(&Authentificator::accessMutex);
-
-    if (cache.contains(key))
-        return true;
+    QMutexLocker lock(&accessMutex);
+    ApiKeyCacheItem::Ptr* item =Authentificator::cache.object(key);
+    if (item)
+        return *item;
 
     QVariantMap params;
     params[":key"] = key;
     if (performSql("select key", selectKey, params, true))
         if (selectKey.next())
         {
-            std::unique_ptr<ApiKeyCacheItem> pItem = std::make_unique<ApiKeyCacheItem>();
-            pItem->user_id = selectKey.value(0).toUInt();
-            pItem->secret = selectKey.value(1).toByteArray();
-            pItem->info = selectKey.value(2).toBool();
-            pItem->trade = selectKey.value(3).toBool();
-            pItem->withdraw = selectKey.value(4).toBool();
-            pItem->nonce = selectKey.value(5).toUInt();
+            item = new ApiKeyCacheItem::Ptr (new ApiKeyCacheItem);
+            (*item)->user_id = selectKey.value(0).toUInt();
+            (*item)->secret = selectKey.value(1).toByteArray();
+            (*item)->info = selectKey.value(2).toBool();
+            (*item)->trade = selectKey.value(3).toBool();
+            (*item)->withdraw = selectKey.value(4).toBool();
+            (*item)->nonce = selectKey.value(5).toUInt();
 
-            cache.insert(key, pItem.release());
-            return true;
+            cache.insert(key, item);
+            return *item;
         }
-    return false;
+    return nullptr;
 }
 
-bool Authentificator::validateSign(const QString& key, const QByteArray& sign, const QByteArray& data)
+bool Authentificator::validateSign(const ApiKeyCacheItem::Ptr& pkey, const QByteArray& sign, const QByteArray& data)
 {
-    QByteArray secret = getSecret(key);
+    if (!pkey)
+        return false;
+    QByteArray secret = pkey->secret;
     QByteArray hmac = hmac_sha512(data, secret).toHex();
     return sign == hmac;
 }
 
 quint32 Authentificator::nonceOnKey(const QString& key)
 {
-    if (validateKey(key))
-        return cache[key]->nonce;
-    return static_cast<quint32>(-1);
+    ApiKeyCacheItem::Ptr item = validateKey(key);
+    if (!item)
+        return static_cast<quint32>(-1);
+    return item->nonce;
 }
 
 bool Authentificator::checkNonce(const QString& key, quint32 nonce)
@@ -129,17 +137,18 @@ bool Authentificator::checkNonce(const QString& key, quint32 nonce)
 
 QByteArray Authentificator::getSecret(const QString& key)
 {
-    if (validateKey(key))
-        return cache[key]->secret;
-    return QByteArray();
+    ApiKeyCacheItem::Ptr item = validateKey(key);
+    if (!item)
+        return QByteArray();
+    return item->secret;
 }
 
 bool Authentificator::updateNonce(const QString& key, quint32 nonce)
 {
+    QMutexLocker lock(&Authentificator::accessMutex);
     cache.remove(key);
     QVariantMap params;
     params[":key"] = key;
     params[":nonce"] = nonce;
     return performSql("update nonce", updateNonceQuery, params, true);
-
 }

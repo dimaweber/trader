@@ -38,11 +38,17 @@ QByteArray SqlClient::randomKeyForTrade(const QString& currency, double amount)
     params[":currency"] = currency;
     params[":amount"] = amount;
 
-    if (!performSql("get apikey", *getRandomKeyWithBalance, params, true))
+    if (!performSql("get apikey", *getRandomKeyWithBalance, params, false))
+    {
+        std::cerr << "fail to perform sql" << std::endl;
         return QByteArray();
+    }
 
     if (!getRandomKeyWithBalance->next())
+    {
+        std::cerr << "empty set returned" << std::endl;
         return QByteArray();
+    }
 
     return getRandomKeyWithBalance->value(0).toByteArray();
 }

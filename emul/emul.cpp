@@ -730,10 +730,10 @@ int main(int argc, char *argv[])
     }
     std::clog << "[FastCGI]  Socket opened" << std::endl;
 
-    const int THREAD_COUNT = 7;
-    pthread_t id[THREAD_COUNT];
+    const quint32 THREAD_COUNT = settings.value("emulator/threads_count", 8).toUInt();
+    std::vector<pthread_t> id(THREAD_COUNT);
 
-    for (int i=0; i<THREAD_COUNT; i++)
+    for (size_t i=0; i<THREAD_COUNT; i++)
     {
         FcgiThreadData* pData = new FcgiThreadData;
         pData->sock = sock;
@@ -748,7 +748,7 @@ int main(int argc, char *argv[])
     pData->id=THREAD_COUNT;
     fcgiThread(pData);
 
-    for (int i=0; i<THREAD_COUNT; i++)
+    for (size_t i=0; i<THREAD_COUNT; i++)
         pthread_join(id[i], nullptr);
 
     return 0;

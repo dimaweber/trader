@@ -59,7 +59,12 @@ bool Responce::tradeUpdateDeposit(const Responce::UserId& user_id, const QString
     ok = performSql("update ':currency' amount by :diff for user :user_id", sql, updateDepParams, true);
     if (ok)
     {
-        userInfo(user_id)->funds[currency] += diff;
+        {
+            QWriteLocker wlock(&userInfoCacheRWAccess);
+            UserInfo::Ptr* puser = userInfoCache.object(user_id);
+            if (puser)
+                (*puser)->funds[currency] +=  diff;
+        }
         std::clog << "\t\t" << QString("%1: %2 %3 %4")
                      .arg(userName)
                      .arg((diff.sign() == -1)?"lost":"recieved")
@@ -202,7 +207,12 @@ bool Responce::reduceOrderAmount(OrderId order_id, Amount amount)
     if (!performSql("reduce :order_id amount by :diff", sql, params))
         return false;
 
-    orderInfo(order_id)->amount -= amount; // TODO: check if cache has it
+    {
+        QWriteLocker wlock(&orderInfoCacheRWAccess);
+        OrderInfo::Ptr* item = orderInfoCache.object(order_id);
+        if (item)
+            (*item)->amount -= amount;
+    }
     std::clog << "\t\tOrder " << order_id << " amount changed by " << amount << std::endl;
     return true;
 }
@@ -741,7 +751,6 @@ Responce::OrderInfo::Ptr Responce::orderInfo(Responce::OrderId order_id)
         else
             return nullptr;
     }
-    return *orderInfoCache[order_id];
 }
 
 Responce::OrderInfo::List Responce::activeOrdersInfoList(const QString& apikey)
@@ -1139,6 +1148,12 @@ QVariantMap Responce::getPrivateTradeResponce(const QueryParser& httpQuery, Meth
 
                 QVariantMap funds;
                 ApikeyInfo::Ptr aInfo = apikeyInfo(httpQuery.key());
+                if (!aInfo)
+                {
+                    res["success"] = 0;
+                    res["error"] = "invalid api key";
+                    return res;
+                }
                 UserInfo::Ptr  uInfo = aInfo->user_ptr.lock();
                 if (!uInfo)
                 {
@@ -1255,4 +1270,10 @@ QVariantMap Responce::exchangeBalance()
 
 
     return balance;
+}
+
+void Responce::UserInfo::updateDeposit(const QString& currency, Responce::Amount value)
+{
+    QWriteLocker wlock(&userInfoCacheRWAccess);
+    funds[currency] += value;
 }

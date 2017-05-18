@@ -120,6 +120,8 @@ public:
         UserId user_id;
         QString name;
         Funds funds;
+
+        void updateDeposit(const QString& currency, Amount value);
     };
 
     struct ApikeyInfo

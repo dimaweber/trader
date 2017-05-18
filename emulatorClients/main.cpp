@@ -82,10 +82,22 @@ public:
     virtual void changePassword() override { throw std::runtime_error("not implemented");}
     virtual QList<int> allKeys() override { throw std::runtime_error("not implemented");}
 
-    void loadKeyForCurrencyBalance(const QString& currency, double balance)
+    bool loadKeyForCurrencyBalance(const QString& currency, double balance)
     {
         key = client.randomKeyForTrade(currency, balance);
+        if (key.isEmpty())
+        {
+            std::cerr << "fail to load key" << std::endl;
+            return false;
+        }
         sec = client.secretForKey(key);
+        if (sec.isEmpty())
+        {
+            std::cerr << "fail to load sec" << std::endl;
+            return false;
+        }
+
+        return true;
     }
 };
 
@@ -105,7 +117,7 @@ static void* clienthread(void* data)
     while(true)
     {
         bool isSell = qrand() % 2;
-        double amount = (qrand() % 1000) / 100.0 + 0.01;
+        double amount = (qrand() % 1000) / 1000.0 + 0.01;
         double rate;
         double balance;
         QString currency;
@@ -121,7 +133,9 @@ static void* clienthread(void* data)
             currency = "usd";
         }
 
-        storage->loadKeyForCurrencyBalance(currency, balance);
+        if (!storage->loadKeyForCurrencyBalance(currency, balance))
+            continue;
+
         BtcTradeApi::Trade trade(*storage, funds, "btc_usd", isSell?BtcObjects::Order::Type::Sell:BtcObjects::Order::Type::Buy, rate, amount);
         try
         {
@@ -131,7 +145,7 @@ static void* clienthread(void* data)
         {
             std::cerr << e.what() << std::endl;
         }
-        usleep(1500);
+        //usleep(1500);
     }
 
     storage.reset();
@@ -161,10 +175,10 @@ int main(int argc, char *argv[])
     QSqlDatabase db;
     connectDatabase(db, settings);
 
-    const int THREAD_COUNT = 4;
+    const quint32 THREAD_COUNT = settings.value("debug/client_threads_count", 8).toUInt();
     pthread_t id[THREAD_COUNT];
 
-    for (int i=0; i<THREAD_COUNT; i++)
+    for (size_t i=0; i<THREAD_COUNT-1; i++)
     {
         ClientThreadData* pData = new ClientThreadData;
         pData->pDb = &db;
@@ -174,10 +188,10 @@ int main(int argc, char *argv[])
 
     ClientThreadData* pData = new ClientThreadData;
     pData->pDb = &db;
-    pData->id=THREAD_COUNT;
+    pData->id=THREAD_COUNT-1;
     clienthread(pData);
 
-    for (int i=0; i<THREAD_COUNT; i++)
+    for (size_t i=0; i<THREAD_COUNT-1; i++)
         pthread_join(id[i], nullptr);
 
     return 0;

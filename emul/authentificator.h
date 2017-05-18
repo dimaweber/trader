@@ -7,6 +7,8 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 
+#include <memory>
+
 struct ApiKeyCacheItem
 {
     quint32 user_id;
@@ -15,13 +17,15 @@ struct ApiKeyCacheItem
     bool trade;
     bool withdraw;
     quint32 nonce;
+
+    using Ptr = std::shared_ptr<ApiKeyCacheItem>;
 };
 
 class Authentificator
 {
     QSqlQuery selectKey;
     QSqlQuery updateNonceQuery;
-    static QCache<QString, ApiKeyCacheItem> cache;
+    static QCache<QString, ApiKeyCacheItem::Ptr> cache;
     static QMutex accessMutex;
 
 public:
@@ -31,8 +35,8 @@ public:
     bool hasTrade(const QString& key);
     bool hasWithdraw(const QString& key);
 private:
-    bool validateKey(const QString& key);
-    bool validateSign(const QString& key, const QByteArray& sign, const QByteArray& data);
+    ApiKeyCacheItem::Ptr validateKey(const QString& key);
+    bool validateSign(const ApiKeyCacheItem::Ptr& pkey, const QByteArray& sign, const QByteArray& data);
     quint32 nonceOnKey(const QString& key);
     bool checkNonce(const QString& key, quint32 nonce);
 
