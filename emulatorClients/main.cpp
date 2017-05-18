@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QRegExp>
 #include <QSettings>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -61,36 +62,44 @@ struct ClientThreadData
     QSqlDatabase* pDb;
 };
 
-quint32 nonce()
+quint32 nonce(quint32 s = 0)
 {
     static QAtomicInt value = QDateTime::currentDateTime().toTime_t();
-    return value++;
+    if (!s)
+    {
+        return value++;
+    }
+    else
+    {
+        value = s;
+        return 0;
+    }
 }
 
 class DummyStorage : public IKeyStorage
 {
-    SqlClient client;
+    std::shared_ptr<AbstractDataAccessor> client;
     QByteArray key;
     QByteArray sec;
 public:
-    DummyStorage(QSqlDatabase& db):client(db){}
-    virtual void setPassword(const QByteArray& pwd) override { throw std::runtime_error("not implemented");}
-    virtual bool setCurrent(int id) override { throw std::runtime_error("not implemented");}
+    DummyStorage(QSqlDatabase& db):client(std::make_shared<DirectSqlDataAccessor>(db)){}
+    virtual void setPassword(const QByteArray& ) override { throw std::runtime_error("not implemented");}
+    virtual bool setCurrent(int ) override { throw std::runtime_error("not implemented");}
     virtual const QByteArray& apiKey() override { return key; }
     virtual const QByteArray& secret() override { return sec;}
 
     virtual void changePassword() override { throw std::runtime_error("not implemented");}
     virtual QList<int> allKeys() override { throw std::runtime_error("not implemented");}
 
-    bool loadKeyForCurrencyBalance(const QString& currency, double balance)
+    bool loadKeyForCurrencyBalance(const QString& currency, Amount balance)
     {
-        key = client.randomKeyForTrade(currency, balance);
+        key = client->randomKeyForTrade(currency, balance);
         if (key.isEmpty())
         {
             std::cerr << "fail to load key" << std::endl;
             return false;
         }
-        sec = client.secretForKey(key);
+        sec = client->secretForKey(key);
         if (sec.isEmpty())
         {
             std::cerr << "fail to load sec" << std::endl;
@@ -113,15 +122,15 @@ static void* clienthread(void* data)
 
     std::unique_ptr<DummyStorage> storage = std::make_unique<DummyStorage>(*db);
     BtcObjects::Funds funds;
+    QRegExp rx("you should send:([0-9]*)");
 
     while(true)
     {
         bool isSell = qrand() % 2;
-        double amount = (qrand() % 1000) / 1000.0 + 0.01;
-        double rate;
-        double balance;
+        Amount amount ((qrand() % 1000) / 1000.0 + 0.01);
+        Rate rate (1750 + (qrand() % 100) / 10.0 - 5);
+        Amount balance;
         QString currency;
-        rate = 1750 + (qrand() % 100) / 10.0 - 5;
         if (isSell)
         {
             balance = amount;
@@ -136,7 +145,7 @@ static void* clienthread(void* data)
         if (!storage->loadKeyForCurrencyBalance(currency, balance))
             continue;
 
-        BtcTradeApi::Trade trade(*storage, funds, "btc_usd", isSell?BtcObjects::Order::Type::Sell:BtcObjects::Order::Type::Buy, rate, amount);
+        BtcTradeApi::Trade trade(*storage, funds, "btc_usd", isSell?BtcObjects::Order::Type::Sell:BtcObjects::Order::Type::Buy, rate.getAsDouble(), amount.getAsDouble());
         try
         {
             performTradeRequest("trade", trade, false);
@@ -144,6 +153,10 @@ static void* clienthread(void* data)
         catch(std::runtime_error& e)
         {
             std::cerr << e.what() << std::endl;
+            if (rx.indexIn(QString::fromStdString(e.what())) > 0)
+            {
+                nonce(rx.cap(1).toUInt());
+            }
         }
         //usleep(1500);
     }

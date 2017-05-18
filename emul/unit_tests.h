@@ -16,7 +16,7 @@ class BtceEmulator_Test : public QObject
     Q_OBJECT
     quint32 nonce();
     std::unique_ptr<Responce> client;
-    std::unique_ptr<SqlClient> sqlClient;
+    std::unique_ptr<AbstractDataAccessor> sqlClient;
 public:
     BtceEmulator_Test(QSqlDatabase& db);
 private slots:
@@ -98,7 +98,9 @@ private slots:
     void Trade_parameterRateMinValueCheck();
     void Trade_buy();
     void Trade_sell();
-    void Trade_balanceValid();
+    void Trade_depositValid_sell();
+    void Trade_depositValid_buy();
+    void Trade_exchangeTotalBalanceValid();
     void Trade_tradeBenchmark();
 };
 #endif // UNIT_TESTS_H

@@ -10,10 +10,12 @@ CONFIG -= app_bundle
 TEMPLATE = app
 
 LIBS += -L../lib -lcommon -lbtce
-INCLUDEPATH += ../common ../btce
+INCLUDEPATH += ../common ../btce ../decimal_for_cpp/include
 
 SOURCES += main.cpp \
-    ../emul/sqlclient.cpp
+	../emul/sqlclient.cpp
+
+DEFINES += DEC_NAMESPACE=cppdec
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings

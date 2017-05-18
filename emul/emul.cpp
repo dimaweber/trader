@@ -581,9 +581,9 @@ void populateDatabase(QSqlDatabase& db, int trades_limit, int depth_limit)
     QSqlQuery query(db);
     populateTablesFromCsv(db);
 
-    performSql("add user_type column", query, "alter table users add user_type int not null default 1"); // 0 - special (exchannge), 1 - emulated, 2 - regular
+    performSql("add user_type column", query, "alter table users add user_type int not null default 1", true); // 0 - special (exchannge), 1 - emulated, 2 - regular
 
-    performSql("create EXCHANGE user", query, QString("insert into users (user_id, name, user_type) values (%1, 'EXCHANGE', 0)").arg(EXCHNAGE_USER_ID));
+    performSql("create EXCHANGE user", query, QString("insert into users (user_id, name, user_type) values (%1, 'EXCHANGE', 0)").arg(EXCHNAGE_USER_ID), true);
 
     performSql("fill usersIdDache", query, "select user_id from users", true);
     while (query.next())
@@ -637,7 +637,7 @@ static void* fcgiThread(void* data)
 
         QString json;
         QVariantMap var;
-        Responce::Method method;
+        Method method;
         QElapsedTimer timer;
         timer.start();
         var = responce->getResponce(httpQuery, method);
@@ -742,11 +742,19 @@ int main(int argc, char *argv[])
         pthread_create(&id[i], nullptr, fcgiThread, pData);
     }
 
-    FcgiThreadData* pData = new FcgiThreadData;
-    pData->sock = sock;
-    pData->pDb = &db;
-    pData->id=THREAD_COUNT;
-    fcgiThread(pData);
+
+    Responce r(db);
+    QVariantMap initialBalance = r.exchangeBalance();
+    while (true)
+    {
+        QVariantMap balance = r.exchangeBalance();
+
+        if (balance != initialBalance)
+            std::cerr << "***** ERROR **** : balance mismatch " << std::endl;
+        else
+            std::clog << "Balance ok" << std::endl;
+        sleep(30);
+    }
 
     for (size_t i=0; i<THREAD_COUNT; i++)
         pthread_join(id[i], nullptr);

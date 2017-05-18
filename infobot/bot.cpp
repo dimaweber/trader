@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
 
                 params[":value"] = value;
 
-                if (performSql("set deposit", *pQ, params))
+                if (performSql("set deposit", *pQ, params, true))
                     answer += QString("%3 for pair %1 set to %2\n")
                              .arg(pairName)
                              .arg(value)

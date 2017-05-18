@@ -18,19 +18,22 @@ QMAKE_CFLAGS += -fprofile-arcs -ftest-coverage
 TEMPLATE = app
 
 SOURCES += \
-    responce.cpp \
-    emul.cpp \
-    authentificator.cpp \
-    unit_tests.cpp \
-    sqlclient.cpp
+	responce.cpp \
+	emul.cpp \
+	authentificator.cpp \
+	unit_tests.cpp \
+	sqlclient.cpp
 
 HEADERS += \
-    query_parser.h \
-    unit_tests.h \
-    responce.h \
-    fcgi_request.h \
-    authentificator.h \
-    sqlclient.h
+	query_parser.h \
+	unit_tests.h \
+	responce.h \
+	fcgi_request.h \
+	authentificator.h \
+	sqlclient.h \
+    types.h
+
+DEFINES += DEC_NAMESPACE=cppdec
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
@@ -44,7 +47,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 OTHER_FILES += \
-    ../data/emul.ini
+	../data/emul.ini
 
 DISTFILES += \
-    users.csv
+	users.csv

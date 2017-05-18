@@ -1,6 +1,7 @@
 #include "fcgi_request.h"
 #include "query_parser.h"
-#include "sql_database.h"
+#include "sqlclient.h"
+//#include "sql_database.h"
 #include "unit_tests.h"
 #include "utils.h"
 
@@ -10,7 +11,7 @@ quint32 BtceEmulator_Test::nonce()
     return value++;
 }
 
-BtceEmulator_Test::BtceEmulator_Test(QSqlDatabase& db):client(new Responce(db)), sqlClient(new SqlClient(db))
+BtceEmulator_Test::BtceEmulator_Test(QSqlDatabase& db):client(new Responce(db)), sqlClient(new DirectSqlDataAccessor(db))
 {}
 
 void BtceEmulator_Test::FcgiRequest_httpGetQuery()
@@ -158,10 +159,10 @@ void BtceEmulator_Test::Methods_invalidMethod()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce = client->getResponce( parser, method);
 
-    QCOMPARE(method, Responce::Responce::Method::Invalid);
+    QCOMPARE(method, Method::Invalid);
     QVERIFY(responce.contains("success"));
     QCOMPARE(responce["success"].toInt(), 0);
     QVERIFY(responce.contains("error"));
@@ -177,10 +178,10 @@ void BtceEmulator_Test::Methods_publicInfo()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce = client->getResponce( parser, method);
 
-    QCOMPARE(method, Responce::Responce::Method::PublicInfo);
+    QCOMPARE(method, Method::PublicInfo);
 }
 
 void BtceEmulator_Test::Methods_publicTicker()
@@ -192,10 +193,10 @@ void BtceEmulator_Test::Methods_publicTicker()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce = client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Responce::Method::PublicTicker);
+    QCOMPARE(method, Method::PublicTicker);
 }
 
 void BtceEmulator_Test::Methods_publicDepth()
@@ -207,10 +208,10 @@ void BtceEmulator_Test::Methods_publicDepth()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce = client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Responce::Method::PublicDepth);
+    QCOMPARE(method, Method::PublicDepth);
 }
 
 void BtceEmulator_Test::Methods_publicTrades()
@@ -222,15 +223,15 @@ void BtceEmulator_Test::Methods_publicTrades()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce = client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Responce::Method::PublicTrades);
+    QCOMPARE(method, Method::PublicTrades);
 }
 
 void BtceEmulator_Test::Info_serverTimePresent()
 {
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -247,7 +248,7 @@ void BtceEmulator_Test::Info_serverTimePresent()
 
 void BtceEmulator_Test::Info_pairsPresent()
 {
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -271,7 +272,7 @@ void BtceEmulator_Test::Ticker_emptyList()
 {
     // In:    https://btc-e.com/api/3/ticker
     // Out:   {"success":0, "error":"Empty pair list"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -293,7 +294,7 @@ void BtceEmulator_Test::Ticker_emptyList_withIgnore()
 {
     // In:   https://btc-e.com/api/3/ticker?ignore_invalid=1
     // Out:  {"success":0, "error":"Empty pair list"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -315,7 +316,7 @@ void BtceEmulator_Test::Ticker_emptyPairnameHandle()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd-
     // Out:  VALID json
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -338,7 +339,7 @@ void BtceEmulator_Test::Ticker_onePair()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd
     // Out:  VALID json
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -361,7 +362,7 @@ void BtceEmulator_Test::Ticker_twoPairs()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_eur
     // Out:  VALID json
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -385,7 +386,7 @@ void BtceEmulator_Test::Ticker_ignoreInvalid()
 {
     // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=1
     // Out:  VALID json
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -408,7 +409,7 @@ void BtceEmulator_Test::Ticker_ignoreInvalidWithouValue()
 {
     // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid
     // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -429,7 +430,7 @@ void BtceEmulator_Test::Ticker_ignoreInvalidInvalidSetToZero()
 {
     // In:   http://localhost:81/api/3/tick1er/btc_usd-non_ext?ignore_invalid=0
     // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -450,7 +451,7 @@ void BtceEmulator_Test::Ticker_invalidPair()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd-non_ext
     // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -471,7 +472,7 @@ void BtceEmulator_Test::Ticker_InvalidPairPrevailOnDoublePair()
 {
     // In:   https://btc-e.com/api/3/ticker/non_ext-non_ext
     // Out:  {"success":0, "error":"Invalid pair name: non_ext"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -492,7 +493,7 @@ void BtceEmulator_Test::Ticker_reversePairName()
 {
     // In:   https://btc-e.com/api/3/ticker/usd_btc
     // Out:  {"success":0, "error":"Invalid pair name: usd_btc"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -511,7 +512,7 @@ void BtceEmulator_Test::Ticker_reversePairName()
 
 void BtceEmulator_Test::Ticker_timestampFormat()
 {
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -529,7 +530,7 @@ void BtceEmulator_Test::Ticker_duplicatePair()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd
     // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -550,7 +551,7 @@ void BtceEmulator_Test::Ticker_ignoreInvalidForDuplicatePair()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_usd?ignore_invalid=1
     // Out:  {"success":0, "error":"Duplicated pair name: btc_usd"}
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -577,7 +578,7 @@ void BtceEmulator_Test::Authentication_noKey()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -597,7 +598,7 @@ void BtceEmulator_Test::Authentication_invalidKey()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -618,7 +619,7 @@ void BtceEmulator_Test::Authentication_noSign()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -640,7 +641,7 @@ void BtceEmulator_Test::Authentication_invalidSign()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -662,7 +663,7 @@ void BtceEmulator_Test::Authentication_infoPermissionCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -684,7 +685,7 @@ void BtceEmulator_Test::Authentication_tradePermissionCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -706,7 +707,7 @@ void BtceEmulator_Test::Authentication_withdrawPermissionCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -728,7 +729,7 @@ void BtceEmulator_Test::Authentication_noNonce()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -752,7 +753,7 @@ void BtceEmulator_Test::Authentication_invalidNonce()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -776,10 +777,10 @@ void BtceEmulator_Test::Method_privateGetInfo()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Method::PrivateGetInfo);
+    QCOMPARE(method, Method::PrivateGetInfo);
 }
 
 void BtceEmulator_Test::Method_privateActiveOrders()
@@ -795,10 +796,10 @@ void BtceEmulator_Test::Method_privateActiveOrders()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Method::PrivateActiveOrders);
+    QCOMPARE(method, Method::PrivateActiveOrders);
 }
 
 void BtceEmulator_Test::Method_privateOrderInfo()
@@ -814,10 +815,10 @@ void BtceEmulator_Test::Method_privateOrderInfo()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Method::PrivateOrderInfo);
+    QCOMPARE(method, Method::PrivateOrderInfo);
 }
 
 void BtceEmulator_Test::Method_privateTrade()
@@ -833,10 +834,10 @@ void BtceEmulator_Test::Method_privateTrade()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Method::PrivateTrade);
+    QCOMPARE(method, Method::PrivateTrade);
 }
 
 void BtceEmulator_Test::Method_privateCancelOrder()
@@ -852,10 +853,10 @@ void BtceEmulator_Test::Method_privateCancelOrder()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
-    QCOMPARE(method, Responce::Method::PrivateCanelOrder);
+    QCOMPARE(method, Method::PrivateCanelOrder);
 }
 
 void BtceEmulator_Test::Depth_emptyList()
@@ -869,7 +870,7 @@ void BtceEmulator_Test::Depth_emptyList()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(!responce.isEmpty());
@@ -891,7 +892,7 @@ void BtceEmulator_Test::Depth_valid()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(!responce.isEmpty());
@@ -906,7 +907,7 @@ void BtceEmulator_Test::Depth_twoPairs()
 {
     // In:   https://btc-e.com/api/3/ticker/btc_usd-btc_eur
     // Out:  VALID json
-    Responce::Method method;
+    Method method;
     QByteArray in;
     QMap<QString, QString> headers;
     QUrl url;
@@ -931,7 +932,7 @@ void BtceEmulator_Test::Depth_sortedByRate()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVariantMap btc_usd = responce["btc_usd"].toMap();
@@ -952,7 +953,7 @@ void BtceEmulator_Test::Depth_ratesDecimalDigits()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVariantMap btc_usd = responce["btc_usd"].toMap();
@@ -976,7 +977,7 @@ void BtceEmulator_Test::Depth_limit()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVariantMap btc_usd = responce["btc_usd"].toMap();
@@ -997,7 +998,7 @@ void BtceEmulator_Test::Trades_emptyList()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(!responce.isEmpty());
@@ -1018,7 +1019,7 @@ void BtceEmulator_Test::Trades_valid()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(!responce.isEmpty());
@@ -1049,7 +1050,7 @@ void BtceEmulator_Test::Trades_limit()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVariantList btc_usd = responce["btc_usd"].toList();
@@ -1065,7 +1066,7 @@ void BtceEmulator_Test::Trades_sortedByTimestamp()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVariantList btc_usd = responce["btc_usd"].toList();
@@ -1090,7 +1091,7 @@ void BtceEmulator_Test::GetInfo_valid()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -1116,7 +1117,7 @@ void BtceEmulator_Test::ActiveOrders_valid()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -1143,7 +1144,7 @@ void BtceEmulator_Test::OrderInfo_missingOrderId()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -1166,7 +1167,7 @@ void BtceEmulator_Test::OrderInfo_wrongOrderId()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -1189,7 +1190,7 @@ void BtceEmulator_Test::OrderInfo_valid()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QVERIFY(responce.contains("success"));
@@ -1218,7 +1219,7 @@ void BtceEmulator_Test::Trade_parameterPairPresenceCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QCOMPARE(responce["error"].toString(), QString("You incorrectly entered one of fields."));
@@ -1237,7 +1238,7 @@ void BtceEmulator_Test::Trade_parameterPairValidityCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QCOMPARE(responce["error"].toString(), QString("You incorrectly entered one of fields."));
@@ -1256,7 +1257,7 @@ void BtceEmulator_Test::Trade_parameterTypeCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
     //        if (responce["success"].toInt() == 0)
     //            std::clog << responce["error"].toString() << std::endl;
@@ -1272,13 +1273,13 @@ void BtceEmulator_Test::Trade_parameterAmountMinValueCheck()
     QUrl url;
     url = "http://loclahost:81/tapi";
     in = QString("method=Trade&nonce=%1&rate=100&amount=0.00001&type=buy&pair=btc_usd").arg(nonce()).toUtf8();
-    QByteArray key = sqlClient->randomKeyForTrade("usd", 0.2);
+    QByteArray key = sqlClient->randomKeyForTrade("usd", Amount(0.2));
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
     //        if (responce["success"].toInt() == 0)
     //            std::clog << responce["error"].toString() << std::endl;
@@ -1302,7 +1303,7 @@ void BtceEmulator_Test::Trade_parameterRateMinValueCheck()
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
     //        if (responce["success"].toInt() == 0)
     //            std::clog << responce["error"].toString() << std::endl;
@@ -1319,21 +1320,20 @@ void BtceEmulator_Test::Trade_buy()
     QMap<QString, QString> headers;
     QUrl url;
     url = "http://loclahost:81/tapi";
-    double amount = 0.2;
-    double rate;
-    double balance;
+    Amount amount (0.2);
+    Rate rate (1850);
+    Amount balance;
     QString currency;
-    rate = 1850;
     balance = rate * amount;
     currency = "usd";
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(amount).arg(rate).toUtf8();
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
     QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     if (responce["success"].toInt() == 0)
@@ -1341,11 +1341,11 @@ void BtceEmulator_Test::Trade_buy()
     QCOMPARE(responce["success"].toInt(), 1);
     QVERIFY(responce.contains("return") && responce["return"].canConvert(QVariant::Map));
     QVariantMap ret = responce["return"].toMap();
-    double received = ret["received"].toDouble();
-    double remains = ret["remains"].toDouble();
+    Amount received = qvar2dec<7>(ret["received"]);
+    Amount remains = qvar2dec<7>(ret["remains"]);
     quint32 order_id = ret["order_id"].toUInt();
-    QCOMPARE(received + remains, amount);
-    QVERIFY((remains > 0 and order_id != 0) or (remains == 0 and order_id == 0));
+    QVERIFY(received /(Fee(1)-Fee(0.002)) + remains == amount);
+    QVERIFY((remains > Amount(0) and order_id != 0) or (remains == Amount(0) and order_id == 0));
 
     QVariantMap balanceAfter = client->exchangeBalance();
     QCOMPARE(balanceBefore, balanceAfter);
@@ -1360,47 +1360,138 @@ void BtceEmulator_Test::Trade_sell()
     QUrl url;
     url = "http://loclahost:81/tapi";
     bool isSell = true;
-    double amount = 0.2;
-    double rate;
-    double balance;
+    Amount amount (0.2);
+    Rate rate;
+    Amount balance;
+    Fee fee  (0.002);
     QString currency;
     if (isSell)
     {
-        rate = 0.1;
+        rate = Rate(0.1);
         balance = amount;
         currency = "btc";
     }
     else
     {
-        rate = 1850;
+        rate = Rate(1850);
         balance = rate * amount;
         currency = "usd";
     }
-    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
     QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
     headers["KEY"] = key;
     headers["SIGN"] = sqlClient->signWithKey(in, key);
 
     FcgiRequest request(url , headers, in);
     QueryParser parser(request);
-    Responce::Method method;
+    Method method;
     QVariantMap responce =client->getResponce(parser, method);
 
     QCOMPARE(responce["success"].toInt(), 1);
     QVERIFY(responce.contains("return") && responce["return"].canConvert(QVariant::Map));
     QVariantMap ret = responce["return"].toMap();
-    double received = ret["received"].toDouble();
-    double remains = ret["remains"].toDouble();
+    Amount received = qvar2dec<7>(ret["received"]);
+    Amount remains = qvar2dec<7>(ret["remains"]);
     quint32 order_id = ret["order_id"].toUInt();
-    QCOMPARE(received + remains, amount);
-    QVERIFY((remains > 0 and order_id != 0) or (remains == 0 and order_id == 0));
+    QVERIFY(received / (Fee(1)-fee) + remains == amount);
+    QVERIFY((remains > Amount(0) and order_id != 0) or (remains == Amount(0) and order_id == 0));
 
     QVariantMap balanceAfter = client->exchangeBalance();
     QCOMPARE(balanceBefore, balanceAfter);
 
 }
 
-void BtceEmulator_Test::Trade_balanceValid()
+void BtceEmulator_Test::Trade_depositValid_sell()
+{
+    QByteArray in;
+    QMap<QString, QString> headers;
+    QUrl url;
+    url = "http://loclahost:81/tapi";
+    Amount amount  {0.2};
+    Rate rate (0.1);
+    Fee fee (.002);
+
+    QString currency  = "btc";
+
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("sell").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+
+    QByteArray key = sqlClient->randomKeyForTrade(currency, amount);
+    headers["KEY"] = key;
+    headers["SIGN"] = sqlClient->signWithKey(in, key);
+
+    FcgiRequest request(url , headers, in);
+    QueryParser parser(request);
+    Method method;
+
+    Amount btc_before = sqlClient->getDepositCurrencyVolume(key, "btc");
+    Amount usd_before = sqlClient->getDepositCurrencyVolume(key, "usd");
+
+    QVariantMap responce =client->getResponce(parser, method);
+
+    Amount btc_after = sqlClient->getDepositCurrencyVolume(key, "btc");
+    Amount usd_after = sqlClient->getDepositCurrencyVolume(key, "usd");
+
+    QCOMPARE(responce["success"].toInt(), 1);
+    QVERIFY(responce.contains("return") && responce["return"].canConvert(QVariant::Map));
+    QVariantMap ret = responce["return"].toMap();
+    Amount received = Amount(ret["received"].toString().toStdString());
+    Amount remains = Amount(ret["remains"].toString().toStdString());
+    quint32 order_id = ret["order_id"].toUInt();
+    QVERIFY(received/(Amount(1)-fee) + remains == amount);
+    QVERIFY(   (remains > Amount(0) and order_id != 0)
+            or (remains == Amount(0) and order_id == 0));
+
+    QVERIFY(btc_before - btc_after == amount);
+    QVERIFY(usd_after - usd_before  >= received * rate);
+}
+
+void BtceEmulator_Test::Trade_depositValid_buy()
+{
+    QByteArray in;
+    QMap<QString, QString> headers;
+    QUrl url;
+    url = "http://loclahost:81/tapi";
+    Amount amount  {0.2};
+    Rate rate (2000);
+    QString currency  = "usd";
+
+    in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg("buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
+
+    QByteArray key = sqlClient->randomKeyForTrade(currency, amount*rate);
+    headers["KEY"] = key;
+    headers["SIGN"] = sqlClient->signWithKey(in, key);
+
+    FcgiRequest request(url , headers, in);
+    QueryParser parser(request);
+    Method method;
+
+    Amount btc_before = sqlClient->getDepositCurrencyVolume(key, "btc");
+    Amount usd_before = sqlClient->getDepositCurrencyVolume(key, "usd");
+
+    QVariantMap responce =client->getResponce(parser, method);
+
+    Amount btc_after = sqlClient->getDepositCurrencyVolume(key, "btc");
+    Amount usd_after = sqlClient->getDepositCurrencyVolume(key, "usd");
+
+    QCOMPARE(responce["success"].toInt(), 1);
+    QVERIFY(responce.contains("return") && responce["return"].canConvert(QVariant::Map));
+    QVariantMap ret = responce["return"].toMap();
+    Amount received = Amount(ret["received"].toString().toStdString());
+    Amount remains = Amount(ret["remains"].toString().toStdString());
+    quint32 order_id = ret["order_id"].toUInt();
+    Amount contra_fee = Amount(1) - Amount(.002);
+    QVERIFY(received/contra_fee + remains == amount);
+    QVERIFY(   (remains > Amount(0) and order_id != 0)
+            or (remains == Amount(0) and order_id == 0));
+
+    QVERIFY(btc_after - btc_before == received);
+    std::clog << usd_before - usd_after << " USD" << std::endl
+              << amount * rate << " USD" << std::endl
+              << received * rate << std::endl;
+    QVERIFY(usd_before - usd_after  <= amount * rate);
+}
+
+void BtceEmulator_Test::Trade_exchangeTotalBalanceValid()
 {
     QVariantMap balanceBefore = client->exchangeBalance();
 
@@ -1411,11 +1502,10 @@ void BtceEmulator_Test::Trade_balanceValid()
         QUrl url;
         url = "http://loclahost:81/tapi";
         bool isSell = qrand() % 2;
-        double amount = (qrand() % 1000) / 100.0 + 0.01;
-        double rate;
-        double balance;
+        Amount amount ((qrand() % 1000) / 100.0 + 0.01);
+        Rate rate (1750 + (qrand() % 100) / 10.0 - 5);
+        Amount balance;
         QString currency;
-        rate = 1750 + (qrand() % 100) / 10.0 - 5;
         if (isSell)
         {
             balance = amount;
@@ -1426,7 +1516,7 @@ void BtceEmulator_Test::Trade_balanceValid()
             balance = rate * amount;
             currency = "usd";
         }
-        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
         QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
         if (key.isEmpty())
             continue;
@@ -1435,7 +1525,7 @@ void BtceEmulator_Test::Trade_balanceValid()
 
         FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-        Responce::Method method;
+        Method method;
         QVariantMap responce =client->getResponce(parser, method);
 
         if (responce["success"].toInt() == 0)
@@ -1458,11 +1548,10 @@ void BtceEmulator_Test::Trade_tradeBenchmark()
         QUrl url;
         url = "http://loclahost:81/tapi";
         bool isSell = qrand() % 2;
-        double amount = (qrand() % 1000) / 100.0 + 0.01;
-        double rate;
-        double balance;
+        Amount amount ((qrand() % 1000) / 100.0 + 0.01);
+        Rate rate (1750 + (qrand() % 100) / 10.0 - 5);
+        Amount balance;
         QString currency;
-        rate = 1750 + (qrand() % 100) / 10.0 - 5;
         if (isSell)
         {
             balance = amount;
@@ -1473,7 +1562,7 @@ void BtceEmulator_Test::Trade_tradeBenchmark()
             balance = rate * amount;
             currency = "usd";
         }
-        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(amount).arg(rate).toUtf8();
+        in = QString("method=Trade&nonce=%1&rate=%4&amount=%3&type=%2&pair=btc_usd").arg(nonce()).arg(isSell?"sell":"buy").arg(dec2qstr(amount)).arg(dec2qstr(rate)).toUtf8();
         QByteArray key = sqlClient->randomKeyForTrade(currency, balance);
         if (key.isEmpty())
             continue;
@@ -1482,7 +1571,7 @@ void BtceEmulator_Test::Trade_tradeBenchmark()
 
         FcgiRequest request(url , headers, in);
         QueryParser parser(request);
-        Responce::Method method;
+        Method method;
         QBENCHMARK(client->getResponce(parser, method));
     }
 }
