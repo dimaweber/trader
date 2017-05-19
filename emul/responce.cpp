@@ -25,12 +25,10 @@ QAtomicInt Responce::counter = 0;
 Responce::Responce(QSqlDatabase& database)
     :db(database)
 {
-    dataAccessor = std::make_shared<DirectSqlDataAccessor>(db);
+    dataAccessor = std::make_shared<LocalCachesSqlDataAccessor>(db);
     auth.reset(new Authentificator(dataAccessor));
 
     selectActiveOrdersCountQuery.reset(new QSqlQuery(db));
-    selectOrdersForSellTrade.reset(new QSqlQuery(db));
-    selectOrdersForBuyTrade.reset(new QSqlQuery(db));
 
     cancelOrderQuery.reset(new QSqlQuery(db));
 
@@ -40,8 +38,7 @@ Responce::Responce(QSqlDatabase& database)
 
 
     prepareSql(*selectActiveOrdersCountQuery, "select count(*) from apikeys a left join orders o on o.user_id=a.user_id where a.apikey=:key and o.status = 'active'");
-    prepareSql(*selectOrdersForSellTrade, "select order_id, amount, rate, o.user_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join users w on w.user_id=o.user_id where type='buy' and status='active' and pair=:pair and o.user_id<>:user_id and rate >= :rate order by rate desc, order_id asc");
-    prepareSql(*selectOrdersForBuyTrade, "select order_id, amount, rate, o.user_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join users w on w.user_id=o.user_id where type='sell' and status='active' and pair=:pair and o.user_id<>:user_id and rate <= :rate order by rate asc, order_id asc");
+
 
     prepareSql(*cancelOrderQuery, "update orders set status=case when start_amount=amount then 'cancelled' else 'part_done' end where order_id=:order_id");
 }
@@ -146,6 +143,12 @@ quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVo
         PairInfo::Ptr pairInfo = dataAccessor->pairInfo(pair);
         OrderId matched_order_id = query.value(0).toUInt();
         Amount matched_amount = qvar2dec<7>(query.value(1));
+        double a = matched_amount.getAsDouble();
+        double b = query.value(1).toDouble();
+        if (a != b)
+        {
+            std::cout << query.value(1).toString() << " " << a << " " << b << std::endl;
+        }
         Amount matched_rate   = qvar2dec<7>(query.value(2));
         UserId matched_user_id = query.value(3).toUInt();
         QString matched_userName = query.value(4).toString();
@@ -154,7 +157,7 @@ quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVo
                   <<QString("Found %5 order %1 from user %2 for %3 @ %4 ")
                      .arg(matched_order_id)
                      .arg(matched_userName)
-                     .arg(dec2qstr(matched_amount, pairInfo->decimal_places))
+                     .arg(dec2qstr(matched_amount, 6))
                      .arg(dec2qstr(matched_rate, pairInfo->decimal_places))
                      .arg(matchedOrderType)
                   << std::endl;
@@ -182,6 +185,19 @@ quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVo
         }
         if (!dataAccessor->createNewTradeRecord(user_id, matched_order_id, trade_amount))
             return (quint32)-1;
+        else
+        {
+            TickerInfo::Ptr ticker = dataAccessor->tickerInfo(pair);
+            if (ticker)
+            {
+                QMutexLocker lock(&ticker->updateAccess);
+                ticker->last = matched_rate;
+                if (type == OrderInfo::Type::Buy)
+                    ticker->buy = matched_rate;
+                else
+                    ticker->sell = matched_rate;
+            }
+        }
 
         amnt -= trade_amount;
         if (amnt == Amount(0))
@@ -199,77 +215,6 @@ quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVo
     }
     return ret;
 }
-
-//bool Responce::reduceOrderAmount(OrderId order_id, Amount amount)
-//{
-//    QSqlQuery sql(db);
-//    prepareSql(sql, "update orders set amount=amount-:diff where order_id=:order_id");
-//    QVariantMap params;
-//    params[":diff"] = amount);
-//    params[":order_id"] = order_id;
-//    if (!performSql("reduce :order_id amount by :diff", sql, params, true))
-//        return false;
-
-//    {
-//        QMutexLocker lock(&orderInfoCacheRWAccess);
-//        OrderInfo::Ptr* item = orderInfoCache.object(order_id);
-//        if (item)
-//            (*item)->amount -= amount;
-//    }
-//    std::clog << "\t\tOrder " << order_id << " amount changed by " << amount << std::endl;
-//    return true;
-//}
-
-//bool Responce::closeOrder(OrderId order_id)
-//{
-//    QSqlQuery sql(db);
-//    prepareSql(sql, "update orders set amount=0, status='done' where order_id=:order_id");
-//    QVariantMap params;
-//    params[":order_id"] = order_id;
-//    if (!performSql("close order :order_id", sql, params, true))
-//        return false;
-
-//    QMutexLocker lock(&orderInfoCacheRWAccess);
-//    orderInfoCache.remove(order_id);
-//    std::clog << "\t\tOrder " << order_id << "done" << std::endl;
-
-//    return true;
-
-//}
-
-//bool Responce::createNewTradeRecord(UserId user_id, OrderId order_id, const Amount& amount)
-//{
-//    QSqlQuery sql(db);
-//    prepareSql(sql, "insert into trades (user_id, order_id, amount, created) values (:user_id, :order_id, :amount, :created)");
-//    QVariantMap params;
-//    params[":user_id"] = user_id;
-//    params[":order_id"] = order_id;
-//    params[":created"] = QDateTime::currentDateTime();
-//    params[":amount"] = amount);
-//    performSql("create new trade for user :user_id", sql, params, true);
-//    return true;
-
-//}
-
-//OrderId Responce::createNewOrderRecord(const PairName &pair, const UserId &user_id, OrderInfo::Type type, Rate rate, Amount amount)
-//{
-//    QSqlQuery sql(db);
-//    QVariantMap params;
-//    params[":pair_id"]  = pairInfo(pair)->pair_id;
-//    params[":user_id"]  = user_id;
-//    params[":type"]     = (type == OrderInfo::Type::Buy)?"buy":"sell";
-//    params[":rate"]     = rate);
-//    params[":start_amount"] = amount);
-//    params[":created"] = QDateTime::currentDateTime();
-//    if (!prepareSql(sql, "insert into orders (pair_id, user_id, type, rate, start_amount, amount, created, status) values (:pair_id, :user_id, :type, :rate, :start_amount, :start_amount, :created, 'active')"))
-//        return static_cast<OrderId>(-1);
-//    if (!performSql("create new ':pair' order for user :user_id as :amount @ :rate", sql, params, true ))
-//        return static_cast<OrderId>(-1);
-
-//    std::clog << "new " << ((type == OrderInfo::Type::Buy)?"buy":"sell") << " order for " << amount << " @ " << rate << " created" << std::endl;
-
-//    return sql.lastInsertId().toUInt();
-//}
 
 Responce::OrderCreateResult Responce::checkParamsAndDoExchange(const ApiKey& key, const PairName& pair, OrderInfo::Type type, const Rate& rate, const Amount& amount)
 {
@@ -314,7 +259,7 @@ Responce::OrderCreateResult Responce::checkParamsAndDoExchange(const ApiKey& key
     {
         ret.errMsg = QString("Value %1 must be greater than %2 %1.")
                 .arg(currency.toUpper())
-                .arg(dec2qstr(min_amount, decimal_places));
+                .arg(dec2qstr(min_amount, 6));
         return ret;
     }
 
@@ -349,18 +294,54 @@ Responce::OrderCreateResult Responce::checkParamsAndDoExchange(const ApiKey& key
     QString userName = user->name;
 
     std::clog << QString("user %1 wants to %2 %3 %4 for %5 %6 (rate %7)")
-                 .arg(userName).arg((type == OrderInfo::Type::Buy)?"buy":"sell").arg(dec2qstr(amnt, decimal_places)).arg(pair.left(3).toUpper())
+                 .arg(userName).arg((type == OrderInfo::Type::Buy)?"buy":"sell").arg(dec2qstr(amnt, 6)).arg(pair.left(3).toUpper())
                  .arg(dec2qstr(amnt * rate, decimal_places)).arg(pair.right(3).toUpper()).arg(dec2qstr(rate, decimal_places))
               << std::endl;
 
     TradeCurrencyVolume volumes;
-    QSqlQuery* query = nullptr;
-    if (type == OrderInfo::Type::Buy)
-        query = selectOrdersForBuyTrade.get();
-    else if (type == OrderInfo::Type::Sell)
-        query = selectOrdersForSellTrade.get();
+    static QMap<QString, QMutex*> tradeMutex;
+    static QMutex mutexsCollectionAccess;
 
-    ret.order_id = doExchange(userName, rate, volumes, type, rate, pair, *query, amnt, fee, user_id);
+    QString mutexKey = QString("%1-%2").arg(pair).arg(static_cast<int>(type));
+    mutexsCollectionAccess.lock();
+    QMutex* pMutex = nullptr;
+    auto iter = tradeMutex.find(mutexKey);
+    if (iter == tradeMutex.end())
+    {
+        pMutex = new QMutex;
+        tradeMutex.insert(mutexKey, pMutex);
+    }
+    else
+        pMutex = iter.value();
+    mutexsCollectionAccess.unlock();
+
+    bool success = true;
+    do
+    {
+        try
+        {
+            QMutexLocker lock(pMutex);
+            dataAccessor->transaction();
+            QSqlQuery query(db);
+            if (type == OrderInfo::Type::Buy)
+                prepareSql(query,  "select order_id, amount, rate, o.user_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join users w on w.user_id=o.user_id where type='sell' and status='active' and pair=:pair and o.user_id<>:user_id and rate <= :rate order by rate asc, order_id asc");
+            else if (type == OrderInfo::Type::Sell)
+                prepareSql(query, "select order_id, amount, rate, o.user_id, w.name from orders o left join pairs p on p.pair_id = o.pair_id left join users w on w.user_id=o.user_id where type='buy'  and status='active' and pair=:pair and o.user_id<>:user_id and rate >= :rate order by rate desc, order_id asc");
+
+            amnt = amount;
+            ret.order_id = doExchange(userName, rate, volumes, type, rate, pair, query, amnt, fee, user_id);
+            dataAccessor->commit();
+            success = true;
+        }
+        catch(const QSqlQuery& e)
+        {
+            dataAccessor->rollback();
+            if (e.lastError().nativeErrorCode() != "1213")
+                throw;
+            success = false;
+        }
+    } while (!success);
+
     if (ret.order_id != (quint32)-1)
     {
         ret.ok = true;
@@ -521,8 +502,8 @@ QVariantMap Responce::getInfoResponce(Method &method)
         pair["decimal_places"] = info->decimal_places;
         pair["min_price"] = dec2qstr(info->min_price, info->decimal_places);
         pair["max_price"] = dec2qstr(info->max_price, info->decimal_places);
-        pair["min_amount"] = dec2qstr(info->min_amount, info->decimal_places);
-        pair["hidden"] = info->hidden;
+        pair["min_amount"] = dec2qstr(info->min_amount, 6);
+        pair["hidden"] = static_cast<int>(info->hidden);
         pair["fee"] = dec2qstr(info->fee, 7);
 
         pairs[info->pair] = pair;
@@ -559,7 +540,7 @@ QVariantMap Responce::getTickerResponce(const QueryParser& httpQuery, Method& me
             pair["high"] = dec2qstr(info->high, decimal_places);
             pair["low"]  = dec2qstr(info->low, decimal_places);
             pair["avg"]  = dec2qstr(info->avg, decimal_places);
-            pair["vol"]  = dec2qstr(info->vol, decimal_places);
+            pair["vol"]  = dec2qstr(info->vol, 6);
             pair["vol_cur"] = dec2qstr(info->vol_cur, decimal_places);
             pair["last"] = dec2qstr(info->last, decimal_places);
             pair["buy"] = dec2qstr(info->buy, decimal_places);
@@ -593,7 +574,7 @@ QVariantList Responce::appendDepthToMap(const Depth& depth, int limit, int dp)
     for(QPair<Rate, Amount> item: depth)
     {
             QVariantList values;
-            values << dec2qstr(item.first, dp) << dec2qstr(item.second, dp);
+            values << dec2qstr(item.first, dp) << dec2qstr(item.second, 6);
             QVariant castedValue = values;
             ret << castedValue;
             if (ret.length() >= limit)
@@ -675,7 +656,7 @@ QVariantMap Responce::getTradesResponce(const QueryParser &httpQuery, Method &me
 
             tr["type"] = type;
             tr["price"] = dec2qstr(info->rate, decimal_places);
-            tr["amount"] = dec2qstr(info->amount, decimal_places);
+            tr["amount"] = dec2qstr(info->amount, 6);
             tr["tid"] = info->tid;
             tr["timestamp"] = info->created.toTime_t();
 
@@ -753,7 +734,7 @@ QVariantMap Responce::getPrivateActiveOrdersResponce(const QueryParser &httpQuer
             decimal_places = pinfo->decimal_places;
         order["pair"]   = info->pair;
         order["type"]   = (info->type == OrderInfo::Type::Sell)?"sell":"buy";
-        order["amount"] = dec2qstr(info->amount, decimal_places);
+        order["amount"] = dec2qstr(info->amount, 6);
         order["rate"]   = dec2qstr(info->rate, decimal_places);
         order["timestamp_created"] = info->created.toTime_t();
         order["status"] = static_cast<int>(info->status) - 1;
@@ -790,8 +771,8 @@ QVariantMap Responce::getPrivateOrderInfoResponce(const QueryParser &httpQuery, 
             decimal_places = pinfo->decimal_places;
         order["pair"] = info->pair;
         order["type"] = (info->type == OrderInfo::Type::Buy)?"buy":"sell";
-        order["start_amount"] = dec2qstr(info->start_amount, decimal_places);
-        order["amount"] = dec2qstr(info->start_amount, decimal_places);
+        order["start_amount"] = dec2qstr(info->start_amount, 6);
+        order["amount"] = dec2qstr(info->start_amount, 6);
         order["rate"] = dec2qstr(info->rate, decimal_places);
         order["timestamp_created"] = info->created.toTime_t();
         order["status"] = static_cast<int>(info->status);
@@ -818,74 +799,55 @@ QVariantMap Responce::getPrivateTradeResponce(const QueryParser& httpQuery, Meth
     bool done = false;
     do
     {
-        try
+        OrderInfo::Type type;
+        if (httpQuery.orderType() == "buy")
+            type = OrderInfo::Type::Buy;
+        else if (httpQuery.orderType() == "sell")
+            type = OrderInfo::Type::Sell;
+        else
         {
-            startTransaction->exec();
-            OrderInfo::Type type;
-            if (httpQuery.orderType() == "buy")
-                type = OrderInfo::Type::Buy;
-            else if (httpQuery.orderType() == "sell")
-                type = OrderInfo::Type::Sell;
-            else
-            {
-                var["success"] = 0;
-                var["error"] = "You incorrectly entered one of fields.";
-                return var;
-            }
-            Rate rate = Rate(httpQuery.rate().toStdString());
-            Amount amount = Amount(httpQuery.amount().toStdString());
-            OrderCreateResult ret = checkParamsAndDoExchange(httpQuery.key(), httpQuery.pair(), type, rate, amount);
-            if (!ret.ok)
-            {
-                rollbackTransaction->exec();
-                var["success"] = 0;
-                var["error"] = ret.errMsg;
-                done = true;
-            }
-            else
-            {
-                commitTransaction->exec();
-                done = true;
-                var["success"] = 1;
-                QVariantMap res;
-                PairInfo::Ptr pinfo = dataAccessor->pairInfo(httpQuery.pair());
-                int decimal_places = 7;
-                if (pinfo)
-                    decimal_places = pinfo->decimal_places;
-                res["remains"] = dec2qstr(ret.remains, decimal_places);
-                res["received"] = dec2qstr(ret.recieved, decimal_places);
-                res["order_id"] = ret.order_id;
+            var["success"] = 0;
+            var["error"] = "You incorrectly entered one of fields.";
+            return var;
+        }
+        Rate rate = Rate(httpQuery.rate().toStdString());
+        Amount amount = Amount(httpQuery.amount().toStdString());
+        OrderCreateResult ret = checkParamsAndDoExchange(httpQuery.key(), httpQuery.pair(), type, rate, amount);
+        if (!ret.ok)
+        {
+            var["success"] = 0;
+            var["error"] = ret.errMsg;
+            done = true;
+        }
+        else
+        {
+            done = true;
+            var["success"] = 1;
+            QVariantMap res;
 
-                QVariantMap funds;
-                ApikeyInfo::Ptr aInfo = dataAccessor->apikeyInfo(httpQuery.key());
-                if (!aInfo)
-                {
-                    res["success"] = 0;
-                    res["error"] = "invalid api key";
-                    return res;
-                }
-                UserInfo::Ptr  uInfo = aInfo->user_ptr.lock();
-                if (!uInfo)
-                {
-                    uInfo = dataAccessor->userInfo(aInfo->user_id);
-                    aInfo->user_ptr = uInfo;
-                }
-                Funds& f = uInfo->funds;
-                for(const QString& cur: f.keys())
-                    funds[cur] = dec2qstr(f[cur], decimal_places);
-                res["funds"] = funds;
-                var["return"] = res;
+            res["remains"] = dec2qstr(ret.remains, 7);
+            res["received"] = dec2qstr(ret.recieved, 6);
+            res["order_id"] = ret.order_id;
+
+            QVariantMap funds;
+            ApikeyInfo::Ptr aInfo = dataAccessor->apikeyInfo(httpQuery.key());
+            if (!aInfo)
+            {
+                res["success"] = 0;
+                res["error"] = "invalid api key";
+                return res;
             }
-        }
-        catch(std::runtime_error& e)
-        {
-            std::cerr << e.what();
-            rollbackTransaction->exec();
-        }
-        catch (const QSqlQuery& q)
-        {
-            std::cerr << q.lastError().text() << std::endl;
-            rollbackTransaction->exec();
+            UserInfo::Ptr  uInfo = aInfo->user_ptr.lock();
+            if (!uInfo)
+            {
+                uInfo = dataAccessor->userInfo(aInfo->user_id);
+                aInfo->user_ptr = uInfo;
+            }
+            Funds& f = uInfo->funds;
+            for(const QString& cur: f.keys())
+                funds[cur] = dec2qstr(f[cur], 6);
+            res["funds"] = funds;
+            var["return"] = res;
         }
     }  while (!done);
     return var;
@@ -982,4 +944,14 @@ QVariantMap Responce::exchangeBalance()
 
 
     return balance;
+}
+
+OrderInfo::List Responce::negativeAmountOrders()
+{
+    return dataAccessor->negativeAmountOrders();
+}
+
+void Responce::updateTicker()
+{
+    dataAccessor->updateTicker();
 }

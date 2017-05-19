@@ -28,7 +28,7 @@ QByteArray DirectSqlDataAccessor::randomKeyForTrade(const QString& currency, con
 {
     QVariantMap params;
     params[":currency"] = currency;
-    params[":amount"] = dec2qstr(amount, 6);
+    params[":amount"] = dec2qstr(amount, 7);
 
     QSqlQuery getRandomKeyWithBalance(db);
     prepareSql(getRandomKeyWithBalance, "select apikey from apikeys a left join deposits d  on d.user_id = a.user_id left join currencies c on d.currency_id = c.currency_id  left join users o on o.user_id = a.user_id where o.user_type = 1 and a.trade=true  and c.currency=:currency and d.volume>:amount order by rand() limit 1");
@@ -89,6 +89,51 @@ Amount DirectSqlDataAccessor::getOrdersCurrencyVolume(const ApiKey &key, const Q
     Q_UNUSED(currency)
     throw "not implemented yet";
 }
+
+OrderInfo::List DirectSqlDataAccessor::negativeAmountOrders()
+{
+    OrderInfo::List list;
+    QSqlQuery sql(db);
+    sql.exec("SELECT order_id from orders where amount<0");
+    while(sql.next())
+    {
+        list.append(orderInfo(sql.value(0).toUInt()));
+    }
+    return list;
+}
+
+void DirectSqlDataAccessor::updateTicker()
+{
+    QSqlQuery sql1(db);
+    QSqlQuery sql2(db);
+
+    prepareSql(sql1, "select max(o.rate) as high, min(o.rate) as low, avg(o.rate) as avg, sum(t.amount) as vol, sum(t.amount * o.rate) as vol_cur, p.pair  from trades t left join orders o on o.order_id=t.order_id left join pairs p on p.pair_id=o.pair_id where now()-t.created < 60 * 60 * 4  group by o.pair_id");
+    prepareSql(sql2, "update ticker t left join pairs p on p.pair_id=t.pair_id set high=:high, low=:low, avg=:avg, vol=:vol, vol_cur=:vol_cur, updated=:updated, last=avg, buy=avg, sell=avg where p.pair=:pair");
+
+    if (sql1.exec())
+    {
+        while (sql1.next())
+        {
+            QVariantMap params;
+            params[":high"] = sql1.value(0).toDouble();
+            params[":low"]  = sql1.value(1).toDouble();
+            params[":avg"] = sql1.value(2).toDouble();
+            params[":vol"] = sql1.value(3).toDouble();
+            params[":vol_cur"] = sql1.value(4).toDouble();
+            params[":pair"] = sql1.value(5).toString();
+            params[":updated"] = QDateTime::currentDateTime();
+
+            performSql("update ticker for pair ':pair'", sql2, params);
+        }
+    }
+
+}
+
+bool DirectSqlDataAccessor::transaction() { return db.transaction();}
+
+bool DirectSqlDataAccessor::commit() { return db.commit();}
+
+bool DirectSqlDataAccessor::rollback() { return db.rollback(); }
 
 DirectSqlDataAccessor::DirectSqlDataAccessor(QSqlDatabase &db)
     :db(db)
@@ -384,6 +429,10 @@ bool DirectSqlDataAccessor::createNewTradeRecord(UserId user_id, OrderId order_i
     params[":order_id"] = order_id;
     params[":created"] = QDateTime::currentDateTime();
     params[":amount"] = dec2qstr(amount, 7);
+    if (amount < Amount(0))
+    {
+        throw 1;
+    }
     performSql("create new trade for user :user_id", sql, params, true);
     return true;
 
@@ -396,8 +445,8 @@ OrderId DirectSqlDataAccessor::createNewOrderRecord(const PairName &pair, const 
     params[":pair_id"]  = pairInfo(pair)->pair_id;
     params[":user_id"]  = user_id;
     params[":type"]     = (type == OrderInfo::Type::Buy)?"buy":"sell";
-    params[":rate"]     = dec2qstr(rate);
-    params[":start_amount"] = dec2qstr(start_amount);
+    params[":rate"]     = dec2qstr(rate, pairInfo(pair)->decimal_places);
+    params[":start_amount"] = dec2qstr(start_amount, 7);
     params[":created"] = QDateTime::currentDateTime();
     if (!prepareSql(sql, "insert into orders (pair_id, user_id, type, rate, start_amount, amount, created, status) values (:pair_id, :user_id, :type, :rate, :start_amount, :start_amount, :created, 'active')"))
         return static_cast<OrderId>(-1);
@@ -424,10 +473,15 @@ QMutex LocalCachesSqlDataAccessor::orderInfoCacheRWAccess;
 QMutex LocalCachesSqlDataAccessor::apikeyInfoCacheRWAccess;
 QMutex LocalCachesSqlDataAccessor::userInfoCacheRWAccess;
 
+LocalCachesSqlDataAccessor::LocalCachesSqlDataAccessor(QSqlDatabase &db)
+    :DirectSqlDataAccessor(db)
+{
+
+}
+
 PairInfo::List LocalCachesSqlDataAccessor::allPairsInfoList()
 {
     // This function never use cache and always read from DB, invalidating cache
-    QSqlQuery sql(db);
     PairInfo::List ret = DirectSqlDataAccessor::allPairsInfoList();
     QMutexLocker lock(&LocalCachesSqlDataAccessor::pairInfoCacheRWAccess);
     pairInfoCache.clear();
@@ -594,4 +648,17 @@ bool LocalCachesSqlDataAccessor::updateNonce(const ApiKey& key, quint32 nonce)
         }
     }
     return ok;
+}
+
+bool LocalCachesSqlDataAccessor::rollback()
+{
+    {
+        QMutexLocker lock(&userInfoCacheRWAccess);
+        userInfoCache.clear();
+    }
+    {
+        QMutexLocker lock(&orderInfoCacheRWAccess);
+        orderInfoCache.clear();
+    }
+    return DirectSqlDataAccessor::rollback();
 }

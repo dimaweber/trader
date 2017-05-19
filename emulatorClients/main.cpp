@@ -9,7 +9,9 @@
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QThread>
 #include <QUrl>
+#include <QVector>
 
 #include <iostream>
 #include <memory>
@@ -120,32 +122,48 @@ static void* clienthread(void* data)
 
     delete pData;
 
+    qsrand(uintptr_t(QThread::currentThread()));
     std::unique_ptr<DummyStorage> storage = std::make_unique<DummyStorage>(*db);
     BtcObjects::Funds funds;
     QRegExp rx("you should send:([0-9]*)");
 
+    BtcPublicApi::Info btceInfo;
+    BtcPublicApi::Ticker btceTicker;
+    btceInfo.performQuery();
     while(true)
     {
+        try {
+            btceTicker.performQuery();
+        }
+        catch(BadFieldValue& e)
+        {
+            continue;
+        }
+
         bool isSell = qrand() % 2;
+        QVector<QString> pairs;
+        pairs << "btc_usd" << "btc_eur" << "eth_btc" << "eth_eur" << "eth_usd" << "ltc_usd" << "ltc_eur";
+        QString pair = pairs [ qrand() % pairs.size()];
+        double base_price = BtcObjects::Pairs::ref(pair).ticker.last * 1.002;
         Amount amount ((qrand() % 1000) / 1000.0 + 0.01);
-        Rate rate (1750 + (qrand() % 100) / 10.0 - 5);
+        Rate rate (base_price + (qrand() % 100) / 10.0 - 5);
         Amount balance;
         QString currency;
         if (isSell)
         {
             balance = amount;
-            currency = "btc";
+            currency = pair.left(3);
         }
         else
         {
             balance = rate * amount;
-            currency = "usd";
+            currency = pair.right(3);
         }
 
         if (!storage->loadKeyForCurrencyBalance(currency, balance))
             continue;
 
-        BtcTradeApi::Trade trade(*storage, funds, "btc_usd", isSell?BtcObjects::Order::Type::Sell:BtcObjects::Order::Type::Buy, rate.getAsDouble(), amount.getAsDouble());
+        BtcTradeApi::Trade trade(*storage, funds, pair, isSell?BtcObjects::Order::Type::Sell:BtcObjects::Order::Type::Buy, rate.getAsDouble(), amount.getAsDouble());
         try
         {
             performTradeRequest("trade", trade, false);

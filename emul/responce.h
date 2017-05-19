@@ -26,6 +26,8 @@ public:
     QVariantMap getResponce(const QueryParser& parser, Method& method);
 
     QVariantMap exchangeBalance();
+    OrderInfo::List negativeAmountOrders();
+    void updateTicker();
 
     static OrderInfo::Type oppositOrderType(OrderInfo::Type type);
 private:
@@ -82,8 +84,6 @@ private:
 
     std::unique_ptr<Authentificator>  auth;
     std::unique_ptr<QSqlQuery>  selectActiveOrdersCountQuery;
-    std::unique_ptr<QSqlQuery>  selectOrdersForSellTrade;
-    std::unique_ptr<QSqlQuery>  selectOrdersForBuyTrade;
 
 
     std::unique_ptr<QSqlQuery>  cancelOrderQuery;
@@ -93,22 +93,6 @@ private:
     std::unique_ptr<QSqlQuery>  rollbackTransaction;
 
     std::shared_ptr<AbstractDataAccessor> dataAccessor;
-
-//    PairInfo::List   allPairsInfoList();
-//    PairInfo::Ptr    pairInfo(const QString& pair);
-//    TickerInfo::Ptr  tickerInfo(const QString& pair);
-//    OrderInfo::Ptr   orderInfo(OrderId order_id);
-//    OrderInfo::List  activeOrdersInfoList(const QString& apikey);
-//    TradeInfo::List  allTradesInfo(const PairName& pair);
-//    ApikeyInfo::Ptr  apikeyInfo(const ApiKey& apikey);
-//    UserInfo::Ptr    userInfo(UserId user_id);
-
-//    QMap<PairName, BuySellDepth> allActiveOrdersAmountAgreggatedByRateList(const QList<PairName>& pairs);
-//    bool tradeUpdateDeposit(const UserId &user_id, const QString& currency, Amount diff, const QString& userName);
-//    bool reduceOrderAmount(OrderId, Amount amount);
-//    bool closeOrder(OrderId order_id);
-//    bool createNewTradeRecord(UserId user_id, OrderId order_id, const Amount &amount);
-//    OrderId createNewOrderRecord(const PairName& pair, const UserId& user_id, OrderInfo::Type type, Rate rate, Amount start_amount);
 };
 
 #endif // RESPONCE_H

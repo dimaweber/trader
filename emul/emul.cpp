@@ -750,10 +750,24 @@ int main(int argc, char *argv[])
         QVariantMap balance = r.exchangeBalance();
 
         if (balance != initialBalance)
+        {
             std::cerr << "***** ERROR **** : balance mismatch " << std::endl;
+            throw 1;
+        }
         else
             std::clog << "Balance ok" << std::endl;
+
+        OrderInfo::List lst = r.negativeAmountOrders();
+        if (lst.size() > 0)
+        {
+            std::cerr << "Broken database: orders with negative amount!" << std::endl;
+            throw 2;
+        }
+
         sleep(30);
+
+        r.updateTicker();
+
     }
 
     for (size_t i=0; i<THREAD_COUNT; i++)
