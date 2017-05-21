@@ -1286,7 +1286,7 @@ void BtceEmulator_Test::Trade_parameterAmountMinValueCheck()
 
     QCOMPARE(responce["success"].toInt(), 0);
     QString actual = responce["error"].toString();
-    QString expected = QString("Value USD must be greater than 0.001 USD.");
+    QString expected = QString("Value USD must be greater than 0.001000 USD.");
     QCOMPARE(actual, expected);
 }
 

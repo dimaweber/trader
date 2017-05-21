@@ -126,7 +126,7 @@ public:
     void finish()
     {
         FCGX_FFlush(request.out);
-        return FCGX_Finish_r(&request);
+         return FCGX_Finish_r(&request);
     }
     int put(const char* str)
     {

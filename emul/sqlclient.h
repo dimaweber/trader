@@ -38,6 +38,14 @@ public:
 
     virtual Amount getDepositCurrencyVolume(const ApiKey& key, const QString& currency) =0;
     virtual Amount  getOrdersCurrencyVolume(const ApiKey& key, const QString& currency) =0;
+
+    virtual OrderInfo::List negativeAmountOrders() = 0;
+
+    virtual void updateTicker() = 0;
+
+    virtual bool transaction() =0;
+    virtual bool commit() =0;
+    virtual bool rollback() =0;
 };
 
 class DirectSqlDataAccessor : public AbstractDataAccessor
@@ -70,12 +78,18 @@ public :
 
     virtual Amount getDepositCurrencyVolume(const ApiKey& key, const QString& currency) override;
     virtual Amount  getOrdersCurrencyVolume(const ApiKey& key, const QString& currency) override;
+
+    virtual OrderInfo::List negativeAmountOrders() override;
+
+    virtual void updateTicker() override;
+
+    virtual bool transaction() override;
+    virtual bool commit()      override;
+    virtual bool rollback()    override;
 };
 
 class LocalCachesSqlDataAccessor : public DirectSqlDataAccessor
 {
-    QSqlDatabase& db;
-
     static QMap<PairName,  PairInfo::Ptr>    pairInfoCache;
     static QMap<PairName,  TickerInfo::Ptr>  tickerInfoCache;
     static QCache<OrderId, OrderInfo::Ptr>   orderInfoCache;
@@ -106,6 +120,8 @@ public :
     OrderId createNewOrderRecord(const PairName& pair, const UserId& user_id, OrderInfo::Type type, const Rate& rate, const Amount& start_amount) override;
 
     virtual bool       updateNonce(const ApiKey& key, quint32 nonce) override;
+
+    virtual bool rollback() override;
 };
 
 #endif // SQLCLIENT_H

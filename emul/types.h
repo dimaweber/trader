@@ -47,7 +47,7 @@ DEC_NAMESPACE::decimal<n> qstr2dec(const QString& s)
 template <int n>
 DEC_NAMESPACE::decimal<n> qvar2dec(const QVariant& s)
 {
-    return DEC_NAMESPACE::decimal<n>(s.toString().toStdString());
+    return DEC_NAMESPACE::decimal<n>(s.toDouble());
 }
 
 enum Method {Invalid, AuthIssue, AccessIssue,
@@ -89,6 +89,8 @@ struct TickerInfo
     PairName pairName;
 
     PairInfo::WPtr pair_ptr;
+
+    QMutex updateAccess;
 };
 struct OrderInfo
 {
