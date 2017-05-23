@@ -10,19 +10,6 @@
 
 QAtomicInt Responce::counter = 0;
 
-//QMap<PairName, PairInfo::Ptr> Responce::pairInfoCache;
-//QMap<PairName, TickerInfo::Ptr> Responce::tickerInfoCache;
-//QCache<OrderId, OrderInfo::Ptr> Responce::orderInfoCache;
-//QCache<TradeId, TradeInfo::Ptr> Responce::tradeInfoCache;
-//QCache<ApiKey, ApikeyInfo::Ptr> Responce::apikeyInfoCache;
-//QCache<UserId, UserInfo::Ptr> Responce::userInfoCache;
-//QMutex Responce::pairInfoCacheRWAccess;
-//QMutex Responce::tickerInfoCacheRWAccess;
-//QMutex Responce::orderInfoCacheRWAccess;
-//QMutex Responce::tradeInfoCacheRWAccess;
-//QMutex Responce::apikeyInfoCacheRWAccess;
-//QMutex Responce::userInfoCacheRWAccess;
-
 Responce::Responce(QSqlDatabase& database)
     :db(database)
 {
@@ -43,34 +30,6 @@ Responce::Responce(QSqlDatabase& database)
 
     prepareSql(*cancelOrderQuery, "update orders set status=case when start_amount=amount then 'cancelled' else 'part_done' end where order_id=:order_id");
 }
-
-//bool Responce::tradeUpdateDeposit(const UserId& user_id, const QString& currency, Amount diff, const QString& userName)
-//{
-//    QSqlQuery sql(db);
-//    prepareSql(sql, "update deposits d left join currencies c on c.currency_id=d.currency_id set d.volume = volume + :diff where user_id=:user_id and c.currency=:currency");
-//    QVariantMap updateDepParams;
-//    updateDepParams[":user_id"] = user_id;
-//    updateDepParams[":currency"] = currency;
-//    updateDepParams[":diff"] = diff);
-//    bool ok;
-//    ok = performSql("update ':currency' amount by :diff for user :user_id", sql, updateDepParams, true);
-//    if (ok)
-//    {
-//        {
-//            QMutexLocker lock(&userInfoCacheRWAccess);
-//            UserInfo::Ptr* puser = userInfoCache.object(user_id);
-//            if (puser)
-//                (*puser)->funds[currency] +=  diff;
-//        }
-//        std::clog << "\t\t" << QString("%1: %2 %3 %4")
-//                     .arg(userName)
-//                     .arg((diff.sign() == -1)?"lost":"recieved")
-//                     .arg(QString::number(qAbs(diff)), 'f', 6))
-//                     .arg(currency.toUpper())
-//                  << std::endl;
-//    }
-//    return ok;
-//}
 
 Responce::TradeCurrencyVolume Responce::trade_volumes (OrderInfo::Type type, const QString& pair, Fee fee,
                                  Amount trade_amount, Rate matched_order_rate)

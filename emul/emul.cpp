@@ -686,8 +686,6 @@ int main(int argc, char *argv[])
     }
     QSettings settings(iniFilePath, QSettings::IniFormat);
     recreateDatabase = settings.value("debug/recreate_database", true).toBool();
-    settings.setValue("debug/recreate_database", false);
-    settings.sync();
     runTests = settings.value("debug/run_tests", true).toBool();
     failTestExit = settings.value("debug/exit_on_test_fail", false).toBool();
     justTests = settings.value("debug/just_tests", false).toBool();
@@ -703,6 +701,9 @@ int main(int argc, char *argv[])
     {
         prepareDatabase(db);
         populateDatabase(db, trades_limit, depth_limit);
+
+        settings.setValue("debug/recreate_database", false);
+        settings.sync();
     }
 
     if (runTests)

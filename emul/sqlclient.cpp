@@ -57,7 +57,10 @@ QByteArray DirectSqlDataAccessor::signWithKey(const QByteArray& message, const A
 
 QByteArray DirectSqlDataAccessor::secretForKey(const ApiKey& key)
 {
-    return apikeyInfo(key)->secret;
+    ApikeyInfo::Ptr info = apikeyInfo(key);
+    if (info)
+        return info->secret;
+    return QByteArray();
 }
 
 bool DirectSqlDataAccessor::updateNonce(const ApiKey &key, quint32 nonce)

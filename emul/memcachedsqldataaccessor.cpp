@@ -23,43 +23,42 @@ MemcachedSqlDataAccessor::MemcachedSqlDataAccessor(QSqlDatabase& db)
 MemcachedSqlDataAccessor::~MemcachedSqlDataAccessor()
 {
     memcached_free(memc);
+    memcached_server_free(servers);
 }
 
 template <class INFO>
-typename INFO::Ptr MemcachedSqlDataAccessor::cache_get(const QString& key)
+typename INFO::Ptr MemcachedSqlDataAccessor::cache_get(const QByteArray& key)
 {
     typename INFO::Ptr info;
     memcached_return rc;
-    QByteArray value;
-    QByteArray k;
-    k = key.toUtf8();
     char* data = nullptr;
     size_t value_length;
-    data = memcached_get(memc, k.constData(), k.length(), &value_length, 0, &rc);
+    uint32_t flags;
+    data = memcached_get(memc, key.constData(), key.length(), &value_length, &flags, &rc);
     if (rc == MEMCACHED_SUCCESS)
     {
+        QByteArray value;
         value.setRawData(data, value_length);
         info = std::make_shared<INFO>();
         info->unpack(value);
     }
+    free(data);
     return info;
 }
 
 template<class INFOPtr>
-void MemcachedSqlDataAccessor::cache_put(const QString &key, const INFOPtr &info, int timeout)
+void MemcachedSqlDataAccessor::cache_put(const QByteArray& key, const INFOPtr &info, int timeout)
 {
     QByteArray value = info->pack();
-    QByteArray k = key.toUtf8();
-    memcached_set(memc, k.constData(), k.length(), value.constData(), value.length(), timeout, 0);
+    memcached_set(memc, key.constData(), key.length(), value.constData(), value.length(), timeout, 0);
 }
 
 PairInfo::List MemcachedSqlDataAccessor::allPairsInfoList()
 {
     PairInfo::List ret = DirectSqlDataAccessor::allPairsInfoList();
-//    QMutexLocker lock(&LocalCachesSqlDataAccessor::pairInfoCacheRWAccess);
     for(const PairInfo::Ptr& info : ret)
     {
-        QString key = QString("pair:%1").arg(info->pair);
+        QByteArray key = QString("pair:%1").arg(info->pair).toUtf8();
         cache_put(key, info, 100);
     }
     return ret;
@@ -67,8 +66,7 @@ PairInfo::List MemcachedSqlDataAccessor::allPairsInfoList()
 
 PairInfo::Ptr MemcachedSqlDataAccessor::pairInfo(const PairName &pair)
 {
-//    QMutexLocker rlock(&LocalCachesSqlDataAccessor::pairInfoCacheRWAccess);
-    QString key = QString("pair:%1").arg(pair);
+    QByteArray key = QString("pair:%1").arg(pair).toUtf8();
     auto info = cache_get<PairInfo>(key);
     if (!info)
     {
@@ -81,8 +79,7 @@ PairInfo::Ptr MemcachedSqlDataAccessor::pairInfo(const PairName &pair)
 
 TickerInfo::Ptr MemcachedSqlDataAccessor::tickerInfo(const PairName &pair)
 {
-//    QMutexLocker lock(&LocalCachesSqlDataAccessor::tickerInfoCacheRWAccess);
-    QString key = QString("ticker:%1").arg(pair);
+    QByteArray key = QString("ticker:%1").arg(pair).toUtf8();
     auto info = cache_get<TickerInfo>(key);
     if (!info)
     {
@@ -95,7 +92,7 @@ TickerInfo::Ptr MemcachedSqlDataAccessor::tickerInfo(const PairName &pair)
 
 OrderInfo::Ptr MemcachedSqlDataAccessor::orderInfo(OrderId order_id)
 {
-    QString key = QString("order:%1").arg(order_id);
+    QByteArray key = QString("order:%1").arg(order_id).toUtf8();
     auto info = cache_get<OrderInfo>(key);
     if (!info)
     {
@@ -108,7 +105,7 @@ OrderInfo::Ptr MemcachedSqlDataAccessor::orderInfo(OrderId order_id)
 
 ApikeyInfo::Ptr MemcachedSqlDataAccessor::apikeyInfo(const ApiKey &apikey)
 {
-    QString key = QString("apikey:%1").arg(apikey);
+    QByteArray key = QString("apikey:%1").arg(apikey).toUtf8();
     auto info = cache_get<ApikeyInfo>(key);
     if (!info)
     {
@@ -121,7 +118,7 @@ ApikeyInfo::Ptr MemcachedSqlDataAccessor::apikeyInfo(const ApiKey &apikey)
 
 UserInfo::Ptr MemcachedSqlDataAccessor::userInfo(UserId user_id)
 {
-    QString key = QString("user:%1").arg(user_id);
+    QByteArray key = QString("user:%1").arg(user_id).toUtf8();
     auto info = cache_get<UserInfo>(key);
     if (!info)
     {
@@ -132,7 +129,83 @@ UserInfo::Ptr MemcachedSqlDataAccessor::userInfo(UserId user_id)
     return info;
 }
 
-bool MemcachedSqlDataAccessor::updateNonce(const ApiKey &key, quint32 nonce)
+bool MemcachedSqlDataAccessor::tradeUpdateDeposit(const UserId& user_id, const QString& currency, const Amount& diff, const QString& userName)
 {
+    bool ok = DirectSqlDataAccessor::tradeUpdateDeposit(user_id, currency, diff, userName);
+    if (ok)
+    {
+        QByteArray key = QString("user:%1").arg(user_id).toUtf8();
+        auto info = cache_get<UserInfo>(key);
+        if (info)
+        {
+            info->funds[currency] += diff;
+            cache_put(key, info, 100);
+        }
+    }
+    return ok;
+}
 
+bool MemcachedSqlDataAccessor::reduceOrderAmount(OrderId order_id, const Amount& amount)
+{
+    bool ok = DirectSqlDataAccessor::reduceOrderAmount(order_id, amount);
+    if (ok)
+    {
+        QByteArray key = QString("order:%1").arg(order_id).toUtf8();
+        auto info = cache_get<OrderInfo>(key);
+        if (info)
+        {
+            info->amount -= amount;
+            cache_put(key, info, 100);
+        }
+    }
+    return ok;
+}
+
+bool MemcachedSqlDataAccessor::closeOrder(OrderId order_id)
+{
+    bool ok = DirectSqlDataAccessor::closeOrder(order_id);
+    if (ok)
+    {
+        QByteArray key = QString("order:%1").arg(order_id).toUtf8();
+        memcached_delete(memc, key.constData(), key.length(), 0);
+    }
+    return ok;
+}
+
+OrderId MemcachedSqlDataAccessor::createNewOrderRecord(const PairName& pair, const UserId& user_id, OrderInfo::Type type, const Rate& rate, const Amount& start_amount)
+{
+    OrderId id = DirectSqlDataAccessor::createNewOrderRecord(pair, user_id, type, rate, start_amount);
+    if (id)
+    {
+        OrderInfo::Ptr info = std::make_shared<OrderInfo>();
+        info->pair = pair;
+        info->user_id = user_id;
+        info->type = type;
+        info->rate = rate;
+        info->start_amount = start_amount;
+        info->amount = start_amount;
+        info->order_id = id;
+        info->created = QDateTime::currentDateTime();
+        info->status = OrderInfo::Status::Active;
+
+        QByteArray key = QString("order:%1").arg(id).toUtf8();
+        cache_put(key, info, 100);
+    }
+    return id;
+}
+
+bool MemcachedSqlDataAccessor::updateNonce(const ApiKey &apikey, quint32 nonce)
+{
+    bool ok  = DirectSqlDataAccessor::updateNonce(apikey, nonce);
+    if (ok)
+    {
+        QByteArray key = QString("apikey:%1").arg(apikey).toUtf8();
+        auto info = cache_get<ApikeyInfo>(key);
+        if (info)
+        {
+            info->nonce = nonce;
+            cache_put(key, info, 100);
+        }
+    }
+    return ok;
 }

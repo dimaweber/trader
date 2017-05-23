@@ -112,6 +112,8 @@ public:
     }
 };
 
+double trend = 1.00;
+
 static void* clienthread(void* data)
 {
     ClientThreadData* pData = static_cast<ClientThreadData*>(data);
@@ -162,7 +164,8 @@ static void* clienthread(void* data)
         pairs << "btc_usd" << "btc_eur" << "eth_btc" << "eth_eur" << "eth_usd" << "ltc_usd" << "ltc_eur";
         QString pair = pairs [ qrand() % pairs.size()];
         tickerAccess.lockForRead();
-        double base_price = BtcObjects::Pairs::ref(pair).ticker.last * 1.002;
+        double last = isSell?BtcObjects::Pairs::ref(pair).ticker.sell:BtcObjects::Pairs::ref(pair).ticker.buy;
+        double base_price = last * trend;
         tickerAccess.unlock();
 
         Amount amount ((qrand() % 1000) / 1000.0 + 0.01);
@@ -229,7 +232,7 @@ int main(int argc, char *argv[])
     const quint32 THREAD_COUNT = settings.value("debug/client_threads_count", 8).toUInt();
     pthread_t id[THREAD_COUNT];
 
-    for (size_t i=0; i<THREAD_COUNT-1; i++)
+    for (size_t i=0; i<THREAD_COUNT; i++)
     {
         ClientThreadData* pData = new ClientThreadData;
         pData->pDb = &db;
@@ -237,10 +240,12 @@ int main(int argc, char *argv[])
         pthread_create(&id[i], nullptr, clienthread, pData);
     }
 
-    ClientThreadData* pData = new ClientThreadData;
-    pData->pDb = &db;
-    pData->id=THREAD_COUNT-1;
-    clienthread(pData);
+
+    while (true)
+    {
+        trend = trend + (qrand() % 100) / 1000.0;
+        sleep(100);
+    }
 
     for (size_t i=0; i<THREAD_COUNT-1; i++)
         pthread_join(id[i], nullptr);
