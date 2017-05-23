@@ -18,6 +18,8 @@ protected:
     virtual QString path() const = 0;
     virtual bool parseSuccess(const QVariantMap& returnMap) =0;
     virtual bool parse(const QByteArray& serverAnswer) =0;
+
+    static QVariantMap convertReplyToMap(const QByteArray& json);
 public:
     HttpQuery():valid(false){}
     virtual ~HttpQuery() {}

@@ -107,7 +107,7 @@ void Order::display() const
     std::cout << order_id
               << QString("   status : %1\n").arg(sStatus)
               << QString("   pair   : %1\n").arg(pair)
-              << QString("   type   : %1\n").arg((type==Sell)?"sell":"buy")
+              << QString("   type   : %1\n").arg((type==Order::Type::Sell)?"sell":"buy")
               << QString("   amount : %1 (%2)").arg(amount).arg(start_amount)
               << QString("   rate   : %1").arg(rate)
               << QString("   created: %1").arg(timestamp_created.toString(Qt::ISODate));
@@ -119,11 +119,11 @@ bool Order::parse(const QVariantMap& map)
     pair = read_string(map, "pair");
     QString sType = read_string(map, "type");
     if (sType == "sell")
-        type = Order::Sell;
+        type = Order::Type::Sell;
     else if (sType == "buy")
-        type = Order::Buy;
+        type = Order::Type::Buy;
     else
-        throw BrokenJson("type");
+        throw BadFieldValue("type", sType);
 
     amount = read_double(map, "amount");
     rate = read_double(map, "rate");
@@ -236,6 +236,29 @@ bool Transaction::parse(const QVariantMap& map)
     return true;
 }
 
+bool Trade::parse(const QVariantMap& map)
+{
+    QString sType = read_string(map, "type");
+    if (sType == "ask")
+        type = Trade::Type::Ask;
+    else if (Q_LIKELY(sType == "bid"))
+        type = Trade::Type::Bid;
+    else
+        type = Trade::Type::Invalid;
+
+    price = read_double(map, "price");
+    amount = read_double(map, "amount");
+    id = read_ulong(map, "tid");
+    timestamp = read_timestamp(map, "timestamp");
+
+    return true;
+}
+
+void Trade::display() const
+{
+
+}
+
 }
 
 namespace BtcPublicApi
@@ -292,22 +315,46 @@ bool Depth::parseSuccess(const QVariantMap& returnMap)
     return true;
 }
 
+QString Api::server = "http://example.com";
+void Api::setServer(const QString& server)
+{
+    Api::server = server;
+}
+
 QString Api::path() const
 {
-    return "https://btc-e.com/api/3/";
+    return QString("%1/api/3/").arg(BtcPublicApi::Api::server);
 }
 
 bool Api::parse(const QByteArray& serverAnswer)
 {
-    QJsonDocument jsonResponce;
-    jsonResponce = QJsonDocument::fromJson(serverAnswer);
-    QVariant json = jsonResponce.toVariant();
+    return parseSuccess(HttpQuery::convertReplyToMap(serverAnswer));
+}
 
-    if (!json.canConvert<QVariantMap>())
-        throw BrokenJson("");
+Trades::Trades(int limit):_limit(limit){}
 
-    QVariantMap jsonMap = json.toMap();
-    return parseSuccess(jsonMap);
+QString Trades::path() const
+{
+    QString p;
+    for(const QString& pairName : BtcObjects::Pairs::ref().keys())
+        p += pairName + "-";
+    p.chop(1);
+    return QString("%1trades/%2?limit=%3").arg(Api::path()).arg(p).arg(_limit);
+}
+
+bool Trades::parseSuccess(const QVariantMap& returnMap)
+{
+    for (const QString& pairName: returnMap.keys())
+    {
+        QVariantList lst = read_list(returnMap, pairName);
+        BtcObjects::Trade trade;
+        for (const QVariant& t: lst)
+        {
+            trade.parse(t.toMap());
+            BtcObjects::Pairs::ref(pairName).trades.append(trade);
+        }
+    }
+    return true;
 }
 
 }
@@ -408,30 +455,17 @@ bool Api::parse(const QByteArray& serverAnswer)
     valid = false;
 
     try {
-        QJsonDocument jsonResponce;
-        QJsonParseError error;
-        jsonResponce = QJsonDocument::fromJson(serverAnswer, &error);
-        if (jsonResponce.isNull())
-        {
-            throw BrokenJson(QString("json parse error [offset: %2]: %1").arg(error.errorString()).arg(error.offset));
-        }
-        QVariant json = jsonResponce.toVariant();
-
-        if (!json.canConvert<QVariantMap>())
-            throw BrokenJson("");
-
-
-        QVariantMap jsonMap = json.toMap();
-        if (read_long(jsonMap, "success"))
+        QVariantMap map = HttpQuery::convertReplyToMap(serverAnswer);
+        if (read_long(map, "success"))
         {
             success = true;
 
-            parseSuccess(read_map(jsonMap, "return"));
+            parseSuccess(read_map(map, "return"));
         }
         else
         {
             success = false;
-            errorMsg = read_string(jsonMap, "error");
+            errorMsg = read_string(map, "error");
         }
 
         valid = true;
@@ -452,6 +486,17 @@ QVariantMap Api::extraQueryParams()
     params["method"] = methodName();
     params["nonce"] = Api::nonce();
     return params;
+}
+
+QString BtcTradeApi::Api::server;
+void Api::setServer(const QString& server)
+{
+    Api::server = server;
+}
+
+QString Api::path() const
+{
+    return QString("%1/tapi").arg(BtcTradeApi::Api::server);
 }
 
 void Api::setHeaders(CurlListWrapper& headers)
@@ -526,7 +571,7 @@ bool OrderInfo::parseSuccess(const QVariantMap& returnMap)
                         << QString("[?]   id: %3   type: %4   pair: %5   status: %6   rate: %7   amount: %8   start_amount: %9 (diff: %1)")
                            .arg(order.start_amount - order.amount)
                            .arg(QString::number(order_id).leftJustified(10))
-                           .arg(QString((order.type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
+                           .arg(QString((order.type==BtcObjects::Order::Type::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(order.pair.toUpper())
                            .arg(status.leftJustified(6))
                            .arg(QString::number(order.rate, 'f', BtcObjects::Pairs::ref(order.pair).decimal_places).leftJustified(10))
@@ -568,7 +613,7 @@ bool Trade::parseSuccess(const QVariantMap& returnMap)
                            .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
                            .arg(QString(order_id?"CREATE":"I-DONE").leftJustified(6))
                            .arg(QString::number(order_id).leftJustified(10))
-                           .arg(QString((type==BtcObjects::Order::Sell)?"SELL":"BUY").leftJustified(4))
+                           .arg(QString((type==BtcObjects::Order::Type::Sell)?"SELL":"BUY").leftJustified(4))
                            .arg(pair.toUpper())
                            .arg(QString::number(rate, 'f', BtcObjects::Pairs::ref(pair).decimal_places).leftJustified(10))
                            .arg(QString::number(amount, 'f', 8).leftJustified(10))
@@ -584,7 +629,7 @@ QVariantMap Trade::extraQueryParams()
 {
     QVariantMap params = Api::extraQueryParams();
     params["pair"] = pair;
-    params["type"] = (type==BtcObjects::Order::Sell)?"sell":"buy";
+    params["type"] = (type==BtcObjects::Order::Type::Sell)?"sell":"buy";
     params["amount"] = QString::number(amount, 'f', 8);
     params["rate"] = QString::number(rate, 'f', BtcObjects::Pairs::ref(pair).decimal_places);
 
@@ -604,7 +649,7 @@ QString CancelOrder::methodName() const
 bool CancelOrder::parseSuccess(const QVariantMap& returnMap)
 {
     if (read_ulong(returnMap, "order_id") != order_id)
-        throw BrokenJson("order_id");
+        throw BadFieldValue("order_id", order_id);
 
     funds.parse(read_map(returnMap, "funds"));
 
@@ -676,10 +721,11 @@ QString read_string(const QVariantMap& map, const QString& name)
 double read_double(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    double ret = read_string(map, name).toDouble(&ok);
+    QString v = read_string(map, name);
+    double ret = v.toDouble(&ok);
 
     if (!ok)
-        throw BrokenJson(name);
+        throw BadFieldValue(name, v);
 
     return ret;
 }
@@ -687,10 +733,11 @@ double read_double(const QVariantMap& map, const QString& name)
 qint64 read_long(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    long ret = read_string(map, name).toLongLong(&ok);
+    QString v = read_string(map, name);
+    long ret = v.toLongLong(&ok);
 
     if (!ok)
-        throw BrokenJson(name);
+        throw BadFieldValue(name, v);
 
     return ret;
 }
@@ -698,10 +745,11 @@ qint64 read_long(const QVariantMap& map, const QString& name)
 quint64 read_ulong(const QVariantMap& map, const QString& name)
 {
     bool ok;
-    quint64 ret = read_string(map, name).toULongLong(&ok);
+    QString v = read_string(map, name);
+    quint64 ret = v.toULongLong(&ok);
 
     if (!ok)
-        throw BrokenJson(name);
+        throw BadFieldValue(name, v);
 
     return ret;
 }
@@ -712,7 +760,7 @@ QVariantMap read_map(const QVariantMap& map, const QString& name)
         throw MissingField(name);
 
     if (!map[name].canConvert<QVariantMap>())
-        throw BrokenJson(name);
+        throw BrokenJson(QString("Field '%1' value could not be converted to map").arg(name));
 
     QVariantMap ret = map[name].toMap();
     ret[key_field] = name;
@@ -726,7 +774,7 @@ QVariantList read_list(const QVariantMap& map, const QString& name)
         throw MissingField(name);
 
     if (!map[name].canConvert<QVariantList>())
-        throw BrokenJson(name);
+        throw BrokenJson(QString("Field '%1' value could not be converted to list").arg(name));
 
     return map[name].toList();
 }

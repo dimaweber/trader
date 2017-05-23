@@ -16,6 +16,11 @@ BtcTradeApi::OrderInfo cancel_order(Database& database, BtcObjects::Order::Id or
 
         /// BUG: if STOP here -- db inconsistent with exchanger!!!!!
         performSql(QString("update order %1").arg(order_id), *database.updateSetCanceled, upd_param, silent_sql);
+
+        QVariantMap params;
+        params[":order_id"] = order_id;
+        params[":decrease"] = info.order.rate * info.order.amount;
+        performSql("update dep_usage", *database.decreaseRoundDepUsage, params, silent_sql);
     }
 
     return info;
@@ -26,11 +31,15 @@ bool create_order (Database& database, quint32 round_id, const QString& pair_nam
     static quint32 auto_executed_counter = 1;
     QVariantMap insertOrderParam;
     BtcTradeApi::Trade order(database, funds, pair_name, type, rate, amount);
-    if (performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount).arg(rate), order, silent_http))
+    bool ok = true;
+
+    database.transaction();
+    ok =  performTradeRequest(QString("create %1 order %2 @ %3").arg("sell").arg(amount).arg(rate), order, silent_http);
+    if (ok)
     {
         insertOrderParam[":order_id"] = (order.order_id==0)?(round_id*1000+auto_executed_counter++):order.order_id;
         insertOrderParam[":status"] = (order.order_id==0)?ORDER_STATUS_INSTANT:ORDER_STATUS_ACTIVE;
-        insertOrderParam[":type"] = (type==BtcObjects::Order::Buy)?"buy":"sell";
+        insertOrderParam[":type"] = (type==BtcObjects::Order::Type::Sell)?"sell":"buy";
         insertOrderParam[":amount"] = order.remains;
         insertOrderParam[":start_amount"] = order.received + order.remains;
         insertOrderParam[":rate"] = rate;
@@ -38,7 +47,21 @@ bool create_order (Database& database, quint32 round_id, const QString& pair_nam
         /// BUG: if order is instant -- actual rate might be significally lower/higher then  asked -- this lead to improper sell rate calculation and extra goods on balance.
 
         /// BUG: if STOP here -- db inconsistent with exchanger!!!!!
-        return performSql("insert  order record", *database.insertOrder, insertOrderParam, silent_sql);
+        ok = performSql("insert  order record", *database.insertOrder, insertOrderParam, silent_sql);
     }
-    return false;
+
+    if (ok)
+    {
+        QVariantMap params;
+        params[":round_id"] = round_id;
+        params[":increase"] = rate * amount;
+        performSql("update dep_usage", *database.increaseRoundDepUsage, params, silent_sql);
+    }
+
+    if (ok)
+        database.commit();
+    else
+        database.rollback();
+
+    return ok;
 }

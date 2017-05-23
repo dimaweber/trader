@@ -590,7 +590,7 @@ void PrivateChannelMessageHandler::parseOrder(const QVariantList &order)
     /*quint32 place_id =*/ order[idx++].toUInt();
 
     BtcObjects::Order o;
-    o.type = (amount<0) ? BtcObjects::Order::Sell : BtcObjects::Order::Buy;
+    o.type = (amount<0) ? BtcObjects::Order::Type::Sell : BtcObjects::Order::Type::Buy;
     o.amount = qAbs(amount);
     o.rate = rate;
     o.pair = bitfinex_pair_to_btce_pair(pair);

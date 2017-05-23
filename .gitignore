@@ -39,3 +39,6 @@ moc_*.cpp
 Makefile*
 *.pro.user
 *.log
+
+*.gcda
+*.gcno

@@ -20,9 +20,6 @@ class QSqlQuery;
 class QSqlDatabase;
 class QSettings;
 
-bool performSql(const QString& message, QSqlQuery& query, const QVariantMap& binds = QVariantMap(), bool silent=false);
-bool performSql(const QString& message, QSqlQuery& query, const QString& sql, bool silent=false);
-
 class Database : public IKeyStorage
 {
 public:
@@ -57,7 +54,8 @@ public:
     std::unique_ptr<QSqlQuery> roundSellStat;
     std::unique_ptr<QSqlQuery> depositIncrease;
     std::unique_ptr<QSqlQuery> orderTransition;
-    std::unique_ptr<QSqlQuery> setRoundsDepUsage;
+    std::unique_ptr<QSqlQuery> decreaseRoundDepUsage;
+    std::unique_ptr<QSqlQuery> increaseRoundDepUsage;
     std::unique_ptr<QSqlQuery> insertRate;
     std::unique_ptr<QSqlQuery> insertDep;
     std::unique_ptr<QSqlQuery> updateOrdersCheckToActive;
@@ -68,7 +66,7 @@ public:
     std::unique_ptr<QSqlQuery> insertIntoQueue;
     std::unique_ptr<QSqlQuery> getFromQueue;
     std::unique_ptr<QSqlQuery> markQueueDone;
-//    std::unique_ptr<QSqlQuery> deleteFromQueue;
+
 
     bool init();
     bool check_version();
