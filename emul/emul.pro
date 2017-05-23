@@ -9,7 +9,7 @@ CONFIG -= app_bundle
 
 LIBS += -lfcgi
 INCLUDEPATH += ../common ../database ../btce ../decimal_for_cpp/include
-LIBS += -L../lib -lcommon -ldatabase -lbtce
+LIBS += -L../lib -lcommon -ldatabase -lbtce -lmemcached
 
 LIBS += -lgcov
 QMAKE_CXXFLAGS += -fprofile-arcs -ftest-coverage
@@ -22,7 +22,9 @@ SOURCES += \
 	emul.cpp \
 	authentificator.cpp \
 	unit_tests.cpp \
-	sqlclient.cpp
+	sqlclient.cpp \
+    memcachedsqldataaccessor.cpp \
+    types.cpp
 
 HEADERS += \
 	query_parser.h \
@@ -31,7 +33,8 @@ HEADERS += \
 	fcgi_request.h \
 	authentificator.h \
 	sqlclient.h \
-    types.h
+	types.h \
+    memcachedsqldataaccessor.h
 
 DEFINES += DEC_NAMESPACE=cppdec
 

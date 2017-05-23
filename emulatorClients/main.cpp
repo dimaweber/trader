@@ -4,12 +4,12 @@
 
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QReadWriteLock>
 #include <QRegExp>
 #include <QSettings>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QThread>
 #include <QUrl>
 #include <QVector>
 
@@ -60,7 +60,7 @@ void connectDatabase(QSqlDatabase& database, QSettings& settings)
 
 struct ClientThreadData
 {
-    int id;
+    unsigned int id;
     QSqlDatabase* pDb;
 };
 
@@ -115,28 +115,45 @@ public:
 static void* clienthread(void* data)
 {
     ClientThreadData* pData = static_cast<ClientThreadData*>(data);
-    QString threadName = QString("client-thread-%1").arg(pData->id);
-    QString dbConnectionName = QString("client-db-%1").arg(pData->id);
+    unsigned int id = pData->id;
+    QString dbConnectionName = QString("client-db-%1").arg(id);
     std::unique_ptr<QSqlDatabase> db = std::make_unique<QSqlDatabase>(QSqlDatabase::cloneDatabase(*pData->pDb, dbConnectionName));
     db->open();
 
     delete pData;
 
-    qsrand(uintptr_t(QThread::currentThread()));
+    qsrand(id);
     std::unique_ptr<DummyStorage> storage = std::make_unique<DummyStorage>(*db);
     BtcObjects::Funds funds;
     QRegExp rx("you should send:([0-9]*)");
 
+    static QReadWriteLock tickerAccess;
     BtcPublicApi::Info btceInfo;
     BtcPublicApi::Ticker btceTicker;
-    btceInfo.performQuery();
+
+    if (BtcObjects::Pairs::ref().size() == 0)
+    {
+        QWriteLocker wlock(&tickerAccess);
+        if (BtcObjects::Pairs::ref().size() == 0)
+            btceInfo.performQuery();
+    }
+
     while(true)
     {
         try {
-            btceTicker.performQuery();
+            if (id == 0)
+            {
+                QWriteLocker wlock(&tickerAccess);
+                btceTicker.performQuery();
+            }
         }
         catch(BadFieldValue& e)
         {
+            continue;
+        }
+        catch (HttpError& e)
+        {
+            usleep(150);
             continue;
         }
 
@@ -144,7 +161,10 @@ static void* clienthread(void* data)
         QVector<QString> pairs;
         pairs << "btc_usd" << "btc_eur" << "eth_btc" << "eth_eur" << "eth_usd" << "ltc_usd" << "ltc_eur";
         QString pair = pairs [ qrand() % pairs.size()];
+        tickerAccess.lockForRead();
         double base_price = BtcObjects::Pairs::ref(pair).ticker.last * 1.002;
+        tickerAccess.unlock();
+
         Amount amount ((qrand() % 1000) / 1000.0 + 0.01);
         Rate rate (base_price + (qrand() % 100) / 10.0 - 5);
         Amount balance;

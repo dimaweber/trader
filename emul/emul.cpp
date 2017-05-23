@@ -607,6 +607,9 @@ struct FcgiThreadData
 };
 
 static pthread_mutex_t acceptAccessMutex = PTHREAD_MUTEX_INITIALIZER;
+
+QAtomicInt processed_total = 0;
+
 static void* fcgiThread(void* data)
 {
     FcgiThreadData* pData = static_cast<FcgiThreadData*>(data);
@@ -631,7 +634,7 @@ static void* fcgiThread(void* data)
             break;
 
 
-        std::clog << "[FastCGI " << threadName << "] New request accepted. Processing" << std::endl;
+//        std::clog << "[FastCGI " << threadName << "] New request accepted. Processing" << std::endl;
 
         QueryParser httpQuery(request);
 
@@ -651,8 +654,9 @@ static void* fcgiThread(void* data)
         request.put ("\r\n");
         request.put ( json);
 
+        processed_total ++;
         request.finish();
-        std::clog << "[FastCGI " << threadName << "] Request finished" << std::endl;
+//        std::clog << "[FastCGI " << threadName << "] Request finished" << std::endl;
     }
 
     responce.reset();
@@ -745,6 +749,8 @@ int main(int argc, char *argv[])
 
     Responce r(db);
     QVariantMap initialBalance = r.exchangeBalance();
+    QElapsedTimer timer;
+    timer.start();
     while (true)
     {
         QVariantMap balance = r.exchangeBalance();
@@ -764,10 +770,13 @@ int main(int argc, char *argv[])
             throw 2;
         }
 
-        sleep(30);
-
         r.updateTicker();
 
+        sleep(30);
+
+        int proc = processed_total.fetchAndStoreRelaxed(0);
+        quint32 elaps = timer.restart();
+        std::clog << "processed " << proc << " in " << elaps << " ms (" << proc / (elaps / 1000) << " rps)"<< std::endl;
     }
 
     for (size_t i=0; i<THREAD_COUNT; i++)

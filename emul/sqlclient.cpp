@@ -123,7 +123,7 @@ void DirectSqlDataAccessor::updateTicker()
             params[":pair"] = sql1.value(5).toString();
             params[":updated"] = QDateTime::currentDateTime();
 
-            performSql("update ticker for pair ':pair'", sql2, params);
+            performSql("update ticker for pair ':pair'", sql2, params, true);
         }
     }
 
@@ -138,6 +138,11 @@ bool DirectSqlDataAccessor::rollback() { return db.rollback(); }
 DirectSqlDataAccessor::DirectSqlDataAccessor(QSqlDatabase &db)
     :db(db)
 {
+}
+
+DirectSqlDataAccessor::~DirectSqlDataAccessor()
+{
+
 }
 
 PairInfo::List DirectSqlDataAccessor::allPairsInfoList()
@@ -382,12 +387,12 @@ bool DirectSqlDataAccessor::tradeUpdateDeposit(const UserId &user_id, const QStr
     ok = performSql("update ':currency' amount by :diff for user :user_id", sql, updateDepParams, true);
     if (ok)
     {
-        std::clog << "\t\t" << QString("%1: %2 %3 %4")
-                     .arg(userName)
-                     .arg((diff.sign() == -1)?"lost":"recieved")
-                     .arg(QString::number(qAbs(diff.getAsDouble()), 'f', 6))
-                     .arg(currency.toUpper())
-                  << std::endl;
+//        std::clog << "\t\t" << QString("%1: %2 %3 %4")
+//                     .arg(userName)
+//                     .arg((diff.sign() == -1)?"lost":"recieved")
+//                     .arg(QString::number(qAbs(diff.getAsDouble()), 'f', 6))
+//                     .arg(currency.toUpper())
+//                  << std::endl;
     }
     return ok;
 }
@@ -402,7 +407,7 @@ bool DirectSqlDataAccessor::reduceOrderAmount(OrderId order_id, const Amount& am
     if (!performSql("reduce :order_id amount by :diff", sql, params, true))
         return false;
 
-    std::clog << "\t\tOrder " << order_id << " amount changed by " << amount << std::endl;
+//    std::clog << "\t\tOrder " << order_id << " amount changed by " << amount << std::endl;
     return true;
 }
 
@@ -415,7 +420,7 @@ bool DirectSqlDataAccessor::closeOrder(OrderId order_id)
     if (!performSql("close order :order_id", sql, params, true))
         return false;
 
-    std::clog << "\t\tOrder " << order_id << "done" << std::endl;
+//    std::clog << "\t\tOrder " << order_id << "done" << std::endl;
 
     return true;
 }
@@ -453,7 +458,7 @@ OrderId DirectSqlDataAccessor::createNewOrderRecord(const PairName &pair, const 
     if (!performSql("create new ':pair' order for user :user_id as :amount @ :rate", sql, params, true ))
         return static_cast<OrderId>(-1);
 
-    std::clog << "new " << ((type == OrderInfo::Type::Buy)?"buy":"sell") << " order for " << start_amount << " @ " << rate << " created" << std::endl;
+//    std:: << "new " << ((type == OrderInfo::Type::Buy)?"buy":"sell") << " order for " << start_amount << " @ " << rate << " created" << std::endl;
 
     return sql.lastInsertId().toUInt();
 }
@@ -475,6 +480,11 @@ QMutex LocalCachesSqlDataAccessor::userInfoCacheRWAccess;
 
 LocalCachesSqlDataAccessor::LocalCachesSqlDataAccessor(QSqlDatabase &db)
     :DirectSqlDataAccessor(db)
+{
+
+}
+
+LocalCachesSqlDataAccessor::~LocalCachesSqlDataAccessor()
 {
 
 }

@@ -1,6 +1,7 @@
 #include "responce.h"
 #include "query_parser.h"
 #include "sql_database.h"
+#include "memcachedsqldataaccessor.h"
 #include "utils.h"
 
 #include <QCache>
@@ -25,7 +26,7 @@ QAtomicInt Responce::counter = 0;
 Responce::Responce(QSqlDatabase& database)
     :db(database)
 {
-    dataAccessor = std::make_shared<LocalCachesSqlDataAccessor>(db);
+    dataAccessor = std::make_shared<MemcachedSqlDataAccessor>(db);
     auth.reset(new Authentificator(dataAccessor));
 
     selectActiveOrdersCountQuery.reset(new QSqlQuery(db));
@@ -143,24 +144,18 @@ quint32 Responce::doExchange(QString userName, const Rate& rate, TradeCurrencyVo
         PairInfo::Ptr pairInfo = dataAccessor->pairInfo(pair);
         OrderId matched_order_id = query.value(0).toUInt();
         Amount matched_amount = qvar2dec<7>(query.value(1));
-        double a = matched_amount.getAsDouble();
-        double b = query.value(1).toDouble();
-        if (a != b)
-        {
-            std::cout << query.value(1).toString() << " " << a << " " << b << std::endl;
-        }
         Amount matched_rate   = qvar2dec<7>(query.value(2));
         UserId matched_user_id = query.value(3).toUInt();
         QString matched_userName = query.value(4).toString();
 
-        std::clog << '\t'
-                  <<QString("Found %5 order %1 from user %2 for %3 @ %4 ")
-                     .arg(matched_order_id)
-                     .arg(matched_userName)
-                     .arg(dec2qstr(matched_amount, 6))
-                     .arg(dec2qstr(matched_rate, pairInfo->decimal_places))
-                     .arg(matchedOrderType)
-                  << std::endl;
+//        std::clog << '\t'
+//                  <<QString("Found %5 order %1 from user %2 for %3 @ %4 ")
+//                     .arg(matched_order_id)
+//                     .arg(matched_userName)
+//                     .arg(dec2qstr(matched_amount, 6))
+//                     .arg(dec2qstr(matched_rate, pairInfo->decimal_places))
+//                     .arg(matchedOrderType)
+//                  << std::endl;
 
         Amount trade_amount = qMin(matched_amount, amnt);
         volumes = trade_volumes(type, pair, fee, trade_amount, matched_rate);
@@ -293,10 +288,10 @@ Responce::OrderCreateResult Responce::checkParamsAndDoExchange(const ApiKey& key
     UserId user_id = user->user_id;
     QString userName = user->name;
 
-    std::clog << QString("user %1 wants to %2 %3 %4 for %5 %6 (rate %7)")
-                 .arg(userName).arg((type == OrderInfo::Type::Buy)?"buy":"sell").arg(dec2qstr(amnt, 6)).arg(pair.left(3).toUpper())
-                 .arg(dec2qstr(amnt * rate, decimal_places)).arg(pair.right(3).toUpper()).arg(dec2qstr(rate, decimal_places))
-              << std::endl;
+//    std::clog << QString("user %1 wants to %2 %3 %4 for %5 %6 (rate %7)")
+//                 .arg(userName).arg((type == OrderInfo::Type::Buy)?"buy":"sell").arg(dec2qstr(amnt, 6)).arg(pair.left(3).toUpper())
+//                 .arg(dec2qstr(amnt * rate, decimal_places)).arg(pair.right(3).toUpper()).arg(dec2qstr(rate, decimal_places))
+//              << std::endl;
 
     TradeCurrencyVolume volumes;
     static QMap<QString, QMutex*> tradeMutex;

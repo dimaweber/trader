@@ -53,6 +53,7 @@ class DirectSqlDataAccessor : public AbstractDataAccessor
     QSqlDatabase& db;
 public :
     DirectSqlDataAccessor(QSqlDatabase& db);
+    virtual ~DirectSqlDataAccessor();
 
     PairInfo::List   allPairsInfoList() override;
     PairInfo::Ptr    pairInfo(const PairName& pair) override;
@@ -106,6 +107,7 @@ class LocalCachesSqlDataAccessor : public DirectSqlDataAccessor
 
 public :
     LocalCachesSqlDataAccessor(QSqlDatabase& db);
+    virtual ~LocalCachesSqlDataAccessor();
 
     PairInfo::List   allPairsInfoList() override;
     PairInfo::Ptr    pairInfo(const PairName& pair) override;

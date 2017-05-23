@@ -72,6 +72,9 @@ struct PairInfo
     int decimal_places;
     bool hidden;
     PairName pair;
+
+    QByteArray pack() const;
+    bool unpack(QByteArray& ba);
 };
 struct TickerInfo
 {
@@ -91,6 +94,9 @@ struct TickerInfo
     PairInfo::WPtr pair_ptr;
 
     QMutex updateAccess;
+
+    QByteArray pack() const;
+    bool unpack(QByteArray& ba);
 };
 struct OrderInfo
 {
@@ -112,6 +118,9 @@ struct OrderInfo
     OrderId order_id;
 
     QMutex updateAccess;
+
+    QByteArray pack() const;
+    bool unpack(QByteArray& ba);
 };
 struct TradeInfo
 {
@@ -144,6 +153,9 @@ struct UserInfo
     Funds funds;
 
     QMutex updateAccess;
+
+    QByteArray pack() const;
+    bool unpack(QByteArray& ba);
 };
 
 struct ApikeyInfo
@@ -160,6 +172,9 @@ struct ApikeyInfo
     UserInfo::WPtr user_ptr;
 
     QMutex updateAccess;
+
+    QByteArray pack() const;
+    bool unpack(QByteArray& ba);
 };
 
 #endif // TYPES_H
