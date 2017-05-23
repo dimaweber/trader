@@ -25,7 +25,7 @@ daemon.depends =  btce database
 db_check.depends =  database
 add_order.depends = database btce
 bitfinex_client.depends = common
-tests.depends = common
+tests.depends = btce
 emul.depends = database btce
 emulatorClients.depends=emul
 
