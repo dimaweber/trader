@@ -32,6 +32,7 @@ MemcachedSqlDataAccessor::MemcachedSqlDataAccessor(QSqlDatabase& db)
             if (spl.length()>1)
                 port = spl[1].toUInt();
 
+            std::clog << "memcached server " << hostname << ':' << port << std::endl;
             servers = memcached_server_list_append(servers, hostname.toUtf8().constData(), port, &rc);
         }
     }
