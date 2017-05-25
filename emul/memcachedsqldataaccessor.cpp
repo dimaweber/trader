@@ -1,6 +1,9 @@
 #include "memcachedsqldataaccessor.h"
 
+#include <QCoreApplication>
 #include <QDataStream>
+#include <QFileInfo>
+#include <QSettings>
 
 #include <iostream>
 
@@ -9,7 +12,30 @@ MemcachedSqlDataAccessor::MemcachedSqlDataAccessor(QSqlDatabase& db)
 {
     memcached_return rc;
     memc = memcached_create(nullptr);
-    servers = memcached_server_list_append(servers, "localhost", 11211, &rc);
+
+    // TODO: pass settings from main programm!
+    QString iniFilePath = QCoreApplication::applicationDirPath() + "/../data/emul.ini";
+    if (!QFileInfo(iniFilePath).exists())
+    {
+        std::cerr << "*** No INI file!" << std::endl;
+    }
+    QSettings settings(iniFilePath, QSettings::IniFormat);
+    QStringList serverList = settings.value("memcached/servers", "localhost:11211").toStringList();
+    for (const QString& server: serverList)
+    {
+        QString hostname;
+        int port = 11211;
+        QStringList spl = server.split(':');
+        if (spl.length() > 0)
+        {
+            hostname = spl[0];
+            if (spl.length()>1)
+                port = spl[1].toUInt();
+
+            servers = memcached_server_list_append(servers, hostname.toUtf8().constData(), port, &rc);
+        }
+    }
+
     rc = memcached_server_push(memc, servers);
 
     if (rc == MEMCACHED_SUCCESS)
