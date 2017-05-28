@@ -1,4 +1,4 @@
-QT += core websockets
+QT += core websockets sql
 QT -= gui
 
 CONFIG += c++11

@@ -10,6 +10,18 @@
 
 #include <stdexcept>
 
+#if __GNUC__ < 5 && __GNU__MINOR__ < 8
+#include <memory>
+namespace std
+{
+template<typename T, typename ...Args>
+std::unique_ptr<T> make_unique( Args&& ...args )
+{
+    return std::unique_ptr<T>( new T( std::forward<Args>(args)... ) );
+}
+}
+#endif
+
 const QString key_field = "__key";
 
 class MissingField : public std::runtime_error

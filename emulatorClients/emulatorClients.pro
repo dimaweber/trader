@@ -1,7 +1,8 @@
 QT += core sql
 QT -= gui
 
-CONFIG += c++1z
+#CONFIG += c++1z
+CONFIG+=c++14
 
 TARGET = emulatorClients
 CONFIG += console

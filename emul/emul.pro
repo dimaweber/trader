@@ -1,7 +1,8 @@
 QT += core sql testlib concurrent
 QT -= gui
 
-CONFIG += c++1z
+#CONFIG += c++1z
+CONFIG += c++14
 
 TARGET = emul
 CONFIG += console
