@@ -10,6 +10,7 @@
 
 #include <stdexcept>
 
+#if defined(__CNUC__)
 #if __GNUC__ < 5 && __GNU__MINOR__ < 8
 #include <memory>
 namespace std
@@ -20,6 +21,7 @@ std::unique_ptr<T> make_unique( Args&& ...args )
     return std::unique_ptr<T>( new T( std::forward<Args>(args)... ) );
 }
 }
+#endif
 #endif
 
 const QString key_field = "__key";

@@ -62,7 +62,7 @@ void Client::authenticate()
     v["authNonce"] = nonce;
     v["authPayload"] = QString("AUTH%1").arg(nonce);
     v["authSig"] = hmac_sha384(v["authPayload"].toByteArray(), QByteArray(API_SECRET)).toHex();
-    v["filter"] = QStringList({"trading", "wallet", "balance"});
+    v["filter"] = QStringList() << "trading" << "wallet" << "balance";
 
     QString msg = QString::fromUtf8(QJsonDocument::fromVariant(v).toJson());
     wsocket->sendTextMessage(msg);

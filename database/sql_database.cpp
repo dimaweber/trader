@@ -340,7 +340,7 @@ bool Database::create_tables()
              << TableField("goods", TableField::Char, 3).notNull().defaultValue("btc")
              << TableField("dep_inc", TableField::Decimal, 5, 2).notNull().defaultValue(0)
              << TableField("enabled", TableField::Boolean).notNull().defaultValue(1)
-             << TableField("secret_id", TableField::Integer).notNull().references("secrets", {"id"})
+             << TableField("secret_id", TableField::Integer).notNull().references("secrets", QStringList() << "id")
              << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
              ;
 
@@ -355,18 +355,18 @@ bool Database::create_tables()
             << "c_in decimal(14,6) not null default 0"
             << "c_out decimal(14,6) not null default 0"
             << "dep_usage decimal(14,6) not null default 0"
-            << TableField("settings_id", TableField::Integer).notNull().references("settings", {"id"})
+            << TableField("settings_id", TableField::Integer).notNull().references("settings", QStringList() << "id")
             << "FOREIGN KEY(settings_id) REFERENCES settings(id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
 
     createSqls["orders"]
              << TableField("order_id", TableField::Integer).primaryKey(false)
-             << TableField("status_id", TableField::Integer, 11).notNull().defaultValue(0).references("order_status", {"status_id"})
+             << TableField("status_id", TableField::Integer, 11).notNull().defaultValue(0).references("order_status", QStringList() << "status_id")
              << "type ENUM ('buy', 'sell') not null default 'buy'"
              << TableField("amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("rate", TableField::Decimal, 11, 6).notNull().defaultValue(0)
              << TableField("start_amount", TableField::Decimal, 11, 6).notNull().defaultValue(0)
-             << TableField("round_id", TableField::Integer).notNull().references("rounds", {"round_id"})
+             << TableField("round_id", TableField::Integer).notNull().references("rounds", QStringList() << "round_id")
              << TableField("created", TableField::Datetime).notNull()
              << TableField("modified", TableField::Datetime).notNull()
              << "FOREIGN KEY(round_id) REFERENCES rounds(round_id) ON UPDATE CASCADE ON DELETE RESTRICT"
@@ -381,8 +381,8 @@ bool Database::create_tables()
             << TableField("description", TableField::Varchar, 255)
             << TableField("status").check("status>0 and status<5")
             << TableField("timestamp", TableField::Datetime).notNull()
-            << TableField("secret_id", TableField::Integer).references("secrets", {"id"})
-            << TableField("order_id", TableField::Integer).notNull().defaultValue(0).references("orders", {"order_id"})
+            << TableField("secret_id", TableField::Integer).references("secrets", QStringList() << "id")
+            << TableField("order_id", TableField::Integer).notNull().defaultValue(0).references("orders", QStringList() << "order_id")
             << "FOREIGN KEY(secret_id) REFERENCES secrets(id) ON UPDATE CASCADE ON DELETE RESTRICT"
          //   << "FOREIGN KEY(order_id) REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT"
             ;
