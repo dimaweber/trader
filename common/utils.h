@@ -10,7 +10,7 @@
 
 #include <stdexcept>
 
-#if defined(__CNUC__)
+#if defined(__GNUC__)
 #if __GNUC__ < 5 && __GNU__MINOR__ < 8
 #include <memory>
 namespace std
