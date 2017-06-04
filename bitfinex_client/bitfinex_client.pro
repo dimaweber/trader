@@ -12,8 +12,6 @@ TEMPLATE = app
 SOURCES += main.cpp \
     client.cpp
 
-LIBS += -L../lib -lcommon -lcrypto -lbtce
-INCLUDEPATH += ../common ../btce -lcurl
 
 win32: {
     INCLUDEPATH += C:/libs/curl/include \
@@ -26,6 +24,9 @@ win32: {
 
          LIBS += -ladvapi32 -luser32 -lcrypt32 -lws2_32
 }
+INCLUDEPATH += ../common ../btce
+LIBS += -L../lib -lcommon -lcrypto -lbtce -lcurl
+
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
