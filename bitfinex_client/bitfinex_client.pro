@@ -23,6 +23,8 @@ win32: {
          LIBS += -LC:/libs/curl/lib \
                  -LC:/libs/openssl/lib \
                  -LC:/libs/boost/lib
+
+         LIBS += -ladvapi32
 }
 
 # The following define makes your compiler emit warnings if you use
