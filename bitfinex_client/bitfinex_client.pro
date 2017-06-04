@@ -24,7 +24,7 @@ win32: {
                  -LC:/libs/openssl/lib \
                  -LC:/libs/boost/lib
 
-         LIBS += -ladvapi32
+         LIBS += -ladvapi32 -luser32
 }
 
 # The following define makes your compiler emit warnings if you use
