@@ -10,16 +10,19 @@ CONFIG -= app_bundle
 TEMPLATE = app
 
 SOURCES += main.cpp \
-	client.cpp
+    client.cpp
 
 LIBS += -L../lib -lcommon -lcrypto -lbtce
 INCLUDEPATH += ../common ../btce -lcurl
 
 win32: {
-    INCLUDEPATH += C:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/include
-    INCLUDEPATH += C:/OpenSSL-Win64/include
-         LIBS += -LC:/projects/curl/builds/libcurl-vc12-x64-release-dll-ipv6-sspi-winssl/lib
-         LIBS += -LC:/OpenSSL-Win64/lib
+    INCLUDEPATH += C:/libs/curl/include \
+                   C:/libs/openssl/include \
+                   c:/libs/boost/include
+
+         LIBS += -LC:/libs/curl/lib \
+                 -LC:/libs/openssl/lib \
+                 -LC:/libs/boost/lib
 }
 
 # The following define makes your compiler emit warnings if you use
