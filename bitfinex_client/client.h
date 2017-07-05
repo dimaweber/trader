@@ -1,6 +1,8 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#include "ratesdb.h"
+
 #include <QtCore/QObject>
 #include <QtCore/qglobal.h>
 #include <QTimer>
@@ -63,6 +65,7 @@ public:
 
 class TradeChannelMessageHandler : public PublicChannelMessageHandler
 {
+    RatesDB rates;
 public:
     TradeChannelMessageHandler(quint32 chanId, const QString& pair)
         :PublicChannelMessageHandler(chanId, pair, "trades")
@@ -81,6 +84,7 @@ public:
         :TradeChannelMessageHandler(chanId, pair)
     {}
 protected:
+    virtual bool parseSnapshot(const QVariantList& msg);
     virtual bool parseUpdate(const QVariantList& msg) override;
 };
 
@@ -110,6 +114,7 @@ class Client : public QObject
     QWebSocket* wsocket;
     QMap<quint32, ChannelMessageHandler*> channelHandlers;
     int serverProtocol;
+
 public:
     explicit Client(QObject *parent = 0);
 

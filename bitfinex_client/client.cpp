@@ -401,11 +401,15 @@ bool TradeChannelMessageHandler::parseSnapshot(const QVariantList &lst)
 
 void TradeChannelMessageHandler::printTrade(quint32 id, const QDateTime& timestamp, float price, float amount)
 {
+    QString type = amount>0?"buy":"sell";
     qDebug() << timestamp.toString(Qt::ISODate)
              << "[" << id << "]"
              << pair
-             << (amount>0?"buy":"sell")
+             << type
              << qAbs(amount) << '@' << price;
+
+    QString p = bitfinex_pair_to_btce_pair(pair);
+    rates.newRate("bitfinex", id, p, timestamp, price, amount, type);
 }
 
 bool PublicChannelMessageHandler::processMessage(const QVariantList &msg)
@@ -450,6 +454,24 @@ QDateTime ChannelMessageHandler::getLastUpdate() const
     return lastUpdate;
 }
 
+bool TradeChannelMessageHandler_v2::parseSnapshot(const QVariantList &lst)
+{
+    if (lst.size() != 4)
+    {
+        qWarning() << "something wrong";
+        return false;
+    }
+
+    int idx = 0;
+    quint32 id = lst[idx++].toUInt();
+    qulonglong timestamp = lst[idx++].toULongLong();
+    float amount = lst[idx++].toFloat();
+    float price = lst[idx++].toFloat();
+
+    printTrade(id, QDateTime::fromMSecsSinceEpoch(timestamp), price, amount);
+    return true;
+}
+
 bool TradeChannelMessageHandler_v2::parseUpdate(const QVariantList &msg)
 {
     QString tue = msg[1].toString();
@@ -469,6 +491,8 @@ bool TradeChannelMessageHandler_v2::parseUpdate(const QVariantList &msg)
         timestamp = QDateTime::fromMSecsSinceEpoch(updList[idx++].toULongLong());
         amount = updList[idx++].toFloat();
         price = updList[idx++].toFloat();
+
+        printTrade(id, timestamp, price, amount);
     }
     else if (tue == "te")
     {
@@ -483,7 +507,6 @@ bool TradeChannelMessageHandler_v2::parseUpdate(const QVariantList &msg)
 
     }
 
-    printTrade(id, timestamp, price, amount);
     return true;
 }
 
