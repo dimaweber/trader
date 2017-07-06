@@ -422,6 +422,7 @@ void Trader::process()
                         adjusted_sell_rate = pos.rate;
                 }
                 sell_rate = qMax(adjusted_sell_rate - decimal_fix, calculated_sell_rate);
+                sell_rate = qMin(sell_rate, pair.max_price);
 
                 std::clog << QString("After depth lookup, we adjusted sell rate to %1").arg(sell_rate) << std::endl;
             }
