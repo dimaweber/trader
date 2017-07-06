@@ -29,7 +29,7 @@ RatesDB::RatesDB()
 
 }
 
-void RatesDB::newRate(const QString& ex, int exch_id, const QString& pair, const QDateTime &time, double rate, double amount, const QString& type)
+bool RatesDB::newRate(const QString& ex, int exch_id, const QString& pair, const QDateTime &time, double rate, double amount, const QString& type)
 {
     query->bindValue(":exchange", ex);
     query->bindValue(":exch_id", exch_id);
@@ -42,5 +42,8 @@ void RatesDB::newRate(const QString& ex, int exch_id, const QString& pair, const
     if (!query->exec())
     {
         std::cerr << qPrintable(db->lastError().text()) << std::endl;
+        return false;
     }
+
+    return true;
 }

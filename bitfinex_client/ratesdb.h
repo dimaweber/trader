@@ -13,7 +13,7 @@ class RatesDB
 public:
     explicit RatesDB();
 
-    void newRate(const QString& ex, int exch_id, const QString &pair, const QDateTime& time, double rate, double amount, const QString& type);
+    bool newRate(const QString& ex, int exch_id, const QString &pair, const QDateTime& time, double rate, double amount, const QString& type);
 };
 
 #endif // RATESDB_H

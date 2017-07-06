@@ -149,7 +149,10 @@ void Client::onSubscribedEvent(QVariantMap m)
 
             auto dbWriteCallback = [this](quint32 exch_id, const QDateTime& time, float price, float amount, const QString& pair)
             {
-                rates.newRate("bitfinex", exch_id, bitfinex_pair_to_btce_pair(pair), time, price, qAbs(amount), amount<0?"sell":"buy");
+                if (!rates.newRate("bitfinex", exch_id, bitfinex_pair_to_btce_pair(pair), time, price, qAbs(amount), amount<0?"sell":"buy"))
+                    qWarning() << "fail to write to database";
+                else
+                    qDebug() << "new record added to database";
             };
 
             TradeChannelMessageHandler* p = nullptr;
@@ -157,7 +160,7 @@ void Client::onSubscribedEvent(QVariantMap m)
                 p = new TradeChannelMessageHandler(chanId, m["pair"].toString());
             else if (serverProtocol == 2)
                 p = new TradeChannelMessageHandler_v2(chanId, m["pair"].toString());
-            //p->setTradeCallback(dbWriteCallback);
+            p->setTradeCallback(dbWriteCallback);
             handler = p;
         }
 
