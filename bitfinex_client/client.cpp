@@ -73,6 +73,7 @@ void Client::subscribeAll()
     subscribeChannel("ticker", "BTCUSD");
     subscribeChannel("ticker", "LTCUSD");
     subscribeChannel("trades", "BTCUSD");
+    subscribeChannel("trades", "ETHUSD");
 }
 
 void Client::unsubscribeAll()
@@ -300,7 +301,7 @@ void Client::onTimer()
         }
     }
 
-    pingLatency = 0;
+    pingLatency = -1;
     pingLanetcyTimer.start();
     QString pingMsg = "{\"event\":\"ping\"}";
 

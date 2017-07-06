@@ -11,6 +11,8 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 
+#include  <functional>
+
 #define BITFINEX_WEBSOCKET_API_URL "wss://api.bitfinex.com/ws/2"
 
 class QWebSocket;
