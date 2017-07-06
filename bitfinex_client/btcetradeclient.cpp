@@ -38,7 +38,8 @@ void BtcETradeClient::run()
     BtcPublicApi::Trades trades(500);
 
     QMap<QString, quint32> id;
-    QStringList pairs {"btc_usd", "eth_usd"};
+    QStringList pairs;
+    pairs << "btc_usd" << "eth_usd";
     while (true)
     {
         trades.performQuery();
