@@ -65,13 +65,18 @@ public:
 
 class TradeChannelMessageHandler : public PublicChannelMessageHandler
 {
-    RatesDB rates;
 public:
     TradeChannelMessageHandler(quint32 chanId, const QString& pair)
         :PublicChannelMessageHandler(chanId, pair, "trades")
     {}
     virtual bool processMessage(const QVariantList& msg) override;
+
+    //typedef void (*NewTradeCallback)(quint32 exch_id, const QDateTime& time, float price, float amount, const QString& pair);
+    using NewTradeCallback = std::function<void(quint32, const QDateTime&, float, float, const QString&)>;
+    void setTradeCallback(NewTradeCallback callbackFunc);
+
 protected:
+    NewTradeCallback newTradeCallback;
     virtual bool parseUpdate(const QVariantList& msg);
     virtual bool parseSnapshot(const QVariantList& msg);
     virtual void printTrade(quint32 id, const QDateTime &timestamp, float price, float amount);
@@ -114,6 +119,7 @@ class Client : public QObject
     QWebSocket* wsocket;
     QMap<quint32, ChannelMessageHandler*> channelHandlers;
     int serverProtocol;
+    RatesDB rates;
 
 public:
     explicit Client(QObject *parent = 0);

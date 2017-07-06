@@ -8,8 +8,8 @@
 #include <QJsonParseError>
 #include <QByteArray>
 
-#define API_KEY "qIx1exnyQPFSxkGpaXEdOORMqYSrDW4ONo9ia70atwn"
-#define API_SECRET "yb54vszGFfi876fgBpJ0fikGLeJYe17Yx4oPc1Z051c"
+#define API_KEY "uiF9cVUGWO0xzkVYX1htEcxO1sQ7tJSQtU2sbZbYflZ"
+#define API_SECRET "VA12zsLCb3eA3H4iFwYoAiMW9w3etTpQRsGkhYoLTwA"
 
 QString bitfinex_pair_to_btce_pair(const QString& str)
 {
@@ -55,7 +55,7 @@ void Client::unsubscribeChannel(quint32 chanId)
 
 void Client::authenticate()
 {
-    QString nonce = QString::number(QDateTime::currentDateTime().toTime_t());
+    QString nonce = QString::number(QDateTime::currentDateTime().toTime_t() - 1499332582);
     QVariantMap v;
     v["event"] = "auth";
     v["apiKey"] = API_KEY;
@@ -146,10 +146,18 @@ void Client::onSubscribedEvent(QVariantMap m)
         else if (channelName == "trades")
         {
 
+            auto dbWriteCallback = [this](quint32 exch_id, const QDateTime& time, float price, float amount, const QString& pair)
+            {
+                rates.newRate("bitfinex", exch_id, bitfinex_pair_to_btce_pair(pair), time, price, qAbs(amount), amount<0?"sell":"buy");
+            };
+
+            TradeChannelMessageHandler* p = nullptr;
             if (serverProtocol == 1)
-                handler = new TradeChannelMessageHandler(chanId, m["pair"].toString());
+                p = new TradeChannelMessageHandler(chanId, m["pair"].toString());
             else if (serverProtocol == 2)
-                handler = new TradeChannelMessageHandler_v2(chanId, m["pair"].toString());
+                p = new TradeChannelMessageHandler_v2(chanId, m["pair"].toString());
+            p->setTradeCallback(dbWriteCallback);
+            handler = p;
         }
 
         if (handler)
@@ -189,7 +197,8 @@ void Client::onAuthEvent(QVariantMap m)
     else
     {
         int code = m["code"].toInt();
-        qWarning() << "authentication failed with code" << code;
+        QString msg = m["msg"].toString();
+        qWarning() << "authentication failed with code" << code << " :    " << msg;
     }
 
 }
@@ -291,7 +300,7 @@ void Client::onTimer()
         }
     }
 
-    pingLatency = -1;
+    pingLatency = 0;
     pingLanetcyTimer.start();
     QString pingMsg = "{\"event\":\"ping\"}";
 
@@ -361,6 +370,11 @@ bool TradeChannelMessageHandler::processMessage(const QVariantList &msg)
     return ret;
 }
 
+void TradeChannelMessageHandler::setTradeCallback(TradeChannelMessageHandler::NewTradeCallback callbackFunc)
+{
+    newTradeCallback = callbackFunc;
+}
+
 bool TradeChannelMessageHandler::parseUpdate(const QVariantList &msg)
 {
     int idx=1;
@@ -376,7 +390,13 @@ bool TradeChannelMessageHandler::parseUpdate(const QVariantList &msg)
     float amount = msg[idx++].toFloat();
 
     if (type == "tu")
-        printTrade(id, QDateTime::fromTime_t(timestamp), price, amount);
+    {
+        QDateTime time = QDateTime::fromTime_t(timestamp);
+        if (newTradeCallback == nullptr)
+            printTrade(id, time, price, amount);
+        else
+            newTradeCallback(id, time, price, amount, pair);
+    }
 
     return true;
 }
@@ -395,7 +415,12 @@ bool TradeChannelMessageHandler::parseSnapshot(const QVariantList &lst)
     float price = lst[idx++].toFloat();
     float amount = lst[idx++].toFloat();
 
-    printTrade(id, QDateTime::fromTime_t(timestamp), price, amount);
+    QDateTime time = QDateTime::fromTime_t(timestamp);
+    if (newTradeCallback == nullptr)
+        printTrade(id, time, price, amount);
+    else
+        newTradeCallback(id, time, price, amount, pair);
+
     return true;
 }
 
@@ -409,7 +434,6 @@ void TradeChannelMessageHandler::printTrade(quint32 id, const QDateTime& timesta
              << qAbs(amount) << '@' << price;
 
     QString p = bitfinex_pair_to_btce_pair(pair);
-    rates.newRate("bitfinex", id, p, timestamp, price, amount, type);
 }
 
 bool PublicChannelMessageHandler::processMessage(const QVariantList &msg)
@@ -468,7 +492,12 @@ bool TradeChannelMessageHandler_v2::parseSnapshot(const QVariantList &lst)
     float amount = lst[idx++].toFloat();
     float price = lst[idx++].toFloat();
 
-    printTrade(id, QDateTime::fromMSecsSinceEpoch(timestamp), price, amount);
+    QDateTime time = QDateTime::fromMSecsSinceEpoch(timestamp);
+    if (newTradeCallback == nullptr)
+        printTrade(id, time, price, amount);
+    else
+        newTradeCallback(id, time, price, amount, pair);
+
     return true;
 }
 
@@ -492,7 +521,10 @@ bool TradeChannelMessageHandler_v2::parseUpdate(const QVariantList &msg)
         amount = updList[idx++].toFloat();
         price = updList[idx++].toFloat();
 
-        printTrade(id, timestamp, price, amount);
+        if (newTradeCallback == nullptr)
+            printTrade(id, timestamp, price, amount);
+        else
+            newTradeCallback(id, timestamp, price, amount, pair);
     }
     else if (tue == "te")
     {

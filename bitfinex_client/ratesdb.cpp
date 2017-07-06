@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-RatesDB::RatesDB(QObject *parent) : QObject(parent)
+RatesDB::RatesDB()
 {
     db = new QSqlDatabase (QSqlDatabase::addDatabase("QMYSQL", "conn"));
 

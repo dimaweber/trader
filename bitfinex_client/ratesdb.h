@@ -6,17 +6,13 @@
 class QSqlDatabase;
 class QSqlQuery;
 
-class RatesDB : public QObject
+class RatesDB
 {
-    Q_OBJECT
     QSqlDatabase* db;
     QSqlQuery* query;
 public:
-    explicit RatesDB(QObject *parent = nullptr);
+    explicit RatesDB();
 
-signals:
-
-public slots:
     void newRate(const QString& ex, int exch_id, const QString &pair, const QDateTime& time, double rate, double amount, const QString& type);
 };
 
