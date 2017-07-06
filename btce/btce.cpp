@@ -1,5 +1,7 @@
 #include "btce.h"
 
+#include <QTimeZone>
+
 double read_double(const QVariantMap& map, const QString& name);
 QString read_string(const QVariantMap& map, const QString& name);
 qint64 read_long(const QVariantMap& map, const QString& name);
@@ -781,5 +783,8 @@ QVariantList read_list(const QVariantMap& map, const QString& name)
 
 QDateTime read_timestamp(const QVariantMap &map, const QString &name)
 {
-    return QDateTime::fromTime_t(read_long(map, name));
+    QDateTime t = QDateTime::fromTime_t(read_long(map, name));
+    QTimeZone zone("Europe/Moscow");
+    t.setTimeZone(zone);
+    return t;
 }
