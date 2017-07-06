@@ -4,7 +4,7 @@
 #include <QSqlError>
 #include <QVariant>
 
-#include <iostream>
+#include <QDebug>
 
 RatesDB::RatesDB()
 {
@@ -15,16 +15,16 @@ RatesDB::RatesDB()
     db->setPassword("rates");
     db->setUserName("rates");
 
-    std::cout << "Connecting to database" << std::endl;
+    qDebug() << "Connecting to database";
     if (!db->open())
     {
-        std::cerr << qPrintable(db->lastError().text()) << std::endl;
+        qCritical() << db->lastError().text();
     }
 
     query = new QSqlQuery(*db);
-    if (!query->prepare("insert into rates (exchange, exch_id, pair, time, rate, amount, type) values (:exchange, :exch_id, :pair, :time, :rate, :amount, :type)"))
+    if (!query->prepare("insert into rates (exchange, exch_id, pair, time, rate, amount, type) values (:exchange, :exch_id, :pair, :time, :rate, :amount, :type)  on duplicate key update exch_id=exch_id"))
     {
-        std::cerr << qPrintable(db->lastError().text()) << std::endl;
+        qCritical() << query->lastError().text();
     }
 
 }
@@ -41,7 +41,7 @@ bool RatesDB::newRate(const QString& ex, int exch_id, const QString& pair, const
 
     if (!query->exec())
     {
-        std::cerr << qPrintable(query->lastError().text()) << std::endl;
+        qWarning() << query->lastError().text();
         return false;
     }
 

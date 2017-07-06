@@ -217,7 +217,7 @@ void Client::onMessage(const QString& msg)
     QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError)
     {
-        qDebug() << "fail to parse json from server: " << error.errorString();
+        qWarning() << "fail to parse json from server: " << error.errorString();
     }
     else
     {
@@ -273,7 +273,7 @@ void Client::onMessage(const QString& msg)
         }
         else
         {
-            qDebug() << "broken json reply" << v.toString();
+            qWarning() << "broken json reply" << v.toString();
         }
     }
 }
@@ -292,11 +292,11 @@ void Client::onTimer()
         int noMsgSec = checkTime.secsTo(handler->getLastUpdate());
         if ( noMsgSec > 10 )
         {
-            qDebug() << "channel " << handler->getChanId() << "seems to be dead";
+            qWarning() << "channel " << handler->getChanId() << "seems to be dead";
         }
         if (noMsgSec > 30 )
         {
-            qDebug() << "Channel [" << handler->getChanId() << "]" << handler->getName() << ": no messages for too long, resubscribe";
+            qWarning() << "Channel [" << handler->getChanId() << "]" << handler->getName() << ": no messages for too long, resubscribe";
             unsubscribeChannel(handler->getChanId());
             subscribeChannel(handler->getName(), handler->getPair());
         }

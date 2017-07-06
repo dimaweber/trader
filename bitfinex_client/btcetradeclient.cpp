@@ -4,6 +4,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QDebug>
 
 BtcETradeClient::BtcETradeClient()
 {
@@ -14,16 +15,16 @@ BtcETradeClient::BtcETradeClient()
     db->setPassword("rates");
     db->setUserName("rates");
 
-    std::cout << "Connecting to database" << std::endl;
+    qDebug() << "Connecting to database";
     if (!db->open())
     {
-        std::cerr << qPrintable(db->lastError().text()) << std::endl;
+        qCritical() << db->lastError().text();
     }
 
     query = new QSqlQuery(*db);
-    if (!query->prepare("insert into rates (exchange, exch_id, pair, time, rate, amount, type) values (:exchange, :exch_id, :pair, :time, :rate, :amount, :type)"))
+    if (!query->prepare("insert into rates (exchange, exch_id, pair, time, rate, amount, type) values (:exchange, :exch_id, :pair, :time, :rate, :amount, :type) on duplicate key update exch_id=exch_id"))
     {
-        std::cerr << qPrintable(db->lastError().text()) << std::endl;
+        qCritical() << query->lastError().text();
     }
 
     QString serverAddress = "https://btc-e.com";
@@ -36,34 +37,30 @@ BtcETradeClient::BtcETradeClient()
 void BtcETradeClient::run()
 {
     BtcPublicApi::Trades trades(500);
-
-    QMap<QString, quint32> id;
     while (true)
     {
         trades.performQuery();
 
         for (BtcObjects::Pair& pair: BtcObjects::Pairs::ref())
         {
+            db->transaction();
             QList<BtcObjects::Trade>& tradeList = pair.trades;
             for (const BtcObjects::Trade& trade: tradeList)
             {
-                if (id[pair.name] < trade.id)
-                {
-                    id[pair.name] = trade.id;
-                    query->bindValue(":exchange", "btc-e");
-                    query->bindValue(":exch_id", trade.id);
-                    query->bindValue(":pair", pair.name);
-                    query->bindValue(":time", trade.timestamp.toUTC());
-                    query->bindValue(":rate", trade.price);
-                    query->bindValue(":amount", trade.amount);
-                    query->bindValue(":type", trade.type==BtcObjects::Trade::Type::Ask?"sell":"buy");
+                query->bindValue(":exchange", "btc-e");
+                query->bindValue(":exch_id", trade.id);
+                query->bindValue(":pair", pair.name);
+                query->bindValue(":time", trade.timestamp.toUTC());
+                query->bindValue(":rate", trade.price);
+                query->bindValue(":amount", trade.amount);
+                query->bindValue(":type", trade.type==BtcObjects::Trade::Type::Ask?"sell":"buy");
 
-                    if (!query->exec())
-                    {
-                        std::cerr << qPrintable(query->lastError().text()) << std::endl;
-                    }
+                if (!query->exec())
+                {
+                    qWarning() << query->lastError().text();
                 }
             }
+            db->commit();
             pair.trades.clear();
         }
 
