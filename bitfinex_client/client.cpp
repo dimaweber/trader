@@ -119,9 +119,9 @@ void Client::onInfoEvent(QVariantMap m)
             case 20051:
                 emit reconnectRequired();
                 break;
-        case 20060:
+            case 20060:
                 break;
-        case 20061:
+            case 20061:
                 emit resubscribeAllRerquired();
         }
     }

@@ -38,21 +38,18 @@ void BtcETradeClient::run()
     BtcPublicApi::Trades trades(500);
 
     QMap<QString, quint32> id;
-    QStringList pairs;
-    pairs << "btc_usd" << "eth_usd";
     while (true)
     {
         trades.performQuery();
 
-        for (auto& p: pairs)
+        for (BtcObjects::Pair& pair: BtcObjects::Pairs::ref())
         {
-            BtcObjects::Pair& pair = BtcObjects::Pairs::ref(p);
             QList<BtcObjects::Trade>& tradeList = pair.trades;
             for (const BtcObjects::Trade& trade: tradeList)
             {
-                if (id[p] < trade.id)
+                if (id[pair.name] < trade.id)
                 {
-                    id[p] = trade.id;
+                    id[pair.name] = trade.id;
                     query->bindValue(":exchange", "btc-e");
                     query->bindValue(":exch_id", trade.id);
                     query->bindValue(":pair", pair.name);
@@ -67,6 +64,7 @@ void BtcETradeClient::run()
                     }
                 }
             }
+            pair.trades.clear();
         }
 
         sleep(10);
