@@ -157,7 +157,7 @@ void Client::onSubscribedEvent(QVariantMap m)
                 p = new TradeChannelMessageHandler(chanId, m["pair"].toString());
             else if (serverProtocol == 2)
                 p = new TradeChannelMessageHandler_v2(chanId, m["pair"].toString());
-            p->setTradeCallback(dbWriteCallback);
+            //p->setTradeCallback(dbWriteCallback);
             handler = p;
         }
 

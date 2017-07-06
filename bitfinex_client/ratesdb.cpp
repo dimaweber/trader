@@ -15,6 +15,7 @@ RatesDB::RatesDB()
     db->setPassword("rates");
     db->setUserName("rates");
 
+    std::cout << "Connecting to database" << std::endl;
     if (!db->open())
     {
         std::cerr << qPrintable(db->lastError().text()) << std::endl;
@@ -25,6 +26,7 @@ RatesDB::RatesDB()
     {
         std::cerr << qPrintable(db->lastError().text()) << std::endl;
     }
+
 }
 
 void RatesDB::newRate(const QString& ex, int exch_id, const QString& pair, const QDateTime &time, double rate, double amount, const QString& type)
