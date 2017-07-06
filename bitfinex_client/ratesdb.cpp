@@ -41,7 +41,7 @@ bool RatesDB::newRate(const QString& ex, int exch_id, const QString& pair, const
 
     if (!query->exec())
     {
-        std::cerr << qPrintable(db->lastError().text()) << std::endl;
+        std::cerr << qPrintable(query->lastError().text()) << std::endl;
         return false;
     }
 
