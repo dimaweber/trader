@@ -43,7 +43,7 @@ void BtcETradeClient::run()
 
         for (BtcObjects::Pair& pair: BtcObjects::Pairs::ref())
         {
-            db->transaction();
+            //db->transaction();
             QList<BtcObjects::Trade>& tradeList = pair.trades;
             for (const BtcObjects::Trade& trade: tradeList)
             {
@@ -60,7 +60,7 @@ void BtcETradeClient::run()
                     qWarning() << query->lastError().text();
                 }
             }
-            db->commit();
+           // db->commit();
             pair.trades.clear();
         }
 

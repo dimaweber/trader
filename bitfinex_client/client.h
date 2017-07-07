@@ -73,7 +73,6 @@ public:
     {}
     virtual bool processMessage(const QVariantList& msg) override;
 
-    //typedef void (*NewTradeCallback)(quint32 exch_id, const QDateTime& time, float price, float amount, const QString& pair);
     using NewTradeCallback = std::function<void(quint32, const QDateTime&, float, float, const QString&)>;
     void setTradeCallback(NewTradeCallback callbackFunc);
 

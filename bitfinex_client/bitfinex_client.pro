@@ -12,7 +12,8 @@ TEMPLATE = app
 SOURCES += main.cpp \
     client.cpp \
     ratesdb.cpp \
-    btcetradeclient.cpp
+    btcetradeclient.cpp \
+    pusherclient.cpp
 
 
 win32: {
@@ -44,7 +45,8 @@ DEFINES += QT_DEPRECATED_WARNINGS
 HEADERS += \
     client.h \
     ratesdb.h \
-    btcetradeclient.h
+    btcetradeclient.h \
+    pusherclient.h
 
 DESTDIR = ../bin
 
