@@ -118,7 +118,7 @@ void PusherClient::onMessage(const QString &msg)
         QString event = m["event"].toString();
         QVariantList data = vData.toList();
         QString pair = channel.left(7);
-        if (event == "trade")
+        if (event == "trades")
         {
             for (const QVariant& v: data)
             {
