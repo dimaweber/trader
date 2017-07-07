@@ -208,7 +208,7 @@ void Client::onAuthEvent(QVariantMap m)
 void Client::onPongEvent()
 {
     pingLatency = pingLanetcyTimer.elapsed();
-//    qDebug() << "ping is" << pingLatency << "ms";
+    qDebug() << "ping is" << pingLatency << "ms";
 }
 
 void Client::onMessage(const QString& msg)
@@ -494,12 +494,13 @@ bool TradeChannelMessageHandler_v2::parseSnapshot(const QVariantList &lst)
     float amount = lst[idx++].toFloat();
     float price = lst[idx++].toFloat();
 
+    /*
     QDateTime time = QDateTime::fromMSecsSinceEpoch(timestamp);
     if (newTradeCallback == nullptr)
         printTrade(id, time, price, amount);
     else
         newTradeCallback(id, time, price, amount, pair);
-
+    */
     return true;
 }
 
@@ -515,30 +516,18 @@ bool TradeChannelMessageHandler_v2::parseUpdate(const QVariantList &msg)
     QDateTime timestamp = QDateTime::currentDateTime();
     float amount =0;
     float price =0;
+    int idx=0;
+    id = updList[idx++].toUInt();
+    timestamp = QDateTime::fromMSecsSinceEpoch(updList[idx++].toULongLong());
+    amount = updList[idx++].toFloat();
+    price = updList[idx++].toFloat();
+
     if (tue == "tu")
     {
-        int idx=0;
-        id = updList[idx++].toUInt();
-        timestamp = QDateTime::fromMSecsSinceEpoch(updList[idx++].toULongLong());
-        amount = updList[idx++].toFloat();
-        price = updList[idx++].toFloat();
-
         if (newTradeCallback == nullptr)
             printTrade(id, timestamp, price, amount);
         else
             newTradeCallback(id, timestamp, price, amount, pair);
-    }
-    else if (tue == "te")
-    {
-        int idx=0;
-        id = updList[idx++].toUInt();
-        timestamp = QDateTime::fromMSecsSinceEpoch(updList[idx++].toULongLong());
-        amount = updList[idx++].toFloat();
-        price = updList[idx++].toFloat();
-    }
-    else
-    {
-
     }
 
     return true;

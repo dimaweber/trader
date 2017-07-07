@@ -1,18 +1,18 @@
 #ifndef BTCETRADECLIENT_H
 #define BTCETRADECLIENT_H
 
+#include <ratesdb.h>
 #include <QThread>
 
-class QSqlDatabase;
-class QSqlQuery;
 
 class BtcETradeClient : public QThread
 {
     Q_OBJECT
-    QSqlDatabase* db;
-    QSqlQuery* query;
+
+    RatesDB* pDb;
 public:
     BtcETradeClient();
+    ~BtcETradeClient();
 protected:
     void run();
 };

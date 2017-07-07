@@ -1,6 +1,8 @@
 #ifndef PUSHERCLIENT_H
 #define PUSHERCLIENT_H
 
+#include "ratesdb.h"
+
 #include <QObject>
 #include <QAbstractSocket>
 #include <QSslError>
@@ -21,6 +23,7 @@ public slots:
 
 private:
     QWebSocket* pSocket;
+    RatesDB db;
 
     void subscribeChannel(const QString& channel);
 

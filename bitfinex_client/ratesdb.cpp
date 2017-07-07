@@ -8,7 +8,7 @@
 
 RatesDB::RatesDB()
 {
-    db = new QSqlDatabase (QSqlDatabase::addDatabase("QMYSQL", "conn"));
+    db = new QSqlDatabase (QSqlDatabase::addDatabase("QMYSQL", QString("conn_%1").arg(qrand())));
 
     db->setDatabaseName("rates");
     db->setHostName("mysql-master.vm.dweber.lan");
@@ -22,7 +22,8 @@ RatesDB::RatesDB()
     }
 
     query = new QSqlQuery(*db);
-    if (!query->prepare("insert into rates (exchange, exch_id, pair, time, rate, amount, type) values (:exchange, :exch_id, :pair, :time, :rate, :amount, :type)  on duplicate key update exch_id=exch_id"))
+    if (!query->prepare("insert into rates (exchange, exch_id, pair, time, rate, amount, type) values (:exchange, :exch_id, :pair, :time, :rate, :amount, :type) "))
+//         on duplicate key update exch_id=exch_id
     {
         qCritical() << query->lastError().text();
     }

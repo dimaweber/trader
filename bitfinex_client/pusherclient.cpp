@@ -118,13 +118,17 @@ void PusherClient::onMessage(const QString &msg)
         QString event = m["event"].toString();
         QVariantList data = vData.toList();
         QString pair = channel.left(7);
-        for (const QVariant& v: data)
+        if (event == "trade")
         {
-            QVariantList trade = v.toList();
-            qDebug() << pair
-                     << "    type=" << trade[0].toString()
-                     << "    rate=" << trade[1].toDouble()
-                     << "  amount=" << trade[2].toDouble();
+            for (const QVariant& v: data)
+            {
+                QVariantList trade = v.toList();
+                QString type = trade[0].toString();
+                double rate = trade[1].toDouble();
+                double amount = trade[2].toDouble();
+                int id = QDateTime::currentMSecsSinceEpoch();
+                db.newRate("btc-e", id, pair, QDateTime::currentDateTimeUtc(), rate, amount, type);
+            }
         }
     }
 }
@@ -143,4 +147,5 @@ void PusherClient::onSslErrors(const QList<QSslError> &errors)
 void PusherClient::onConnected()
 {
     subscribeChannel("btc_usd.trades");
+    subscribeChannel("eth_usd.trades");
 }

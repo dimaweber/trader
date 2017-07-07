@@ -10,8 +10,8 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
     Client client;
 
-    BtcETradeClient btceTrade;
-    btceTrade.start();
+//    BtcETradeClient btceTrade;
+//    btceTrade.start();
 
     PusherClient cl;
 
