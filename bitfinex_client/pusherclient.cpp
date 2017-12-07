@@ -1,7 +1,9 @@
 #include "pusherclient.h"
 #include <QWebSocket>
-#include <QDebug>
 #include <QJsonParseError>
+
+#include <iostream>
+#include <iomanip>
 
 PusherClient::PusherClient(QObject *parent)
     : QObject(parent)
@@ -19,7 +21,8 @@ PusherClient::PusherClient(QObject *parent)
 
 void PusherClient::connectServer()
 {
-    QUrl url("ws://ws.pusherapp.com:80/app/c354d4d129ee0faa5c92?client=linux-weberLib&version=1.0&protocol=7");
+    //QUrl url("ws://ws.pusherapp.com:80/app/ee987526a24ba107824c?client=linux-weberLib&version=1.0&protocol=7");
+    QUrl url("ws://ws-eu.pusher.com:80/app/ee987526a24ba107824c?client=linux-weberLib&version=1.0&protocol=7");
     pSocket->open(url);
 }
 
@@ -31,23 +34,23 @@ void PusherClient::subscribeChannel(const QString &channel)
     data["channel"]  = channel;
     map["data"] = data;
 
-    qDebug() << QJsonDocument::fromVariant(map).toJson();
+    std::cout << qPrintable(QJsonDocument::fromVariant(map).toJson()) << std::endl;
     pSocket->sendTextMessage(QJsonDocument::fromVariant(map).toJson());
 }
 
 void PusherClient::onConnectWSocket()
 {
-    qDebug() << "web socket connected";
+    std::cout << "pusher web socket connected" << std::endl;
 }
 
 void PusherClient::onMessage(const QString &msg)
 {
-    qDebug() << msg;
+//    std::cout << qPrintable(msg) << std::endl;
     QJsonParseError error;
     QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError)
     {
-        qWarning() << "fail to parse json from server: " << error.errorString();
+        std::cerr << "fail to parse json from server: " << qPrintable(error.errorString()) << std::endl;
         return;
 
     }
@@ -55,25 +58,25 @@ void PusherClient::onMessage(const QString &msg)
     QVariant v = doc.toVariant();
     if (!v.canConvert(QVariant::Map))
     {
-       qWarning() << "broken json reply" << v.toString();
+       std::cerr << "broken json reply" << qPrintable(v.toString()) << std::endl;
        return;
     }
 
     QVariantMap m = v.toMap();
     if (!m.contains("event"))
     {
-        qWarning() << "broken reply";
+        std::cerr << "broken reply" << qPrintable(v.toString()) << std::endl;
         return;
     }
 
     QString event = m["event"].toString();
-    qDebug() << "event: " << event;
+//    std::cout << "event: " << qPrintable(event) << std::endl;
 
     QString strData = m["data"].toString();
     QJsonDocument docData = QJsonDocument::fromJson(strData.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError)
     {
-        qWarning() << "fail to parse data json: " << error.errorString();
+        std::cerr << "fail to parse data json: " << qPrintable(error.errorString()) << std::endl;
         return;
     }
     QVariant vData = docData.toVariant();
@@ -82,7 +85,7 @@ void PusherClient::onMessage(const QString &msg)
     {
         if (!vData.canConvert(QVariant::Map))
         {
-            qWarning() << "broken data json " << vData.toString();
+            std::cerr << "broken data json " << qPrintable(vData.toString()) << std::endl;
             return;
         }
 
@@ -90,14 +93,14 @@ void PusherClient::onMessage(const QString &msg)
 
         QString socket_id = data["socket_id"].toString();
         int activity_timeout  = data["activity_timeout"].toInt();
-        qDebug() << "socket id: " << socket_id;
+        std::cout << "socket id: " << qPrintable(socket_id) << std::endl;
         emit connected();
     }
     else if (event == "pusher:error")
     {
         if (!vData.canConvert(QVariant::Map))
         {
-            qWarning() << "broken data json " << vData.toString();
+            std::cerr << "broken data json " << qPrintable(vData.toString());
             return;
         }
 
@@ -105,7 +108,7 @@ void PusherClient::onMessage(const QString &msg)
 
         QString msg = data["message"].toString();
         int code = data["code"].toInt();
-        qWarning() << "error: " <<msg;
+        std::cerr << "error: " << qPrintable(msg) << std::endl;
     }
     else if (event == "pusher_internal:subscription_succeeded")
     {
@@ -128,6 +131,14 @@ void PusherClient::onMessage(const QString &msg)
                 double amount = trade[2].toDouble();
                 int id = QDateTime::currentMSecsSinceEpoch();
                 db.newRate("btc-e", id, pair, QDateTime::currentDateTimeUtc(), rate, amount, type);
+                std::cout << qPrintable(QDateTime::currentDateTime().toString(Qt::ISODate))
+                          << " BTC-E [" << id << "] "
+                          << qPrintable(pair) << " "
+                          << std::setw(5) << qPrintable(type) << " "
+                          << amount
+                          << " @ "
+                          << rate
+                          << std::endl;
             }
         }
     }
@@ -135,13 +146,13 @@ void PusherClient::onMessage(const QString &msg)
 
 void PusherClient::onError(QAbstractSocket::SocketError error)
 {
-    qWarning() << error;
+    std::cerr << error << std::endl;
 }
 
 void PusherClient::onSslErrors(const QList<QSslError> &errors)
 {
     for (auto& error: errors)
-        qWarning() << error.errorString();
+        std::cerr << qPrintable(error.errorString()) << std::endl;
 }
 
 void PusherClient::onConnected()

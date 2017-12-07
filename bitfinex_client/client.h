@@ -10,6 +10,7 @@
 #include <QMap>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QAbstractSocket>
 
 #include  <functional>
 
@@ -114,13 +115,17 @@ class Client : public QObject
 {
     Q_OBJECT
     bool loggedIn;
-    qint64 pingLatency;
-    QElapsedTimer pingLanetcyTimer;
+//    qint64 pingLatency;
+//    QElapsedTimer pingLanetcyTimer;
     QTimer heartbeatTimer;
+    QTimer socketPingTimeoutTimer;
+    QTimer connectTimeoutTimer;
+//    QTimer pingTimeoutTimer;
     QWebSocket* wsocket;
     QMap<quint32, ChannelMessageHandler*> channelHandlers;
     int serverProtocol;
     RatesDB rates;
+    bool serverMaintenanceMode;
 
 public:
     explicit Client(QObject *parent = 0);
@@ -143,19 +148,33 @@ public slots:
     void unsubscribeAll();
     void resubscribeAll();
 
+    bool sendMessage(const QVariantMap& data);
+
 private slots:
-    void onConnectWSocket();
-    void onMessage(const QString& msg);
+    void onWSocketConnect();
+    void onWSocketDisconnect();
+    void onWSocketError(QAbstractSocket::SocketError err);
+    void onWSocketPong(quint64 elapsedTime, const QByteArray& payload);
+    void onWSocketPingTimeout();
+    void onWSocketConnectTimeout();
+    void onWSocketStateChanged(QAbstractSocket::SocketState state);
+
     void onTimer();
+
+    void onMessage(const QString& msg);
     void onInfoEvent(QVariantMap m);
     void onSubscribedEvent(QVariantMap m);
     void onUnsubscribedEvent(QVariantMap m);
     void onErrorEvent(QVariantMap m);
     void onAuthEvent(QVariantMap m);
-    void onPongEvent();
+//    void onPongEvent();
+//    void onPingTimeout();
+
     void subscribeChannel(const QString& name, const QString &pair);
     void unsubscribeChannel(quint32 chanId);
     void authenticate();
+    void socketPing();
+//    void ping();
 };
 
 #endif // CLIENT_H

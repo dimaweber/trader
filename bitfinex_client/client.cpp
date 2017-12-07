@@ -2,14 +2,16 @@
 #include "utils.h"
 #include "btce.h"
 
-#include <QDebug>
 #include <QWebSocket>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QByteArray>
 
-#define API_KEY "uiF9cVUGWO0xzkVYX1htEcxO1sQ7tJSQtU2sbZbYflZ"
-#define API_SECRET "VA12zsLCb3eA3H4iFwYoAiMW9w3etTpQRsGkhYoLTwA"
+#include <iostream>
+#include <iomanip>
+
+#define API_KEY "G1wCam5EaZwDyyAN4iBgfkgX2wW035KNTwjGUMoVyAM"
+#define API_SECRET "AXe073FCkdXCBSrsp8dyNyT1lclNaKL4ow3kevuUtGb"
 
 QString bitfinex_pair_to_btce_pair(const QString& str)
 {
@@ -19,18 +21,42 @@ QString bitfinex_pair_to_btce_pair(const QString& str)
     return QString("%1_%2").arg(str.mid(pos,3)).arg(str.mid(pos+3,3)).toLower();
 }
 
+std::ostream& operator<<(std::ostream& stream, const QString& str)
+{
+    stream << qPrintable(str);
+    return stream;
+}
+std::ostream& operator<<(std::ostream& stream, const QVariant& lst)
+{
+    stream << qPrintable(lst.toString());
+    return stream;
+}
+
 Client::Client(QObject *parent) : QObject(parent)
-  ,loggedIn(false), serverProtocol(-1)
+  ,loggedIn(false), serverProtocol(-1), serverMaintenanceMode(false)
 {
     connect (&heartbeatTimer, &QTimer::timeout, this, &Client::onTimer);
     heartbeatTimer.setSingleShot(false);
 
+    connect(&socketPingTimeoutTimer, &QTimer::timeout, this, &Client::onWSocketPingTimeout);
+    socketPingTimeoutTimer.setSingleShot(true);
+
+    connect (&connectTimeoutTimer, &QTimer::timeout, this, &Client::onWSocketConnectTimeout);
+    connectTimeoutTimer.setSingleShot(true);
+
+//    connect (&pingTimeoutTimer, &QTimer::timeout, this, &Client::onPingTimeout);
+//    pingTimeoutTimer.setSingleShot(true);
+
     wsocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
-    connect (wsocket, &QWebSocket::connected, this, &Client::onConnectWSocket);
+    connect (wsocket, &QWebSocket::connected, this, &Client::onWSocketConnect);
+    connect (wsocket, &QWebSocket::disconnected, this, &Client::onWSocketDisconnect);
     connect (wsocket, &QWebSocket::textMessageReceived, this, &Client::onMessage);
+    connect (wsocket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onWSocketError(QAbstractSocket::SocketError)));
+    connect (wsocket, &QWebSocket::pong, this, &Client::onWSocketPong);
+    connect (wsocket, &QWebSocket::stateChanged, this, &Client::onWSocketStateChanged);
 
     connect (this, &Client::reconnectRequired, this, &Client::connectServer);
-    connect (this, &Client::pongEvent, this, &Client::onPongEvent);
+//    connect (this, &Client::pongEvent, this, &Client::onPongEvent);
     connect (this, &Client::infoEvent, this, &Client::onInfoEvent);
     connect (this, &Client::errorEvent, this, &Client::onErrorEvent);
     connect (this, &Client::subscribedEvent, this, &Client::onSubscribedEvent);
@@ -43,14 +69,21 @@ Client::Client(QObject *parent) : QObject(parent)
 
 void Client::subscribeChannel(const QString& name, const QString& pair)
 {
-    QString msg = QString("{'event':'subscribe', 'channel':'%1', 'pair':'%2'}").arg(name).arg(pair).replace("'", "\"");
-    wsocket->sendTextMessage(msg);
+    QVariantMap m;
+    m["event"] = "subscribe";
+    m["channel"] = name;
+    m["pair"] = pair;
+
+    sendMessage(m);
 }
 
 void Client::unsubscribeChannel(quint32 chanId)
 {
-    QString msg = QString("{'event':'unsubscribe', 'chanId':'%1'}").arg(chanId).replace("'", "\"");
-    wsocket->sendTextMessage(msg);
+    QVariantMap m;
+    m["event"] = "unsubscribe";
+    m["chanId"] = chanId;
+
+    sendMessage(m);
 }
 
 void Client::authenticate()
@@ -64,14 +97,14 @@ void Client::authenticate()
     v["authSig"] = hmac_sha384(v["authPayload"].toByteArray(), QByteArray(API_SECRET)).toHex();
     v["filter"] = QStringList() << "trading" << "wallet" << "balance";
 
-    QString msg = QString::fromUtf8(QJsonDocument::fromVariant(v).toJson());
-    wsocket->sendTextMessage(msg);
+    sendMessage(v);
 }
 
 void Client::subscribeAll()
 {
     subscribeChannel("ticker", "BTCUSD");
     subscribeChannel("ticker", "LTCUSD");
+    subscribeChannel("ticker", "ETHUSD");
     subscribeChannel("trades", "BTCUSD");
     subscribeChannel("trades", "ETHUSD");
 }
@@ -90,9 +123,25 @@ void Client::resubscribeAll()
     subscribeAll();
 }
 
-void Client::onConnectWSocket()
+bool Client::sendMessage(const QVariantMap &data)
 {
-    qDebug() << "web socket connected";
+    if (serverMaintenanceMode)
+        return false;
+
+    QString msg = QString::fromUtf8(QJsonDocument::fromVariant(data).toJson());
+    wsocket->sendTextMessage(msg);
+    return true;
+}
+
+void Client::onWSocketConnect()
+{
+    std::cout << "web socket connected" << std::endl;
+    connectTimeoutTimer.stop();
+}
+
+void Client::onWSocketDisconnect()
+{
+    std::cout << "websocket disconnected: [" << wsocket->closeCode() << "] " << wsocket->closeReason() << std::endl;
 }
 
 void Client::onInfoEvent(QVariantMap m)
@@ -107,21 +156,23 @@ void Client::onInfoEvent(QVariantMap m)
         }
         else
         {
-            qWarning() << "unsupported protocol version " << serverProtocol;
+            std::cerr << "unsupported protocol version " << serverProtocol << std::endl;
         }
     }
     else if (m.contains("code"))
     {
         int code = m["code"].toInt();
-        qDebug() << "[" << code << "]" << m["msg"].toString();
+        std::cout << "[" << code << "] " << m["msg"].toString() << std::endl;
         switch (code)
         {
             case 20051:
                 emit reconnectRequired();
                 break;
             case 20060:
+                serverMaintenanceMode = true;
                 break;
             case 20061:
+                serverMaintenanceMode = false;
                 emit resubscribeAllRerquired();
         }
     }
@@ -130,7 +181,7 @@ void Client::onInfoEvent(QVariantMap m)
 void Client::onSubscribedEvent(QVariantMap m)
 {
     if (!m.contains("channel"))
-        qDebug() << "no channel name in subscribed reply";
+        std::cout << "no channel name in subscribed reply" << std::endl;
     else
     {
         PublicChannelMessageHandler* handler = nullptr;
@@ -150,7 +201,7 @@ void Client::onSubscribedEvent(QVariantMap m)
             auto dbWriteCallback = [this](quint32 exch_id, const QDateTime& time, float price, float amount, const QString& pair)
             {
                 if (!rates.newRate("bitfinex", exch_id, bitfinex_pair_to_btce_pair(pair), time.toUTC(), price, qAbs(amount), amount<0?"sell":"buy"))
-                    qWarning() << "fail to write to database";
+                    std::cerr << "fail to write to database" << std::endl;
             };
 
             TradeChannelMessageHandler* p = nullptr;
@@ -160,6 +211,12 @@ void Client::onSubscribedEvent(QVariantMap m)
                 p = new TradeChannelMessageHandler_v2(chanId, m["pair"].toString());
             p->setTradeCallback(dbWriteCallback);
             handler = p;
+        }
+
+        if (channelHandlers.contains(chanId))
+        {
+            std::cerr << "there is already handler for channel " << chanId << std::endl;
+            delete channelHandlers[chanId];
         }
 
         if (handler)
@@ -183,7 +240,7 @@ void Client::onUnsubscribedEvent(QVariantMap m)
 void Client::onErrorEvent(QVariantMap m)
 {
     int code = m["code"].toInt();
-    qWarning() << "Error [" << code << "]" << m["msg"].toString();
+    std::cerr << "Error [" << code << "]" << m["msg"].toString() << std::endl;
 
 }
 
@@ -193,23 +250,31 @@ void Client::onAuthEvent(QVariantMap m)
     {
         loggedIn = true;
         int userId = m["userId"].toInt();
-        qDebug() << "logged in as user" << userId;
+        std::cout << "logged in as user " << userId << std::endl;
         channelHandlers[0] = new PrivateChannelMessageHandler();
     }
     else
     {
         int code = m["code"].toInt();
         QString msg = m["msg"].toString();
-        qWarning() << "authentication failed with code" << code << " :    " << msg;
+        std::cerr << "***CRITICAL*** authentication failed with code" << code << " :    " << msg << std::endl;
     }
 
 }
 
-void Client::onPongEvent()
-{
-    pingLatency = pingLanetcyTimer.elapsed();
-    qDebug() << "ping is" << pingLatency << "ms";
-}
+//void Client::onPongEvent()
+//{
+//    pingLatency = pingLanetcyTimer.elapsed();
+//    std::cout << "ping is " << pingLatency << "ms" << std::endl;
+//    pingTimeoutTimer.stop();
+//}
+
+//void Client::onPingTimeout()
+//{
+//    std::cerr << "***CRITICAL*** " << "connection to server is lost"  << std::endl;
+//    heartbeatTimer.stop();
+//    emit reconnectRequired();
+//}
 
 void Client::onMessage(const QString& msg)
 {
@@ -217,7 +282,7 @@ void Client::onMessage(const QString& msg)
     QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError)
     {
-        qWarning() << "fail to parse json from server: " << error.errorString();
+        std::cerr << "fail to parse json from server: " << error.errorString() << std::endl;
     }
     else
     {
@@ -255,12 +320,12 @@ void Client::onMessage(const QString& msg)
                 }
                 else
                 {
-                    qWarning() << "unknown event";
+                    std::cerr << "unknown event" << std::endl;
                 }
             }
             else
             {
-                qWarning() << "broken reply";
+                std::cerr << "broken reply" << std::endl;
             }
         }
         else if (v.canConvert(QVariant::List))
@@ -273,53 +338,99 @@ void Client::onMessage(const QString& msg)
         }
         else
         {
-            qWarning() << "broken json reply" << v.toString();
+            std::cerr << "broken json reply" << v.toString() << std::endl;
         }
     }
 }
 
+void Client::onWSocketError(QAbstractSocket::SocketError err)
+{
+    QIODevice* sock = qobject_cast<QIODevice*>(sender());
+    if (sock)
+        std::cerr << "***CRITICAL*** " << err << sock->errorString() << std::endl;
+    else
+        std::cerr << "***CRITICAL*** " << err << std::endl;
+}
+
+void Client::onWSocketPong(quint64 elapsedTime, const QByteArray& /*payload*/)
+{
+    std::cout << "socket answer in " << elapsedTime << "ms" << std::endl;
+    socketPingTimeoutTimer.stop();
+}
+
+void Client::onWSocketPingTimeout()
+{
+    std::cerr << "socket pong fail" << std::endl;
+    emit reconnectRequired();
+}
+
+void Client::socketPing()
+{
+    wsocket->ping("socket ping");
+    socketPingTimeoutTimer.start(5 * 1000);
+}
+
+//void Client::ping()
+//{
+//    pingLatency = -1;
+//    pingLanetcyTimer.start();
+//    QVariantMap m;
+//    m["event"] = "ping";
+
+//    sendMessage(m);
+//}
+
 void Client::onTimer()
 {
-    if (pingLatency < 0)
-    {
-        qCritical() << "connection to server is lost";
-        heartbeatTimer.stop();
-        emit reconnectRequired();
-    }
+    socketPing();
+//    ping();
+
     for (ChannelMessageHandler* handler: channelHandlers)
     {
         QDateTime checkTime = QDateTime::currentDateTime();
         int noMsgSec = checkTime.secsTo(handler->getLastUpdate());
         if ( noMsgSec > 10 )
         {
-            qWarning() << "channel " << handler->getChanId() << "seems to be dead";
+            std::cerr << "channel " << handler->getChanId() << "seems to be dead" << std::endl;
         }
         if (noMsgSec > 30 )
         {
-            qWarning() << "Channel [" << handler->getChanId() << "]" << handler->getName() << ": no messages for too long, resubscribe";
+            std::cerr << "Channel [" << handler->getChanId() << "]" << handler->getName() << ": no messages for too long, resubscribe" << std::endl;
             unsubscribeChannel(handler->getChanId());
             subscribeChannel(handler->getName(), handler->getPair());
         }
     }
+}
 
-    pingLatency = -1;
-    pingLanetcyTimer.start();
-    QString pingMsg = "{\"event\":\"ping\"}";
+void Client::onWSocketConnectTimeout()
+{
+    std::cerr << "connection to  server timed out" << std::endl;
+    QAbstractSocket::SocketState state = wsocket->state();
+    wsocket->close();
+}
 
-    wsocket->sendTextMessage(pingMsg);
+void Client::onWSocketStateChanged(QAbstractSocket::SocketState state)
+{
+    std::cout << "new web socket state: " << state << std::endl;
 }
 
 void Client::connectServer()
 {
+    heartbeatTimer.stop();
+
     for (ChannelMessageHandler* handler: channelHandlers)
     {
         delete handler;
     }
     channelHandlers.clear();
-    wsocket->close(QWebSocketProtocol::CloseCodeNormal, "controlled reconnect");
+
+    if (wsocket->state() == QAbstractSocket::ConnectedState)
+        wsocket->close(QWebSocketProtocol::CloseCodeNormal, "controlled reconnect");
+
     QUrl url(BITFINEX_WEBSOCKET_API_URL);
     wsocket->open(url);
-    pingLatency = 1;
+    connectTimeoutTimer.start(2000);
+//    pingLatency = 0;
     heartbeatTimer.start(10 * 1000);
 }
 
@@ -343,7 +454,7 @@ bool TickerChannelMessageHandler::processMessage(const QVariantList& msg)
     /*float high =*/ msg[idx++].toFloat(); //	Daily high
     /*float low =*/ msg[idx++].toFloat(); //	Daily low
 
-//    qDebug() << "pair: " << pair << "   last:" << last_price << "   high:" << high << "   low:" << low;
+//    std::cout << "pair: " << pair << "   last:" << last_price << "   high:" << high << "   low:" << low << std::endl;
 
     return true;
 }
@@ -407,7 +518,7 @@ bool TradeChannelMessageHandler::parseSnapshot(const QVariantList &lst)
 {
     if (lst.size() != 4)
     {
-        qWarning() << "something wrong";
+        std::cerr << "something wrong" << std::endl;
         return false;
     }
 
@@ -429,11 +540,14 @@ bool TradeChannelMessageHandler::parseSnapshot(const QVariantList &lst)
 void TradeChannelMessageHandler::printTrade(quint32 id, const QDateTime& timestamp, float price, float amount)
 {
     QString type = amount>0?"buy":"sell";
-    qDebug() << timestamp.toString(Qt::ISODate)
-             << "[" << id << "]"
-             << pair
-             << type
-             << qAbs(amount) << '@' << price;
+    std::cout << timestamp.toString(Qt::ISODate)
+             << " BTFNX [" << id << "] "
+             << bitfinex_pair_to_btce_pair(pair) << " "
+             << std::setw(5) << type << " "
+             << qAbs(amount)
+             << " @ "
+             << price
+             << std::endl;
 
     QString p = bitfinex_pair_to_btce_pair(pair);
 }
@@ -484,7 +598,7 @@ bool TradeChannelMessageHandler_v2::parseSnapshot(const QVariantList &lst)
 {
     if (lst.size() != 4)
     {
-        qWarning() << "something wrong";
+        std::cerr << "something wrong" << std::endl;
         return false;
     }
 
@@ -524,9 +638,8 @@ bool TradeChannelMessageHandler_v2::parseUpdate(const QVariantList &msg)
 
     if (tue == "tu")
     {
-        if (newTradeCallback == nullptr)
-            printTrade(id, timestamp, price, amount);
-        else
+        printTrade(id, timestamp, price, amount);
+        if (newTradeCallback)
             newTradeCallback(id, timestamp, price, amount, pair);
     }
 
@@ -560,10 +673,11 @@ bool TickerChannelMessageHandler_v2::processMessage(const QVariantList &msg)
     float high = lst[idx++].toFloat(); //	Daily high
     float low = lst[idx++].toFloat(); //	Daily low
 
-    qDebug() << "pair: " << pair
+    std::cout << "pair: " << pair
              << "   last:" << last_price
              << "   high:" << high
-             << "   low:" << low;
+             << "   low:" << low
+             << std::endl;
 
     return true;
 }
@@ -581,14 +695,14 @@ bool PrivateChannelMessageHandler::processMessage(const QVariantList &msg)
         parseWallet(data);
     else if (type == "os")
         parseOrdersSnapshot(data);
-    else if (type == "ou")
+    else if (type == "ou" || type == "on" || type == "oc")
         parseOrder(data);
     else if (type == "hos")
         parseHistoryOrdersSnapshot(data);
     else if (type == "bs" || type == "bu")
         parseBalance(data);
     else
-        qDebug() << type << data;
+        std::cout << type << " " << data << std::endl;
 
     return true;
 }
@@ -602,7 +716,12 @@ void PrivateChannelMessageHandler::parseWallet(const QVariantList &wallet)
     float unsettledInterest = wallet[idx++].toFloat();
     float balanceAvailable = wallet[idx++].toFloat();
 
-    qDebug() << walletType << currency << balance << unsettledInterest << balanceAvailable;
+    std::cout << walletType << " "
+              << currency   << " "
+              << balance    << " "
+              << unsettledInterest << " "
+              << balanceAvailable << " "
+              << std::endl;
 }
 
 void PrivateChannelMessageHandler::parseOrder(const QVariantList &order)
@@ -660,10 +779,12 @@ void PrivateChannelMessageHandler::parseBalance(const QVariantList &balance)
     int idx = 0;
     float aus = balance[idx++].toFloat(); // Total Assets Under Management
     float aus_net = balance[idx++].toFloat(); //Net Assets Under Management
-    //QString wallet_type = balance[idx++].toString(); //Exchange, Trading, or Deposit
+    //QString wallet_type = balance[idx++].toString(); //, Trading, or Deposit
     //QString currency = balance[idx++].toString(); //"BTC", "USD", etc
 
-    qDebug() << aus << aus_net; // << wallet_type << currency;
+    std::cout << aus << " "
+              << aus_net << " "
+              << std::endl; // << wallet_type << currency;
 }
 
 void PrivateChannelMessageHandler::parseWalletsSnapshot(const QVariantList& v)
