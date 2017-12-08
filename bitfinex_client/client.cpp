@@ -430,7 +430,7 @@ void Client::onTimer()
     for (ChannelMessageHandler* handler: channelHandlers)
     {
         QDateTime checkTime = QDateTime::currentDateTime();
-        int noMsgSec = checkTime.secsTo(handler->getLastUpdate());
+        int noMsgSec = handler->getLastUpdate().secsTo(checkTime);
         if ( noMsgSec > 10 )
         {
             std::cerr << "channel " << handler->getChanId() << "seems to be dead" << std::endl;
