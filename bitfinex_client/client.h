@@ -130,6 +130,11 @@ class Client : public QObject
 public:
     explicit Client(QObject *parent = 0);
 
+private:
+    QByteArray getConfigLine(const char* prefix, const QString& filename = ".bitfinex_apikey");
+    QByteArray getApiKey();
+    QByteArray getSecret();
+
 signals:
     void reconnectRequired();
     void resubscribeAllRerquired();

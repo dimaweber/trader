@@ -10,9 +10,6 @@
 #include <iostream>
 #include <iomanip>
 
-#define API_KEY "G1wCam5EaZwDyyAN4iBgfkgX2wW035KNTwjGUMoVyAM"
-#define API_SECRET "AXe073FCkdXCBSrsp8dyNyT1lclNaKL4ow3kevuUtGb"
-
 QString bitfinex_pair_to_btce_pair(const QString& str)
 {
     int pos=0;
@@ -67,6 +64,48 @@ Client::Client(QObject *parent) : QObject(parent)
     emit reconnectRequired();
 }
 
+QByteArray Client::getConfigLine(const char* prefix, const QString& filename)
+{
+    const size_t prefix_len = strlen(prefix);
+    QByteArray value;
+    QFile file(filename);
+    if (file.open(QIODevice::ReadOnly))
+    {
+        while(!file.atEnd())
+        {
+            QByteArray line = file.readLine();
+            if (line.startsWith(prefix))
+            {
+                value = line.right(line.length() - prefix_len).trimmed();
+                break;
+            }
+        }
+    }
+    else
+        std::cerr << "fail to open " << filename << " file" << std::endl;
+    return value;
+}
+
+QByteArray Client::getApiKey()
+{
+    static QByteArray apikey;
+    if (apikey.isEmpty())
+    {
+        apikey = getConfigLine("apikey=");
+    }
+    return apikey;
+}
+
+QByteArray Client::getSecret()
+{
+    static QByteArray secret;
+    if (secret.isEmpty())
+    {
+        secret = getConfigLine("secret=");
+    }
+    return secret;
+}
+
 void Client::subscribeChannel(const QString& name, const QString& pair)
 {
     QVariantMap m;
@@ -88,13 +127,14 @@ void Client::unsubscribeChannel(quint32 chanId)
 
 void Client::authenticate()
 {
-    QString nonce = QString::number(QDateTime::currentDateTime().toTime_t() - 1499332582);
+    static long n = QDateTime::currentDateTime().toTime_t() - 1499332582;
+    QString nonce = QString::number(++n);
     QVariantMap v;
     v["event"] = "auth";
-    v["apiKey"] = API_KEY;
+    v["apiKey"] = getApiKey();
     v["authNonce"] = nonce;
     v["authPayload"] = QString("AUTH%1").arg(nonce);
-    v["authSig"] = hmac_sha384(v["authPayload"].toByteArray(), QByteArray(API_SECRET)).toHex();
+    v["authSig"] = hmac_sha384(v["authPayload"].toByteArray(), getSecret()).toHex();
     v["filter"] = QStringList() << "trading" << "wallet" << "balance";
 
     sendMessage(v);
@@ -258,6 +298,8 @@ void Client::onAuthEvent(QVariantMap m)
         int code = m["code"].toInt();
         QString msg = m["msg"].toString();
         std::cerr << "***CRITICAL*** authentication failed with code" << code << " :    " << msg << std::endl;
+
+        authenticate();
     }
 
 }
