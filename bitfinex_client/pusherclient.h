@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QAbstractSocket>
 #include <QSslError>
+#include <QTimer>
 
 class QWebSocket;
 
@@ -24,11 +25,20 @@ public slots:
 private:
     QWebSocket* pSocket;
     RatesDB db;
+    QTimer messagesTimeout;
+    QTimer connectionTimeout;
+    QTimer pingTimeout;
+    QTimer reconnectTimeout;
 
     void subscribeChannel(const QString& channel);
 
 private slots:
-    void onConnectWSocket();
+    void onWSocketConnect();
+    void onWSocketDisconnect();
+    void onWSocketTimeout();
+    void onWSocketConnectionTimeout();
+    void onWSocketPingTimeout();
+    void onWSocketPong();
     void onMessage(const QString& msg);
     void onError(QAbstractSocket::SocketError);
     void onSslErrors(const QList<QSslError> &errors);

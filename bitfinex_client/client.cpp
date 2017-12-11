@@ -61,6 +61,13 @@ Client::Client(QObject *parent) : QObject(parent)
     connect (this, &Client::resubscribeAllRerquired, this, &Client::resubscribeAll);
     connect (this, &Client::authEvent, this, &Client::onAuthEvent);
 
+    QNetworkProxy proxy;
+    proxy.setType(QNetworkProxy::HttpProxy);
+    proxy.setHostName("proxy.dweber.lan");
+    proxy.setPort(3128);
+
+    wsocket->setProxy(proxy);
+
     emit reconnectRequired();
 }
 
